@@ -8,28 +8,29 @@ class Base(DeclarativeBase):
     pass
 
 
-class TbStatNation(Base):
-    __tablename__ = 'tb_stat_nation'
+class StatNation(Base):
+    __tablename__ = 'stat_nation'
     __table_args__ = (
         Index('idx_tb_stat_nation_user_no', 'user_no'),
+        Index('user_no_UNIQUE', 'user_no', unique=True)
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    account_no: Mapped[Optional[int]] = mapped_column(Integer)
-    user_no: Mapped[Optional[int]] = mapped_column(Integer)
+    account_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
     cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
-    tb_building: Mapped[list['TbBuilding']] = relationship('TbBuilding', back_populates='tb_stat_nation')
-    tb_hero: Mapped[list['TbHero']] = relationship('TbHero', back_populates='tb_stat_nation')
-    tb_research: Mapped[list['TbResearch']] = relationship('TbResearch', back_populates='tb_stat_nation')
-    tb_resources: Mapped[list['TbResources']] = relationship('TbResources', back_populates='tb_stat_nation')
+    building: Mapped[list['Building']] = relationship('Building', back_populates='stat_nation')
+    hero: Mapped[list['Hero']] = relationship('Hero', back_populates='stat_nation')
+    research: Mapped[list['Research']] = relationship('Research', back_populates='stat_nation')
+    resources: Mapped[list['Resources']] = relationship('Resources', back_populates='stat_nation')
 
 
-class TbBuilding(Base):
-    __tablename__ = 'tb_building'
+class Building(Base):
+    __tablename__ = 'building'
     __table_args__ = (
-        ForeignKeyConstraint(['user_no'], ['tb_stat_nation.user_no'], ondelete='CASCADE', name='tb_building_ibfk_1'),
+        ForeignKeyConstraint(['user_no'], ['stat_nation.user_no'], ondelete='CASCADE', name='building_ibfk_1'),
         Index('user_no_2', 'user_no', 'building_idx')
     )
 
@@ -37,18 +38,18 @@ class TbBuilding(Base):
     user_no: Mapped[int] = mapped_column(Integer, nullable=False)
     building_idx: Mapped[int] = mapped_column(Integer, nullable=False)
     building_lv: Mapped[int] = mapped_column(Integer, nullable=False)
-    building_status: Mapped[int] = mapped_column(Integer, nullable=False)
-    building_start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    building_end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    building_last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
-    tb_stat_nation: Mapped['TbStatNation'] = relationship('TbStatNation', back_populates='tb_building')
+    stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='building')
 
 
-class TbHero(Base):
-    __tablename__ = 'tb_hero'
+class Hero(Base):
+    __tablename__ = 'hero'
     __table_args__ = (
-        ForeignKeyConstraint(['user_no'], ['tb_stat_nation.user_no'], ondelete='CASCADE', name='tb_hero_ibfk_1'),
+        ForeignKeyConstraint(['user_no'], ['stat_nation.user_no'], ondelete='CASCADE', name='hero_ibfk_1'),
         Index('user_no_2', 'user_no', 'hero_idx')
     )
 
@@ -59,13 +60,13 @@ class TbHero(Base):
     hero_status: Mapped[int] = mapped_column(Integer, nullable=False)
     hero_cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
-    tb_stat_nation: Mapped['TbStatNation'] = relationship('TbStatNation', back_populates='tb_hero')
+    stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='hero')
 
 
-class TbResearch(Base):
-    __tablename__ = 'tb_research'
+class Research(Base):
+    __tablename__ = 'research'
     __table_args__ = (
-        ForeignKeyConstraint(['user_no'], ['tb_stat_nation.user_no'], ondelete='CASCADE', name='tb_research_ibfk_1'),
+        ForeignKeyConstraint(['user_no'], ['stat_nation.user_no'], ondelete='CASCADE', name='research_ibfk_1'),
         Index('user_no_2', 'user_no', 'research_idx')
     )
 
@@ -73,18 +74,18 @@ class TbResearch(Base):
     user_no: Mapped[int] = mapped_column(Integer, nullable=False)
     research_idx: Mapped[int] = mapped_column(Integer, nullable=False)
     research_lv: Mapped[int] = mapped_column(Integer, nullable=False)
-    research_status: Mapped[int] = mapped_column(Integer, nullable=False)
-    research_start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    research_end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    research_last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
-    tb_stat_nation: Mapped['TbStatNation'] = relationship('TbStatNation', back_populates='tb_research')
+    stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='research')
 
 
-class TbResources(Base):
-    __tablename__ = 'tb_resources'
+class Resources(Base):
+    __tablename__ = 'resources'
     __table_args__ = (
-        ForeignKeyConstraint(['user_no'], ['tb_stat_nation.user_no'], ondelete='CASCADE', name='tb_resources_ibfk_1'),
+        ForeignKeyConstraint(['user_no'], ['stat_nation.user_no'], ondelete='CASCADE', name='resources_ibfk_1'),
         Index('user_no', 'user_no', unique=True)
     )
 
@@ -94,4 +95,4 @@ class TbResources(Base):
     gold: Mapped[Optional[int]] = mapped_column(BigInteger)
     ruby: Mapped[Optional[int]] = mapped_column(Integer)
 
-    tb_stat_nation: Mapped['TbStatNation'] = relationship('TbStatNation', back_populates='tb_resources')
+    stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='resources')

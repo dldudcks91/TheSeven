@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 
 host = 'localhost'
-user = 'lyc'
+user = 'root'
 password = 'an98'
 db='TheSeven'
 charset='utf8'

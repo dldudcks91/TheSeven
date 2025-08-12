@@ -5,15 +5,21 @@
         
         <div class="form-group">
             <label>플레이어 ID:</label>
-            <input type="number" id="userId" value="123" />
+            <input type="number" id="userId" value="" />
         </div>
         <div class="form-group">
             <label>건물 ID:</label>
-            <input type="number" id="buildingIdx" value="456" />
+            <input type="number" id="buildingIdx" value="" />
+        </div>
+        <div class="form-group">
+            <label>보유 식량:</label>
+            <input type="number" id="resourceFood" value="" />
         </div>
         
         <button onclick="postAPI(2001)">조회</button>
-        <button onclick="postAPI(2002)">레벨업</button>
+        <button onclick="postAPI(2002)">건설</button>
+        <button onclick="postAPI(2003)">레벨업</button>
+        <button onclick="postAPI(2004)">완료</button>
         <div id="fetchResult" class="result-box"></div>
 
         <script>
@@ -28,6 +34,7 @@
                         user_no: parseInt(document.getElementById('userId').value),
                     
                         building_idx: parseInt(document.getElementById('buildingIdx').value),
+                        resourceFood: parseInt(document.getElementById('resourceFood').value),
                         timestamp: Date.now()
                     }
                 };
