@@ -13,7 +13,7 @@ status 값
 2: 업그레이드중
 '''
 class BuildingManager():
-    MAX_LEVEL = 30
+    MAX_LEVEL = 10
     CONFIG_TYPE = 'buildings'
     def __init__(self, api_code: int, data: dict, db: Session):
         self.api_code = api_code
@@ -49,27 +49,25 @@ class BuildingManager():
         }
     
     def _get_building(self, user_no, building_idx):
-        """건물 조회 헬퍼 메서드"""
+        """건물 조회"""
         return self.db.query(models.Building).filter(
             models.Building.user_no == user_no,
             models.Building.building_idx == building_idx
         ).first()
     
     
-    
-    def check_and_consume_resources(self, building_idx, building_lv):
-        _building_configs = GameDataManager._building_configs[building_idx][building_lv]
-        required_cost = _building_configs['cost']
+    def _handle_resource_transaction(self, user_no, building_idx, target_level):
+        """자원 체크 및 소모를 한번에 처리"""
+        required = GameDataManager.require_configs[self.CONFIG_TYPE][building_idx][target_level]
+        costs = required['cost']
+        upgrade_time = required['time']
         
-        need_food = required_cost.get('food',0)
+        resource_manager = ResourceManager(self.db)
+        if not resource_manager.check_require_resources(user_no, costs):
+            return None, "Need More Food"
         
-        
-        
-        now_food = self.data.get('food',0) #나중에 바꿔야됨
-        
-        if now_food < need_food:
-            return {"success": False, "message": "Need more Food", "data": {}}
-    
+        resource_manager.consume_resources(user_no, costs)
+        return upgrade_time, None
     
     
     def building_info(self):
@@ -112,21 +110,29 @@ class BuildingManager():
         try:
             user_no = self.data.get('user_no')
             building_idx = self.data.get('building_idx')
-            start_time = datetime.utcnow()
-            upgrade_time = 10
-            end_time = start_time + timedelta(seconds = upgrade_time)  #나중에 수정해야됨 지금은 클론
             
             
             
-            # 중복 체크
             
             
+            
+            #1. 입력값 검증
+            
+            #1-1.중복 체크
             building = self._get_building(user_no, building_idx)
             if building:
                 return {"success": False, "message": "Building already exists", "data": {}}
 
-
-            # 새 건물 생성
+            # 자원 처리
+            upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, 1)
+            if error_msg:
+                return {"success": False, "message": error_msg, "data": {}}
+            
+            #2-3. 시간
+            start_time = datetime.utcnow()
+            end_time = start_time + timedelta(seconds = upgrade_time) 
+            
+            #3. 새 건물 생성
             building = models.Building(
                 user_no=user_no, 
                 building_idx=building_idx, 
@@ -137,10 +143,6 @@ class BuildingManager():
                 last_dt = start_time
                 
             )
-            
-            is_required_resources = ResourceManager.check_require_resources(user_no, self.CONFIG_TYPE, building_idx, 1)
-            if not is_required_resources:
-                return {"success": False, "message": "Need More Food", "data": {}}
             
             self.db.add(building)
             self.db.commit()
@@ -166,41 +168,51 @@ class BuildingManager():
         try:
             user_no = self.data.get('user_no')
             building_idx = self.data.get('building_idx')
-            start_time = datetime.utcnow()
-            upgrade_time = 10
-            end_time = start_time + timedelta(seconds = upgrade_time) 
             
-            # 입력값 검증
             
-            # 건물 조회
+            
+            
+            #1. 입력값 검증
+            
+            
             building = self._get_building(user_no, building_idx)
             
+            #1-1. 건물 존재하는지 체크
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
             
-            # 업그레이드 가능 상태 체크
+            #1-2.업그레이드 가능 상태 체크
             if building.status != 0:  # 0이 아니면 이미 진행중인 작업이 있음
                 return {"success": False, "message": "Building is already under construction or upgrade", "data": {}}
             
-            # 최대 레벨 체크 (예: 50레벨까지)
-            
+            #1-3.최대 레벨 체크
             if building.building_lv >= self.MAX_LEVEL:
                 return {"success": False, "message": f"Building is already at maximum level ({self.MAX_LEVEL})", "data": {}}
             
             
+            #2. 자원 및 시간 처리
+            upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building.building_lv +1)
+            if error_msg:
+                return {"success": False, "message": error_msg, "data": {}}
+            
+            
+            start_time = datetime.utcnow()
+            end_time = start_time + timedelta(seconds = upgrade_time) 
+            
+            
+            #3. 건물 업그레이드
             building.status = 2
             building.start_time = start_time
             building.end_time = end_time
             building.last_dt = start_time
                 
-                
-            
+ 
             self.db.commit()
             self.db.refresh(building)
             
             return {
                 "success": True,
-                "message": f"Building upgrade started. Will complete in {upgrade_time} seconds",
+                "message": f"Building {building_idx} upgrade started to {building.building_lv +1} lv. Will complete in {upgrade_time} seconds",
                 "data": self._format_building_data(building)
             }
             
@@ -220,10 +232,7 @@ class BuildingManager():
             current_time = datetime.utcnow()
             
             # 건물 조회
-            building = self.db.query(models.Building).filter(
-                models.Building.user_no == user_no,
-                models.Building.building_idx == building_idx
-            ).first()
+            building = self._get_building(user_no, building_idx)
             
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}

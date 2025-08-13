@@ -6,7 +6,7 @@ from schemas import ApiRequest
 from sqlalchemy.orm import Session
 
 import models, schemas, database
-from game_class import GameDataManager,  ReSourcesManager, BuildingManager
+from game_class import GameDataManager,  BuildingManager, ResearchManager
 app = FastAPI()
 
 
@@ -16,7 +16,7 @@ templates = Jinja2Templates(directory="templates")
 
 api_dic = {
     2: BuildingManager,
-    
+    3: ResearchManager
     
     }
 
