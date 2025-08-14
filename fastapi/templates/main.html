@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4X Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: white;
+        }
+        
+        .header {
+            border-bottom: 1px solid #ccc;
+            padding: 10px 20px;
+            background: #f5f5f5;
+        }
+        
+        .header input {
+            padding: 5px;
+            margin-right: 10px;
+            border: 1px solid #ccc;
+        }
+        
+        .header button {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        .tabs {
+            border-bottom: 1px solid #ccc;
+            background: #f9f9f9;
+        }
+        
+        .tab-button {
+            padding: 10px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .tab-button.active {
+            border-bottom: 2px solid #333;
+            background: white;
+        }
+        
+        .resource-tabs {
+            border-bottom: 1px solid #ccc;
+            background: #f0f0f0;
+            padding: 5px;
+        }
+        
+        .resource-tab {
+            display: inline-block;
+            padding: 8px 15px;
+            margin-right: 5px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .resource-tab.active {
+            background: #333;
+            color: white;
+        }
+        
+        .content {
+            height: calc(100vh - 170px);
+            overflow: hidden;
+        }
+        
+        .tab-content {
+            display: none;
+            height: 100%;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* API 테스트 탭 */
+        .api-test {
+            padding: 20px;
+        }
+        
+        .api-form {
+            max-width: 500px;
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+        }
+        
+        .buttons {
+            margin-bottom: 20px;
+        }
+        
+        .buttons button {
+            margin-right: 10px;
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .result {
+            padding: 15px;
+            border: 1px solid #ccc;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        /* 게임 탭 - 2열 레이아웃 */
+        .game-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(3, 1fr);
+            height: 100%;
+            gap: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+        }
+        
+        .game-section {
+            background: white;
+            padding: 15px;
+            overflow: auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .game-section h3 {
+            margin: 0 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .refresh-btn {
+            float: right;
+            padding: 2px 8px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-size: 11px;
+            border-radius: 4px;
+        }
+        
+        /* 건물 목록 */
+        .building-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        .building-table th,
+        .building-table td {
+            padding: 5px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        
+        .building-table th {
+            background: #f5f5f5;
+        }
+        
+        .building-table button {
+            padding: 2px 6px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-size: 10px;
+            margin-right: 2px;
+            border-radius: 3px;
+        }
+        
+        /* 연구 목록 */
+        .research-list {
+            font-size: 12px;
+        }
+        
+        .research-item {
+            border: 1px solid #ddd;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        .research-item h4 {
+            margin: 0 0 5px 0;
+        }
+        
+        /* 자원 표시 */
+        .resource-content {
+            display: none;
+            padding: 10px;
+            background: white;
+        }
+        
+        .resource-content.active {
+            display: block;
+        }
+        
+        .resource-info {
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .resource-amount {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .resource-buttons button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        /* 유닛 목록 */
+        .unit-list {
+            font-size: 12px;
+        }
+        
+        .unit-item {
+            border: 1px solid #ddd;
+            margin-bottom: 5px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        /* 토스트 메시지 */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        }
+        
+        .toast {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            padding: 15px;
+            position: relative;
+            transform: translateX(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        
+        .toast.success {
+            border-left: 4px solid #28a745;
+        }
+        
+        .toast.error {
+            border-left: 4px solid #dc3545;
+        }
+        
+        .toast.info {
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .toast.warning {
+            border-left: 4px solid #ffc107;
+        }
+        
+        .toast-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            margin-left: 10px;
+        }
+        
+        .toast-close:hover {
+            color: #333;
+        }
+        
+        .toast-body {
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <!-- 토스트 메시지 컨테이너 -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- 헤더 -->
+    <div class="header">
+        <label>플레이어 ID:</label>
+        <input type="number" id="globalUserId" value="1" />
+        <button onclick="loadAllData()">전체 데이터 로드</button>
+        <span style="margin-left: 20px;">현재 시간: <span id="currentTime"></span></span>
+    </div>
+    
+    <!-- 탭 메뉴 -->
+    <div class="tabs">
+        <button class="tab-button active" onclick="showTab('api')">API 테스트</button>
+        <button class="tab-button" onclick="showTab('game')">게임</button>
+    </div>
+    
+    <!-- 자원 탭 -->
+    <div class="resource-tabs">
+        <div class="resource-tab active" onclick="showResource('food')">식량: <span id="food-value">1000</span></div>
+        <div class="resource-tab" onclick="showResource('gold')">골드: <span id="gold-value">500</span></div>
+        <div class="resource-tab" onclick="showResource('wood')">목재: <span id="wood-value">800</span></div>
+        <div class="resource-tab" onclick="showResource('stone')">석재: <span id="stone-value">300</span></div>
+    </div>
+    
+    <!-- 콘텐츠 -->
+    <div class="content">
+        <!-- API 테스트 탭 -->
+        <div id="tab-api" class="tab-content active">
+            <div class="api-test">
+                <div class="api-form">
+                    <h3>API 테스트</h3>
+                    
+                    <div class="form-group">
+                        <label>플레이어 ID:</label>
+                        <input type="number" id="apiUserId" value="1" readonly />
+                    </div>
+                    <div class="form-group">
+                        <label>API 코드:</label>
+                        <input type="number" id="apiCode" value="2001" placeholder="예: 2001, 3001" />
+                    </div>
+                    <div class="form-group">
+                        <label>대상 ID:</label>
+                        <input type="text" id="targetIdx" value="101" placeholder="예: 101, tech_001" />
+                    </div>
+                    
+                    <div class="buttons">
+                        <button onclick="callAPI()">API 호출</button>
+                        <button onclick="clearResult()">결과 지우기</button>
+                    </div>
+                </div>
+                
+                <div id="apiResult" class="result"></div>
+            </div>
+        </div>
+        
+        <!-- 게임 탭 -->
+        <div id="tab-game" class="tab-content">
+            <div class="game-layout">
+                <!-- 건물 관리 (왼쪽 상단) -->
+                <div class="game-section">
+                    <h3>건물 관리</h3>
+                    <iframe 
+                        id="buildingFrame" 
+                        src="building.html" 
+                        style="width: 100%; height: calc(100% - 40px); border: none;">
+                    </iframe>
+                </div>
+                
+                <!-- 연구 관리 (오른쪽 상단) -->
+                <div class="game-section">
+                    <h3>연구 관리 <button class="refresh-btn" onclick="loadResearch()">새로고침</button></h3>
+                    <div id="researchList" class="research-list">
+                        <div>데이터를 로드해주세요</div>
+                    </div>
+                </div>
+                
+                <!-- 유닛 관리 (왼쪽 중간) -->
+                <div class="game-section">
+                    <h3>유닛 관리 <button class="refresh-btn" onclick="loadUnits()">새로고침</button></h3>
+                    <div id="unitList" class="unit-list">
+                        <div>데이터를 로드해주세요</div>
+                    </div>
+                </div>
+                
+                <!-- 자원 관리 (오른쪽 중간) -->
+                <div class="game-section">
+                    <h3>자원 관리</h3>
+                    <div id="resource-food" class="resource-content active">
+                        <div class="resource-info">식량 관리</div>
+                        <div class="resource-amount" id="food-amount">1000</div>
+                        <div class="resource-buttons">
+                            <button onclick="addResource('food', 100)">+100</button>
+                            <button onclick="addResource('food', -50)">-50</button>
+                        </div>
+                    </div>
+                    
+                    <div id="resource-gold" class="resource-content">
+                        <div class="resource-info">골드 관리</div>
+                        <div class="resource-amount" id="gold-amount">500</div>
+                        <div class="resource-buttons">
+                            <button onclick="addResource('gold', 100)">+100</button>
+                            <button onclick="addResource('gold', -50)">-50</button>
+                        </div>
+                    </div>
+                    
+                    <div id="resource-wood" class="resource-content">
+                        <div class="resource-info">목재 관리</div>
+                        <div class="resource-amount" id="wood-amount">800</div>
+                        <div class="resource-buttons">
+                            <button onclick="addResource('wood', 100)">+100</button>
+                            <button onclick="addResource('wood', -50)">-50</button>
+                        </div>
+                    </div>
+                    
+                    <div id="resource-stone" class="resource-content">
+                        <div class="resource-info">석재 관리</div>
+                        <div class="resource-amount" id="stone-amount">300</div>
+                        <div class="resource-buttons">
+                            <button onclick="addResource('stone', 100)">+100</button>
+                            <button onclick="addResource('stone', -50)">-50</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 임무/퀘스트 (왼쪽 하단) -->
+                <div class="game-section">
+                    <h3>임무 관리 <button class="refresh-btn" onclick="loadMissions()">새로고침</button></h3>
+                    <div id="missionList" class="unit-list">
+                        <div class="unit-item">
+                            <strong>일일 임무:</strong> 식량 1000개 생산
+                            <button onclick="claimMission('daily_food')">보상 받기</button>
+                        </div>
+                        <div class="unit-item">
+                            <strong>주간 임무:</strong> 건물 3개 업그레이드
+                            <button onclick="claimMission('weekly_build')">진행중</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 상점/교역 (오른쪽 하단) -->
+                <div class="game-section">
+                    <h3>상점 <button class="refresh-btn" onclick="loadShop()">새로고침</button></h3>
+                    <div id="shopList" class="unit-list">
+                        <div class="unit-item">
+                            <strong>식량 팩:</strong> 골드 100 → 식량 500
+                            <button onclick="buyItem('food_pack')">구매</button>
+                        </div>
+                        <div class="unit-item">
+                            <strong>건설 가속:</strong> 골드 50 → 건설 시간 -1시간
+                            <button onclick="buyItem('build_speed')">구매</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'api';
+        let currentResource = 'food';
+        
+        // 토스트 메시지 시스템
+        function showToast(message, type = 'info', title = '') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const toastId = Date.now();
+            toast.innerHTML = `
+                <div class="toast-header">
+                    <span>${title || getToastTitle(type)}</span>
+                    <button class="toast-close" onclick="closeToast(${toastId})">&times;</button>
+                </div>
+                <div class="toast-body">${message}</div>
+            `;
+            
+            toast.id = `toast-${toastId}`;
+            container.appendChild(toast);
+            
+            // 애니메이션으로 표시
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+            
+            // 5초 후 자동 제거
+            setTimeout(() => {
+                closeToast(toastId);
+            }, 5000);
+        }
+        
+        function getToastTitle(type) {
+            switch(type) {
+                case 'success': return '성공';
+                case 'error': return '오류';
+                case 'warning': return '경고';
+                default: return '알림';
+            }
+        }
+        
+        function closeToast(toastId) {
+            const toast = document.getElementById(`toast-${toastId}`);
+            if (toast) {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }
+        }
+        
+        // 현재 시간 업데이트
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleTimeString();
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // 탭 전환
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            event.target.classList.add('active');
+            currentTab = tabName;
+        }
+        
+        // 자원 탭 전환
+        function showResource(resourceType) {
+            document.querySelectorAll('.resource-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.resource-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            event.target.classList.add('active');
+            document.getElementById(`resource-${resourceType}`).classList.add('active');
+            currentResource = resourceType;
+        }
+        
+        // 자원 추가/제거
+        function addResource(resourceType, amount) {
+            const currentAmount = parseInt(document.getElementById(`${resourceType}-amount`).textContent);
+            const newAmount = Math.max(0, currentAmount + amount);
+            
+            document.getElementById(`${resourceType}-amount`).textContent = newAmount;
+            document.getElementById(`${resourceType}-value`).textContent = newAmount;
+        }
+        
+        // 전체 데이터 로드
+        async function loadAllData() {
+            const userId = document.getElementById('globalUserId').value;
+            if (!userId) {
+                showToast('플레이어 ID를 입력하세요', 'warning');
+                return;
+            }
+            
+            showToast('데이터를 로드하고 있습니다...', 'info');
+            
+            // 건물 iframe에 플레이어 ID 전달
+            const buildingFrame = document.getElementById('buildingFrame');
+            if (buildingFrame && buildingFrame.contentWindow) {
+                buildingFrame.contentWindow.postMessage({
+                    type: 'set_player_id',
+                    userId: userId
+                }, '*');
+            }
+            
+            await Promise.all([
+                loadResearch(),
+                loadResources(),
+                loadUnits()
+            ]);
+            
+            showToast('전체 데이터 로드가 완료되었습니다', 'success');
+        }
+        
+        // 건물 관련 함수들 제거 (iframe에서 처리)
+        
+        // 연구 데이터 로드
+        async function loadResearch() {
+            const userId = document.getElementById('globalUserId').value;
+            const researchList = document.getElementById('researchList');
+            
+            if (!userId) {
+                researchList.innerHTML = '<div>플레이어 ID를 입력하세요</div>';
+                return;
+            }
+            
+            researchList.innerHTML = '<div>로딩 중...</div>';
+            
+            const researches = [
+                { idx: 'tech_001', name: '농업 기술' },
+                { idx: 'tech_002', name: '건축 기술' },
+                { idx: 'tech_003', name: '군사 기술' }
+            ];
+            
+            let html = '';
+            researches.forEach(research => {
+                html += `
+                    <div class="research-item">
+                        <h4>${research.name}</h4>
+                        <div>상태: 미연구</div>
+                        <button onclick="researchAction(3001, '${research.idx}')">연구 시작</button>
+                    </div>
+                `;
+            });
+            
+            researchList.innerHTML = html;
+        }
+        
+        // 자원 데이터 로드
+        async function loadResources() {
+            const userId = document.getElementById('globalUserId').value;
+            
+            if (!userId) return;
+            
+            // 현재 값들 유지
+            const food = document.getElementById('food-amount').textContent;
+            const gold = document.getElementById('gold-amount').textContent;
+            const wood = document.getElementById('wood-amount').textContent;
+            const stone = document.getElementById('stone-amount').textContent;
+            
+            document.getElementById('food-value').textContent = food;
+            document.getElementById('gold-value').textContent = gold;
+            document.getElementById('wood-value').textContent = wood;
+            document.getElementById('stone-value').textContent = stone;
+        }
+        
+        // 유닛 데이터 로드
+        async function loadUnits() {
+            const userId = document.getElementById('globalUserId').value;
+            const unitList = document.getElementById('unitList');
+            
+            if (!userId) {
+                unitList.innerHTML = '<div>플레이어 ID를 입력하세요</div>';
+                return;
+            }
+            
+            unitList.innerHTML = '<div>로딩 중...</div>';
+            
+            const units = [
+                { name: '농민', count: 5 },
+                { name: '전사', count: 10 },
+                { name: '궁수', count: 8 }
+            ];
+            
+            let html = '';
+            units.forEach(unit => {
+                html += `
+                    <div class="unit-item">
+                        <strong>${unit.name}</strong>: ${unit.count}명
+                        <button onclick="unitAction('recruit', '${unit.name}')">모집</button>
+                    </div>
+                `;
+            });
+            
+            unitList.innerHTML = html;
+        }
+        
+        // API 호출
+        async function callAPI() {
+            const resultDiv = document.getElementById('apiResult');
+            
+            try {
+                const gameData = {
+                    api_code: parseInt(document.getElementById('apiCode').value),
+                    data: {
+                        user_no: parseInt(document.getElementById('apiUserId').value),
+                        building_idx: parseInt(document.getElementById('targetIdx').value) || document.getElementById('targetIdx').value,
+                        research_idx: document.getElementById('targetIdx').value
+                    }
+                };
+
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = '요청 중...';
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(gameData)
+                });
+
+                const result = await response.json();
+                resultDiv.textContent = `결과:\n${JSON.stringify(result, null, 2)}`;
+                
+            } catch (error) {
+                resultDiv.textContent = `에러: ${error.message}`;
+            }
+        }
+        
+        // 연구 액션
+        function researchAction(apiCode, researchIdx) {
+            showToast(`연구 시스템은 준비 중입니다. (${researchIdx})`, 'info');
+        }
+        
+        // 유닛 액션
+        function unitAction(action, unitName) {
+            showToast(`유닛 시스템은 준비 중입니다. (${action}: ${unitName})`, 'info');
+        }
+        
+        // 임무 액션
+        function loadMissions() {
+            showToast('임무 데이터를 새로고침했습니다.', 'success');
+        }
+        
+        function claimMission(missionId) {
+            showToast(`임무 보상을 받았습니다: ${missionId}`, 'success');
+        }
+        
+        // 상점 액션
+        function loadShop() {
+            showToast('상점 데이터를 새로고침했습니다.', 'success');
+        }
+        
+        function buyItem(itemId) {
+            showToast(`아이템을 구매했습니다: ${itemId}`, 'success');
+        }
+        
+        // 결과 지우기
+        function clearResult() {
+            const resultDiv = document.getElementById('apiResult');
+            resultDiv.style.display = 'none';
+            resultDiv.textContent = '';
+        }
+        
+        // 플레이어 ID 변경시 처리
+        document.getElementById('globalUserId').addEventListener('input', function() {
+            const userId = this.value;
+            document.getElementById('apiUserId').value = userId;
+            
+            // 건물 iframe에 새로운 플레이어 ID 전달
+            const buildingFrame = document.getElementById('buildingFrame');
+            if (buildingFrame && buildingFrame.contentWindow) {
+                buildingFrame.contentWindow.postMessage({
+                    type: 'set_player_id',
+                    userId: userId
+                }, '*');
+            }
+        });
+        
+        // 초기 로드
+        window.onload = function() {
+            if (document.getElementById('globalUserId').value) {
+                loadAllData();
+            }
+            
+            // iframe 로드 완료 후 플레이어 ID 전달
+            const buildingFrame = document.getElementById('buildingFrame');
+            buildingFrame.onload = function() {
+                const userId = document.getElementById('globalUserId').value;
+                if (userId && buildingFrame.contentWindow) {
+                    buildingFrame.contentWindow.postMessage({
+                        type: 'set_player_id',
+                        userId: userId
+                    }, '*');
+                }
+            };
+        };
+    </script>
+</body>
+</html>

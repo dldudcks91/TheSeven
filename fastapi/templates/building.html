@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>건물 관리</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            padding: 10px;
+            background-color: white;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+        }
+        
+        .building-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #ddd;
+            font-size: 12px;
+        }
+        
+        .building-table th,
+        .building-table td {
+            padding: 4px 6px;
+            text-align: left;
+            border: 1px solid #ddd;
+            line-height: 1.2;
+        }
+        
+        .building-table th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .action-buttons button {
+            margin-right: 3px;
+            padding: 2px 5px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            font-size: 9px;
+            border-radius: 2px;
+        }
+        
+        .timer {
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .result-box {
+            margin-top: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <table class="building-table">
+            <thead>
+                <tr>
+                    <th>건물명</th>
+                    <th>레벨</th>
+                    <th>상태</th>
+                    <th>남은시간</th>
+                    <th>관리</th>
+                </tr>
+            </thead>
+            <tbody id="buildingTableBody">
+                </tbody>
+        </table>
+        
+        <div id="result" class="result-box"></div>
+    </div>
+
+    <script>
+        const buildings = [
+            { idx: 101, english_name: 'town_hall', korean_name: '시청' },
+            { idx: 201, english_name: 'academy', korean_name: '아카데미' },
+            { idx: 301, english_name: 'farm', korean_name: '농장' },
+            { idx: 401, english_name: 'barracks', korean_name: '병영' },
+        ];
+        
+        let buildingData = {};
+        let timerInterval;
+        let userId = null;
+        let completedBuildings = new Set();
+
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'set_player_id') {
+                const newUserId = event.data.userId;
+                
+                if (userId !== newUserId) {
+                    userId = newUserId;
+                    console.log('부모로부터 새로운 userId 받음:', userId);
+                    loadBuildings();
+                }
+            }
+        });
+
+        window.onload = function() {
+            generateBuildingTable();
+            startTimer();
+            
+            setTimeout(() => {
+                if (userId) {
+                    loadBuildings();
+                }
+            }, 100);
+        };
+
+        function generateBuildingTable() {
+            const tbody = document.getElementById('buildingTableBody');
+            if (!tbody) {
+                console.error("buildingTableBody 요소를 찾을 수 없습니다.");
+                return;
+            }
+            tbody.innerHTML = '';
+            
+            buildings.forEach(building => {
+                const data = buildingData[building.idx] || { building_lv: 0, status: 0 };
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="font-size: 9px;">${building.korean_name}</td>
+                    <td>Lv.${data.building_lv}</td>
+                    <td>${getStatusText(data.status)}</td>
+                    <td><span class="timer" id="timer-${building.idx}">${getRemainingSeconds(data)}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            <button onclick="callAPI(2001, ${building.idx})">조회</button>
+                            ${data.building_lv === 0 ? 
+                                `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
+                                `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`
+                            }
+                            ${data.status !== 0 ? `<button onclick="callAPI(2004, ${building.idx})">완료</button>` : ''}
+                        </div>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+        
+        function getStatusText(status) {
+            switch(status) {
+                case 0: return '정상';
+                case 1: return '건설중';
+                case 2: return '업그레이드중';
+                default: return '알 수 없음';
+            }
+        }
+        
+        // 남은 시간을 초(seconds) 단위로 계산하여 반환하는 함수
+        function getRemainingSeconds(data) {
+            if (data.status === 0 || !data.end_time) {
+                return '-';
+            }
+            
+            const endTime = new Date(data.end_time);
+            const now = new Date();
+            const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+            
+            return remaining;
+        }
+        
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimers, 1000);
+        }
+        
+        function updateTimers() {
+            buildings.forEach(building => {
+                const data = buildingData[building.idx];
+                const timerElement = document.getElementById(`timer-${building.idx}`);
+                
+                if (!timerElement || !data || data.status === 0 || !data.end_time) {
+                    if (timerElement) timerElement.textContent = '-';
+                    return;
+                }
+                
+                const remainingSeconds = getRemainingSeconds(data);
+                timerElement.textContent = remainingSeconds;
+                
+                if (remainingSeconds <= 0) {
+                    if (!completedBuildings.has(building.idx)) {
+                        console.log(`건물 ${building.idx} 자동 완료 시작`);
+                        autoCompleteBuilding(building.idx);
+                        completedBuildings.add(building.idx);
+                    }
+                }
+            });
+        }
+        
+        async function autoCompleteBuilding(buildingIdx) {
+            if (!userId) {
+                console.log('userId가 없어서 자동 완료 중단');
+                return;
+            }
+            
+            try {
+                showResult(`건물 ${buildingIdx} 자동 완료 시도 중...`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        api_code: 2004,
+                        data: {
+                            user_no: parseInt(userId),
+                            building_idx: buildingIdx
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data) {
+                        buildingData[buildingIdx] = result.data;
+                        generateBuildingTable();
+                    }
+                    showResult(`건물 ${buildingIdx} 자동 완료 성공`);
+                    completedBuildings.delete(buildingIdx);
+                } else {
+                    showResult(`건물 ${buildingIdx} 자동 완료 실패: ${result.message}`);
+                    completedBuildings.delete(buildingIdx);
+                }
+            } catch (error) {
+                showResult(`건물 ${buildingIdx} 자동 완료 에러: ${error.message}`);
+                completedBuildings.delete(buildingIdx);
+            }
+        }
+        
+        async function loadBuildings() {
+            if (!userId) {
+                showResult('플레이어 ID가 설정되지 않았습니다. 부모 페이지에서 ID를 설정하세요.');
+                return;
+            }
+            
+            buildingData = {};
+            completedBuildings.clear();
+            showResult('건물 정보 로딩 중...');
+            
+            for (const building of buildings) {
+                try {
+                    const response = await fetch('/api', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            api_code: 2001,
+                            data: {
+                                user_no: parseInt(userId),
+                                building_idx: building.idx
+                            }
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        buildingData[building.idx] = result.data;
+                    }
+                } catch (error) {
+                    console.log(`${building.korean_name} 정보 없음`);
+                }
+            }
+            
+            generateBuildingTable();
+            showResult('건물 정보 로드 완료');
+        }
+        
+        async function callAPI(apiCode, buildingIdx) {
+            if (!userId) {
+                showResult('플레이어 ID를 입력하세요');
+                return;
+            }
+            
+            try {
+                showResult('요청 중...');
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        api_code: apiCode,
+                        data: {
+                            user_no: parseInt(userId),
+                            building_idx: buildingIdx
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data) {
+                        buildingData[buildingIdx] = result.data;
+                        generateBuildingTable();
+                        if (apiCode === 2004) {
+                            completedBuildings.delete(buildingIdx);
+                        }
+                    }
+                    showResult(`성공: ${result.message}`);
+                } else {
+                    showResult(`실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`에러: ${error.message}`);
+            }
+        }
+        
+        function showResult(message) {
+            const resultBox = document.getElementById('result');
+            resultBox.style.display = 'block';
+            resultBox.textContent = message;
+        }
+        
+        window.onbeforeunload = function() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+        };
+    </script>
+</body>
+</html>

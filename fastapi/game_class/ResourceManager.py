@@ -13,7 +13,7 @@ status 값
 2: 업그레이드중
 '''
 class ResourceManager:
-    RESOURCE_TYPES = ['food', 'wood', 'stone', 'gold']
+    RESOURCE_TYPES = ['food', 'wood', 'stone', 'gold', 'ruby']
     
     def __init__(self, db: Session):
         self.db = db

@@ -1,1 +1,3 @@
 sqlacodegen mysql+pymysql://root:an98@localhost:3306/TheSeven --outfile models.py
+
+uvicorn main:app --reload
