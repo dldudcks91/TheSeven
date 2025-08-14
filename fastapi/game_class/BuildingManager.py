@@ -55,7 +55,19 @@ class BuildingManager():
             models.Building.building_idx == building_idx
         ).first()
     
+    def _get_all_user_buildings(self, user_no):
+        """사용자의 모든 건물 조회"""
+        return self.db.query(models.Building).filter(
+            models.Building.user_no == user_no
+        ).all()
     
+    def _get_available_buildings(self):
+        """건설 가능한 모든 건물 목록 (게임 설정에서)"""
+        try:
+            return list(GameDataManager.require_configs[self.CONFIG_TYPE].keys())
+        except:
+            return [101, 201, 301, 401]
+        
     def _handle_resource_transaction(self, user_no, building_idx, target_level):
         """자원 체크 및 소모를 한번에 처리"""
         required = GameDataManager.require_configs[self.CONFIG_TYPE][building_idx][target_level]
@@ -77,29 +89,50 @@ class BuildingManager():
         """
         try:
             user_no = self.data.get('user_no')
-            building_idx = self.data.get('building_idx')
+            
             
             # 입력값 검증
             
             
             # 건물 조회
-            building = self._get_building(user_no, building_idx)
+            user_buildings = self._get_all_user_buildings(user_no)
             
-            if not building:
-                return {
-                    "success": False, 
-                    "message": f"Building not found: user_no:{user_no} and building_idx: {building_idx}", 
-                    "data": {}
-                }
+            # 건설 가능한 모든 건물 목록
+            available_buildings = self._get_available_buildings()
+            
+            # 건물 데이터 구성
+            buildings_data = {}
+            
+            # 기존 건물들 추가
+            for building in user_buildings:
+                buildings_data[building.building_idx] = self._format_building_data(building)
+            
+            # 건설되지 않은 건물들 기본값으로 추가
+            for building_idx in available_buildings:
+                if building_idx not in buildings_data:
+                    buildings_data[building_idx] = {
+                        "id": None,
+                        "user_no": user_no,
+                        "building_idx": building_idx,
+                        "building_lv": 0,
+                        "status": 0,
+                        "start_time": None,
+                        "end_time": None,
+                        "last_dt": None
+                    }
             
             return {
                 "success": True,
-                "message": "Building info retrieved successfully",
-                "data": self._format_building_data(building)
+                "message": f"Retrieved {len(buildings_data)} buildings info",
+                "data": {
+                    "buildings": buildings_data,
+                    "total_count": len(buildings_data),
+                    "constructed_count": len(user_buildings)
+                }
             }
             
         except Exception as e:
-            return {"success": False, "message": f"Error retrieving building info: {str(e)}", "data": {}}
+            return {"success": False, "message": f"Error retrieving buildings info: {str(e)}", "data": {}}
     
     def building_create(self):
         """

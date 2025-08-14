@@ -8,6 +8,17 @@ class Base(DeclarativeBase):
     pass
 
 
+class Item(Base):
+    __tablename__ = 'item'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    cnt: Mapped[Optional[int]] = mapped_column(Integer)
+    cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+
 class StatNation(Base):
     __tablename__ = 'stat_nation'
     __table_args__ = (

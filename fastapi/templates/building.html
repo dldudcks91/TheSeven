@@ -256,7 +256,7 @@
             completedBuildings.clear();
             showResult('건물 정보 로딩 중...');
             
-            for (const building of buildings) {
+            
                 try {
                     const response = await fetch('/api', {
                         method: 'POST',
@@ -272,12 +272,14 @@
                     
                     const result = await response.json();
                     if (result.success) {
-                        buildingData[building.idx] = result.data;
+                        for (const building of buildings) {
+                            buildingData[building.idx] = result.data[buildng.idx];
+                        }
                     }
                 } catch (error) {
                     console.log(`${building.korean_name} 정보 없음`);
                 }
-            }
+            
             
             generateBuildingTable();
             showResult('건물 정보 로드 완료');
