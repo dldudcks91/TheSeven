@@ -3,3 +3,4 @@ from .GameDataManager import GameDataManager
 from .ResourceManager import ResourceManager
 from .BuildingManager import BuildingManager  
 from .ResearchManager import ResearchManager 
+from .UnitManager import UnitManager 

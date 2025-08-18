@@ -1,22 +1,12 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKeyConstraint, Index, Integer
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, TIMESTAMP, text
+from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
-
-
-class Item(Base):
-    __tablename__ = 'item'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    item_idx: Mapped[int] = mapped_column(Integer, nullable=False)
-    cnt: Mapped[Optional[int]] = mapped_column(Integer)
-    cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
 class StatNation(Base):
@@ -36,6 +26,59 @@ class StatNation(Base):
     hero: Mapped[list['Hero']] = relationship('Hero', back_populates='stat_nation')
     research: Mapped[list['Research']] = relationship('Research', back_populates='stat_nation')
     resources: Mapped[list['Resources']] = relationship('Resources', back_populates='stat_nation')
+
+
+class Unit(Base):
+    __tablename__ = 'unit'
+    __table_args__ = (
+        CheckConstraint('(`death` >= 0)', name='chk_death'),
+        CheckConstraint('(`field` >= 0)', name='chk_field'),
+        CheckConstraint('(`healing` >= 0)', name='chk_healing'),
+        CheckConstraint('(`injured` >= 0)', name='chk_injured'),
+        CheckConstraint('(`ready` >= 0)', name='chk_ready'),
+        CheckConstraint('(`total` >= 0)', name='chk_total'),
+        CheckConstraint('(`training` >= 0)', name='chk_training'),
+        CheckConstraint('(`upgrading` >= 0)', name='chk_upgrading'),
+        CheckConstraint('(`wounded` >= 0)', name='chk_wounded'),
+        Index('idx_unit_idx', 'unit_idx'),
+        Index('idx_user_no', 'user_no'),
+        Index('unique_user_unit', 'user_no', 'unit_idx', unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    total: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    ready: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    field: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    injured: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    wounded: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    healing: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    death: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    training: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    upgrading: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+
+
+class UnitTasks(Base):
+    __tablename__ = 'unit_tasks'
+    __table_args__ = (
+        CheckConstraint('(`quantity` > 0)', name='chk_quantity'),
+        CheckConstraint('(`status` in (0,1,2,3))', name='chk_status'),
+        CheckConstraint('(`task_type` in (0,1))', name='chk_task_type'),
+        Index('idx_unit_idx', 'unit_idx'),
+        Index('idx_user_no', 'user_no')
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    task_type: Mapped[int] = mapped_column(TINYINT, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'1'"))
+    status: Mapped[int] = mapped_column(TINYINT, nullable=False, server_default=text("'0'"))
+    target_unit_idx: Mapped[Optional[int]] = mapped_column(Integer)
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP)
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
 
 
 class Building(Base):
@@ -103,6 +146,8 @@ class Resources(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_no: Mapped[int] = mapped_column(Integer, nullable=False)
     food: Mapped[Optional[int]] = mapped_column(BigInteger)
+    wood: Mapped[Optional[int]] = mapped_column(BigInteger)
+    stone: Mapped[Optional[int]] = mapped_column(BigInteger)
     gold: Mapped[Optional[int]] = mapped_column(BigInteger)
     ruby: Mapped[Optional[int]] = mapped_column(Integer)
 

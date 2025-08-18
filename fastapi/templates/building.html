@@ -76,7 +76,8 @@
                     <th>건물명</th>
                     <th>레벨</th>
                     <th>상태</th>
-                    <th>남은시간</th>
+                    <th>비용</th>
+                    <th>시간</th>
                     <th>관리</th>
                 </tr>
             </thead>
@@ -95,33 +96,48 @@
             { idx: 401, english_name: 'barracks', korean_name: '병영' },
         ];
         
-        let buildingData = {};
+        const maxLevel = 10;
+
+        let userBuildingData = {};
         let timerInterval;
         let userId = null;
         let completedBuildings = new Set();
-
+        let buildingCostData = {};
+        
+        window.onload = function() {
+            window.parent.postMessage({
+                type: 'request_config',  // 메시지 타입 (요청임을 명시)
+                configType: 'building'  // 원하는 데이터 타입
+            }, '*');
+            //generateBuildingTable()
+            startTimer();
+            setTimeout(() => {
+                if (userId && buildingCostData) {
+                    loadBuildings();
+                }
+            }, 100);
+        };
+        
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'set_player_id') {
                 const newUserId = event.data.userId;
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
-                    console.log('부모로부터 새로운 userId 받음:', userId);
                     loadBuildings();
+                    
                 }
+            }
+            if (event.data && event.data.type === 'response_config') {
+                const buildingConfig = event.data.payload;
+                buildingCostData = buildingConfig;
+                console.log('Building data received:', buildingCostData);
+                // 여기서 받은 데이터로 UI를 업데이트하는 로직 실행
+                
             }
         });
 
-        window.onload = function() {
-            generateBuildingTable();
-            startTimer();
-            
-            setTimeout(() => {
-                if (userId) {
-                    loadBuildings();
-                }
-            }, 100);
-        };
+        
 
         function generateBuildingTable() {
             const tbody = document.getElementById('buildingTableBody');
@@ -131,23 +147,30 @@
             }
             tbody.innerHTML = '';
             
+            
             buildings.forEach(building => {
-                const data = buildingData[building.idx] || { building_lv: 0, status: 0 };
+                
+                const data = userBuildingData[building.idx] || { building_lv: 0, status: 0 };
+                
+                
+                const buildingCost = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['cost']?.['food'] || 0;
+                const buildingTime = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['time'] || 0;
+                
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td style="font-size: 9px;">${building.korean_name}</td>
                     <td>Lv.${data.building_lv}</td>
                     <td>${getStatusText(data.status)}</td>
-                    <td><span class="timer" id="timer-${building.idx}">${getRemainingSeconds(data)}</span></td>
+                    <td><span class="cost" id="cost-${building.idx}-${data.building_lv}">${buildingCost}</span></td>
+                    <td><span class="cost" id="time-${building.idx}-${data.building_lv}">${buildingTime}초</span></td>
                     <td>
                         <div class="action-buttons">
-                            <button onclick="callAPI(2001, ${building.idx})">조회</button>
                             ${data.building_lv === 0 ? 
                                 `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
                                 `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`
+                                
                             }
-                            ${data.status !== 0 ? `<button onclick="callAPI(2004, ${building.idx})">완료</button>` : ''}
                         </div>
                     </td>
                 `;
@@ -185,7 +208,7 @@
         
         function updateTimers() {
             buildings.forEach(building => {
-                const data = buildingData[building.idx];
+                const data = userBuildingData[building.idx];
                 const timerElement = document.getElementById(`timer-${building.idx}`);
                 
                 if (!timerElement || !data || data.status === 0 || !data.end_time) {
@@ -219,9 +242,10 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        user_no: parseInt(userId),
                         api_code: 2004,
                         data: {
-                            user_no: parseInt(userId),
+                            
                             building_idx: buildingIdx
                         }
                     })
@@ -231,7 +255,7 @@
                 
                 if (result.success) {
                     if (result.data) {
-                        buildingData[buildingIdx] = result.data;
+                        userBuildingData[buildingIdx] = result.data;
                         generateBuildingTable();
                     }
                     showResult(`건물 ${buildingIdx} 자동 완료 성공`);
@@ -252,7 +276,7 @@
                 return;
             }
             
-            buildingData = {};
+            userBuildingData = {};
             completedBuildings.clear();
             showResult('건물 정보 로딩 중...');
             
@@ -262,22 +286,25 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            user_no: parseInt(userId),
                             api_code: 2001,
-                            data: {
-                                user_no: parseInt(userId),
-                                building_idx: building.idx
-                            }
+                            data: {}
                         })
                     });
                     
                     const result = await response.json();
+                    console.log(result.data)
                     if (result.success) {
+                        
                         for (const building of buildings) {
-                            buildingData[building.idx] = result.data[buildng.idx];
+                            
+                            userBuildingData[building.idx] = result.data[building.idx];
+                         
                         }
+                        
                     }
                 } catch (error) {
-                    console.log(`${building.korean_name} 정보 없음`);
+                    console.log(`정보 없음`);
                 }
             
             
@@ -298,9 +325,9 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        user_no: parseInt(userId),
                         api_code: apiCode,
                         data: {
-                            user_no: parseInt(userId),
                             building_idx: buildingIdx
                         }
                     })
@@ -310,7 +337,7 @@
                 
                 if (result.success) {
                     if (result.data) {
-                        buildingData[buildingIdx] = result.data;
+                        userBuildingData[buildingIdx] = result.data;
                         generateBuildingTable();
                         if (apiCode === 2004) {
                             completedBuildings.delete(buildingIdx);

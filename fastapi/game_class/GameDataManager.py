@@ -1,8 +1,10 @@
 import pandas as pd
 
 class GameDataManager:
-    require_configs = {
-        'buildings':{}
+    REQUIRE_CONFIGS = {
+        'building':{},
+        'research':{},
+        'unit':{}
         }
     _loaded = False
     
@@ -14,6 +16,7 @@ class GameDataManager:
             
         print("Loading game data from CSV...")
         cls._load_building_data()
+        cls._load_unit_data()
         cls._loaded = True
         print("Game data loaded successfully!")
     
@@ -23,7 +26,7 @@ class GameDataManager:
         
         # CSV 파일 읽기 (한번만!)
         df = pd.read_csv('./meta_data/meta_data_building.csv')
-        building_configs = cls.require_configs['buildings']
+        building_configs = cls.REQUIRE_CONFIGS['building']
         
         for _, row in df.iterrows():
             building_idx = row['building_idx']
@@ -32,18 +35,41 @@ class GameDataManager:
             if building_idx not in building_configs:
                 building_configs[building_idx] = {}
                 
-            require_buildings = []
-            require_str = str(row.get('require_building', '')).strip()
+            requires = []
+            require_str = str(row.get('required_building', '')).strip()
             if require_str and require_str != 'nan':
                     for req in require_str.split(','):
                         if ':' in req:
                             idx, lv = req.strip().split(':')
-                            require_buildings.append((int(idx), int(lv)))
+                            requires.append((int(idx), int(lv)))
                             
             building_configs[building_idx][building_lv] = {
-                'cost': {'food': int(row['require_food'])},
-                'time': int(row['require_time']),
-                'require_buildings': require_buildings  # [(building_idx, level), ...]
+                'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
+                'time': int(row['time']),
+                'required_buildings': requires  # [(building_idx, level), ...]
+            }
+            
+    @classmethod
+    def _load_unit_data(cls):
+        
+        
+        # CSV 파일 읽기 (한번만!)
+        df = pd.read_csv('./meta_data/meta_data_unit.csv')
+        
+        unit_configs = cls.REQUIRE_CONFIGS['unit']
+        
+        for _, row in df.iterrows():
+            unit_idx = row['unit_idx']
+            if unit_idx not in unit_configs:
+                unit_configs[unit_idx] = {}
+                
+            
+            unit_configs[unit_idx] = {
+                'unit_idx': unit_idx,
+                'unit_tier': row['unit_tier'],
+                'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
+                'time': int(row['time']),
+                'name': row['description']
             }
     
     @classmethod
@@ -51,3 +77,5 @@ class GameDataManager:
         """메모리에서 즉시 조회 (I/O 없음!)"""
         next_level = current_level + 1
         return cls._building_configs.get(building_idx, {}).get(next_level)
+    
+    

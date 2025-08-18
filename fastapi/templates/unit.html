@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>유닛 관리</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            padding: 10px;
+            background-color: white;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+        }
+        
+        .unit-categories {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .category-section {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .category-header {
+            background-color: #f5f5f5;
+            padding: 8px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 12px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .category-title {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .train-header-btn {
+            padding: 4px 8px;
+            border: 1px solid #4caf50;
+            background: #e8f5e8;
+            cursor: pointer;
+            font-size: 10px;
+            border-radius: 3px;
+            color: #2e7d2e;
+            font-weight: bold;
+        }
+        
+        .train-header-btn:hover {
+            background-color: #d4edda;
+        }
+        
+        .infantry { background-color: #e8f4fd; }
+        .cavalry { background-color: #fff2e8; }
+        .archer { background-color: #e8f8e8; }
+        
+        .unit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            table-layout: fixed; /* 컬럼 너비 고정 */
+        }
+        
+        .unit-table th:nth-child(1) { width: 40%; } /* 유닛명 */
+        .unit-table th:nth-child(2) { width: 20%; } /* 보유 */
+        .unit-table th:nth-child(3) { width: 20%; } /* 대기 */
+        .unit-table th:nth-child(4) { width: 20%; } /* 생산중 */
+        
+        .unit-table th,
+        .unit-table td {
+            padding: 4px 6px;
+            text-align: center;
+            border: 1px solid #ddd;
+            line-height: 1.2;
+        }
+        
+        .unit-table td:first-child {
+            text-align: left;  /* 첫 번째 컬럼(유닛명)만 좌측 정렬 */
+        }
+        
+        .unit-table th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+            font-size: 10px;
+        }
+        
+        .unit-name {
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .unit-counts {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            align-items: center; /* 가운데 정렬 추가 */
+        }
+        
+        .count-item {
+            font-size: 9px;
+            display: flex;
+            justify-content: center; /* 가운데 정렬로 변경 */
+        }
+        
+        .count-label {
+            color: #666;
+        }
+        
+        .count-value {
+            font-weight: bold;
+        }
+        
+        .training { color: #ff6600; }
+        .upgrading { color: #9933cc; }
+        .ready { color: #006600; }
+        
+        .timer {
+            font-family: monospace;
+            font-size: 10px;
+            color: #ff6600;
+            font-weight: bold;
+        }
+        
+        .result-box {
+            margin-top: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 11px;
+            display: none;
+            max-height: 80px;
+            overflow-y: auto;
+        }
+        
+        .controls {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none; /* 숨김 처리 */
+        }
+        
+        .controls input, .controls select {
+            margin: 0 5px;
+            padding: 2px 4px;
+            font-size: 11px;
+        }
+        
+        .controls button {
+            margin: 0 2px;
+            padding: 3px 8px;
+            font-size: 11px;
+        }
+        
+        .tier-badge {
+            display: inline-block;
+            background: #333;
+            color: white;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 8px;
+            margin-right: 4px;
+        }
+        
+        .tier-1 { background: #8B4513; }
+        .tier-2 { background: #C0C0C0; }
+        .tier-3 { background: #FFD700; }
+        .tier-4 { background: #9932CC; }
+        
+        .production-status {
+            font-size: 10px;
+            text-align: center;
+        }
+        
+        .production-status small {
+            font-size: 8px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        
+        <div id="categoryLayout" class="unit-categories">
+            <!-- 보병 -->
+            <div class="category-section">
+                <div class="category-header infantry">
+                    <div class="category-title">
+                        <span>🛡️ 보병</span>
+                    </div>
+                    <button class="train-header-btn" onclick="openTrainingPopup('infantry')">훈련</button>
+                </div>
+                
+                <table class="unit-table">
+                    <thead>
+                        <tr>
+                            <th>유닛</th>
+                            <th>보유</th>
+                            <th>대기</th>
+                            <th>생산중</th>
+                        </tr>
+                    </thead>
+                    <tbody id="infantryTableBody">
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 기병 -->
+            <div class="category-section">
+                <div class="category-header cavalry">
+                    <div class="category-title">
+                        <span>🐎 기병</span>
+                    </div>
+                    <button class="train-header-btn" onclick="openTrainingPopup('cavalry')">훈련</button>
+                </div>
+                
+                <table class="unit-table">
+                    <thead>
+                        <tr>
+                            <th>유닛</th>
+                            <th>보유</th>
+                            <th>대기</th>
+                            <th>생산중</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cavalryTableBody">
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 궁병 -->
+            <div class="category-section">
+                <div class="category-header archer">
+                    <div class="category-title">
+                        <span>🏹 궁병</span>
+                    </div>
+                    <button class="train-header-btn" onclick="openTrainingPopup('archer')">훈련</button>
+                </div>
+                
+                <table class="unit-table">
+                    <thead>
+                        <tr>
+                            <th>유닛</th>
+                            <th>보유</th>
+                            <th>대기</th>
+                            <th>생산중</th>
+                        </tr>
+                    </thead>
+                    <tbody id="archerTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+
+        
+        <div id="result" class="result-box"></div>
+    </div>
+
+    <script>
+        
+        
+        let unitData = {};
+        let timerInterval;
+        let userId = null;
+        let completedUnits = new Set();
+        
+        let units = {};
+        
+
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'set_player_id') {
+                const newUserId = event.data.userId;
+                
+                if (userId !== newUserId) {
+                    userId = newUserId;
+                    console.log('unit.html - 부모로부터 새로운 userId 받음:', userId);
+                    loadUnits();
+                }
+            }
+
+            if (event.data && event.data.type === 'response_config') {
+                const UnitConfig = event.data.payload;
+                units = UnitConfig
+                // 여기서 받은 데이터로 UI를 업데이트하는 로직 실행
+                
+            }
+        });
+
+        window.onload = function() {
+            window.parent.postMessage({
+                type: 'request_config',  // 메시지 타입 (요청임을 명시)
+                configType: 'unit'  // 원하는 데이터 타입
+            }, '*');
+            
+            
+            const allUnits = Object.values(units).flat();
+            // 모든 유닛을 평면 배열로 변환
+            
+
+            // 모든 유닛에 대해 기본값으로 초기화
+            allUnits.forEach(unit => {
+                unitData[unit.unit_idx] = {
+                    total: 0, ready: 0, training: 0, upgrading: 0, 
+                    field: 0, injured: 0, wounded: 0, healing: 0, death: 0
+                };
+            });
+            
+
+
+            generateUnitTables();
+            startTimer();
+            
+            setTimeout(() => {
+                if (userId) {
+                    loadUnits();
+                }
+            }, 100);
+        
+        
+        };
+        
+        
+
+        
+        function openTrainingPopup(category) {
+            // 나중에 팝업을 띄울 함수
+            showResult(`${category} 훈련 팝업을 열 예정입니다.`);
+            console.log(`${category} 훈련 팝업 열기`);
+        }
+
+        function generateUnitTables() {
+            Object.keys(units).forEach(category => {
+                const tbody = document.getElementById(`${category}TableBody`);
+                if (!tbody) return;
+                
+                tbody.innerHTML = '';
+                
+                // 모든 유닛을 표시 (데이터가 없어도 기본값으로)
+                units[category].forEach(unit => {
+                    const data = unitData[unit.unit_idx] || { 
+                        total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
+                    };
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>
+                            <div class="unit-name">
+                                <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
+                                ${unit.name}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="unit-counts">
+                                <div class="count-item">    
+                                    <span class="count-value">${data.total}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="unit-counts">
+                                <div class="count-item">    
+                                    <span class="count-value ready">${data.ready}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="production-status" id="production-${unit.unit_idx}">
+                                ${getProductionStatus(unit.unit_idx, data)}
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            });
+        }
+        
+        function generateSingleTable() {
+            if (currentLayout !== 'single') return;
+            
+            const tbody = document.getElementById('singleTableBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            Object.keys(units).forEach(category => {
+                // 모든 유닛을 표시 (데이터가 없어도 기본값으로)
+                units[category].forEach(unit => {
+                    const data = unitData[unit.unit_idx] || { 
+                        total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
+                    };
+                    
+                    const categoryName = category === 'infantry' ? '🛡️보병' : category === 'cavalry' ? '🐎기병' : '🏹궁병';
+                    
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${categoryName}</td>
+                        <td>
+                            <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
+                            ${unit.name}
+                        </td>
+                        <td>${data.total}</td>
+                        <td class="ready">${data.ready}</td>
+                        <td>
+                            <div class="production-status" id="production-${unit.unit_idx}">
+                                ${getProductionStatus(unit.unit_idx, data)}
+                            </div>
+                            <div class="timer" id="timer-${unit.unit_idx}">${getRemainingTime(unit.unit_idx)}</div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            });
+        }
+        
+        function getProductionStatus(unitIdx, data) {
+            const taskData = data && data.current_task;
+            
+            if (!taskData || taskData.remaining_time <= 0) {
+                return '-';
+            }
+            
+            if (taskData.task_type === 0) {
+                // 훈련중
+                return `훈련 ${taskData.quantity}개`;
+            } else if (taskData.task_type === 1) {
+                // 업그레이드중
+                const targetUnit = allUnits.find(u => u.unit_idx === taskData.target_unit_idx);
+                return `업그레이드 ${taskData.quantity}개<br><small>→ ${targetUnit ? targetUnit.name : '알 수 없음'}</small>`;
+            }
+            
+            return '-';
+        }
+        
+        function updateProductionStatus() {
+            allUnits.forEach(unit => {
+                const productionElement = document.getElementById(`production-${unit.idx}`);
+                if (productionElement) {
+                    const data = unitData[unit.idx];
+                    productionElement.innerHTML = getProductionStatus(unit.idx, data);
+                }
+            });
+        }
+        
+        function hasOngoingTask(unitIdx) {
+            const data = unitData[unitIdx];
+            return data && data.current_task && data.current_task.remaining_time > 0;
+        }
+        
+        function getRemainingTime(unitIdx) {
+            const data = unitData[unitIdx];
+            if (!data || !data.current_task || data.current_task.remaining_time <= 0) {
+                return '-';
+            }
+            return data.current_task.remaining_time;
+        }
+        
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimers, 1000);
+        }
+        
+        function updateTimers() {
+            // 각 병종별 헤더 타이머 업데이트
+            ['infantry', 'cavalry', 'archer'].forEach(category => {
+                const categoryTimerElement = document.getElementById(`timer-${category}`);
+                if (!categoryTimerElement) return;
+                
+                // 해당 병종의 유닛들 중 진행중인 작업이 있는지 확인
+                const categoryUnits = units[category];
+                let minRemainingTime = null;
+                
+                categoryUnits.forEach(unit => {
+                    const data = unitData[unit.idx];
+                    if (data && data.current_task && data.current_task.remaining_time > 0) {
+                        if (minRemainingTime === null || data.current_task.remaining_time < minRemainingTime) {
+                            minRemainingTime = data.current_task.remaining_time;
+                        }
+                    }
+                });
+                
+                if (minRemainingTime !== null) {
+                    const minutes = Math.floor(minRemainingTime / 60);
+                    const seconds = minRemainingTime % 60;
+                    categoryTimerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                } else {
+                    categoryTimerElement.textContent = '00:00';
+                }
+            });
+            
+            // 개별 유닛 타이머 업데이트
+            allUnits.forEach(unit => {
+                const data = unitData[unit.idx];
+                
+                if (!data || !data.current_task) {
+                    return;
+                }
+                
+                const remaining = data.current_task.remaining_time;
+                if (remaining > 0) {
+                    data.current_task.remaining_time = remaining - 1;
+                    
+                    if (remaining - 1 <= 0) {
+                        if (!completedUnits.has(unit.idx)) {
+                            console.log(`유닛 ${unit.idx} 자동 완료 시작`);
+                            autoCompleteUnit(unit.idx);
+                            completedUnits.add(unit.idx);
+                        }
+                    }
+                }
+            });
+            
+            // 생산중 상태도 업데이트
+            updateProductionStatus();
+        }
+        
+        async function autoCompleteUnit(unitIdx) {
+            if (!userId) {
+                console.log('userId가 없어서 자동 완료 중단');
+                return;
+            }
+            
+            try {
+                showResult(`유닛 ${unitIdx} 자동 완료 시도 중...`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        api_code: 4004,
+                        data: {
+                            user_no: parseInt(userId),
+                            unit_idx: unitIdx
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data) {
+                        unitData[unitIdx] = result.data;
+                        generateCurrentTable();
+                    }
+                    showResult(`유닛 ${unitIdx} 자동 완료 성공`);
+                    completedUnits.delete(unitIdx);
+                } else {
+                    showResult(`유닛 ${unitIdx} 자동 완료 실패: ${result.message}`);
+                    completedUnits.delete(unitIdx);
+                }
+            } catch (error) {
+                showResult(`유닛 ${unitIdx} 자동 완료 에러: ${error.message}`);
+                completedUnits.delete(unitIdx);
+            }
+        }
+        
+        function generateCurrentTable() {
+            generateUnitTables();
+        }
+        
+        async function loadUnits() {
+            if (!userId) {
+                showResult('플레이어 ID가 설정되지 않았습니다.');
+                return;
+            }
+            
+            unitData = {};
+            completedUnits.clear();
+            showResult('유닛 정보 로딩 중...');
+            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        api_code: 4001,
+                        data: {
+                            user_no: parseInt(userId)
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success && result.data && result.data.units) {
+                    unitData = result.data.units;
+                }
+                
+                // 모든 유닛에 대해 기본값 설정 (API에서 데이터가 없는 경우)
+                allUnits.forEach(unit => {
+                    if (!unitData[unit.idx]) {
+                        unitData[unit.idx] = {
+                            total: 0, ready: 0, training: 0, upgrading: 0, 
+                            field: 0, injured: 0, wounded: 0, healing: 0, death: 0
+                        };
+                    }
+                });
+                
+                generateCurrentTable();
+                showResult('유닛 정보 로드 완료');
+                
+            } catch (error) {
+                console.log('유닛 정보 로드 실패:', error);
+                
+                // 에러가 발생해도 모든 유닛에 대해 기본값 설정
+                allUnits.forEach(unit => {
+                    unitData[unit.idx] = {
+                        total: 0, ready: 0, training: 0, upgrading: 0, 
+                        field: 0, injured: 0, wounded: 0, healing: 0, death: 0
+                    };
+                });
+                
+                generateCurrentTable();
+                showResult('유닛 정보 로드 실패 - 기본값으로 표시');
+            }
+        }
+        
+        function showResult(message) {
+            const resultBox = document.getElementById('result');
+            resultBox.style.display = 'block';
+            resultBox.textContent = message;
+        }
+        
+        window.onbeforeunload = function() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+        };
+    </script>
+</body>
+</html>

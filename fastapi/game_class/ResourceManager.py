@@ -44,4 +44,11 @@ class ResourceManager:
 
         return
         
-    
+    def produce_resources(self, user_no, costs):
+        
+        for resource_type in self.RESOURCE_TYPES:
+            now_amount = getattr(self.now_resources, resource_type, 0)
+            
+            setattr(self.now_resources, resource_type, now_amount + costs.get(resource_type,0))
+
+        return

@@ -1,3 +1,4 @@
+#APIManager.py
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
 from game_class import GameDataManager, ResourceManager
@@ -9,14 +10,24 @@ from datetime import datetime, timedelta
 '''
 status 값
 0: 정상 (업그레이드 가능)
-1: 건설중  
+1: 건설중   
 2: 업그레이드중
 '''
 class BuildingManager():
     MAX_LEVEL = 10
-    CONFIG_TYPE = 'buildings'
-    def __init__(self, api_code: int, data: dict, db: Session):
+    CONFIG_TYPE = 'building'
+    ABALIABLE_BUILDINGS = [101, 201, 301, 401]
+    
+    #API 코드 상수 정의
+    API_BUILDING_INFO = 2001
+    API_BUILDING_CREATE = 2002
+    API_BUILDING_UPGRADE = 2003
+    API_BUILDING_FINISH = 2004     # 생산/업그레이드 완료
+    API_BUILDING_CANCEL = 2005
+    
+    def __init__(self, user_no: int, api_code: int,  data: dict, db: Session):
         self.api_code = api_code
+        self.user_no = user_no
         self.data = data
         self.db = db
         
@@ -24,13 +35,12 @@ class BuildingManager():
     
     def _validate_input(self):
         """공통 입력값 검증"""
-        user_no = self.data.get('user_no')
         building_idx = self.data.get('building_idx')
         
-        if not user_no or not building_idx:
+        if not building_idx:
             return {
                 "success": False, 
-                "message": f"Missing required fields: user_no: {user_no} or building_idx: {building_idx}", 
+                "message": f"Missing required fields: building_idx: {building_idx}", 
                 "data": {}
             }
         return None
@@ -64,13 +74,13 @@ class BuildingManager():
     def _get_available_buildings(self):
         """건설 가능한 모든 건물 목록 (게임 설정에서)"""
         try:
-            return list(GameDataManager.require_configs[self.CONFIG_TYPE].keys())
+            return list(GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].keys())
         except:
-            return [101, 201, 301, 401]
+            return self.ABALIABLE_BUILDINGS
         
     def _handle_resource_transaction(self, user_no, building_idx, target_level):
         """자원 체크 및 소모를 한번에 처리"""
-        required = GameDataManager.require_configs[self.CONFIG_TYPE][building_idx][target_level]
+        required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][building_idx][target_level]
         costs = required['cost']
         upgrade_time = required['time']
         
@@ -84,21 +94,17 @@ class BuildingManager():
     
     def building_info(self):
         """
-           api_code: 2001
-           info: 건물 정보를 조회합니다.
+            api_code: 2001
+            info: 건물 정보를 조회합니다.
         """
         try:
-            user_no = self.data.get('user_no')
-            
-            
             # 입력값 검증
-            
+            user_no = self.user_no
             
             # 건물 조회
             user_buildings = self._get_all_user_buildings(user_no)
             
-            # 건설 가능한 모든 건물 목록
-            available_buildings = self._get_available_buildings()
+            
             
             # 건물 데이터 구성
             buildings_data = {}
@@ -107,28 +113,28 @@ class BuildingManager():
             for building in user_buildings:
                 buildings_data[building.building_idx] = self._format_building_data(building)
             
-            # 건설되지 않은 건물들 기본값으로 추가
-            for building_idx in available_buildings:
-                if building_idx not in buildings_data:
-                    buildings_data[building_idx] = {
-                        "id": None,
-                        "user_no": user_no,
-                        "building_idx": building_idx,
-                        "building_lv": 0,
-                        "status": 0,
-                        "start_time": None,
-                        "end_time": None,
-                        "last_dt": None
-                    }
+            
+            # 건설 가능한 모든 건물 목록
+            # available_buildings = self._get_available_buildings()
+            # # 건설되지 않은 건물들 기본값으로 추가
+            # for building_idx in available_buildings:
+            #     if building_idx not in buildings_data:
+            #         buildings_data[building_idx] = {
+            #             "id": None,
+            #             "user_no": user_no,
+            #             "building_idx": building_idx,
+            #             "building_lv": 0,
+            #             "status": 0,
+            #             "start_time": None,
+            #             "end_time": None,
+            #             "last_dt": None
+            #         }
             
             return {
                 "success": True,
                 "message": f"Retrieved {len(buildings_data)} buildings info",
-                "data": {
-                    "buildings": buildings_data,
-                    "total_count": len(buildings_data),
-                    "constructed_count": len(user_buildings)
-                }
+                "data": buildings_data
+                
             }
             
         except Exception as e:
@@ -136,20 +142,19 @@ class BuildingManager():
     
     def building_create(self):
         """
-           api_code: 2002
-           info: 새 건물을 생성하고 DB에 저장합니다.
+            api_code: 2002
+            info: 새 건물을 생성하고 DB에 저장합니다.
         """
         
         try:
-            user_no = self.data.get('user_no')
+            user_no = self.user_no
             building_idx = self.data.get('building_idx')
             
             
-            
-            
-            
-            
             #1. 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
             
             #1-1.중복 체크
             building = self._get_building(user_no, building_idx)
@@ -184,28 +189,29 @@ class BuildingManager():
                 "success": True,
                 "message": f"Building create started. Will complete in {upgrade_time} seconds",
                 "data": self._format_building_data(building)
-        }
-            return result  # 생성된 객체 반환
+            }
+            return result 
             
         except Exception as e:
-            self.db.rollback()  # 에러 시 롤백
+            self.db.rollback() 
             return {"success": False, "message": str(e)}
         
     
     
     def building_levelup(self):
         """
-           api_code: 2003
-           info: 건물 레벨을 업그레이드합니다.
+            api_code: 2003
+            info: 건물 레벨을 업그레이드합니다.
         """
         try:
-            user_no = self.data.get('user_no')
+            user_no = self.user_no
             building_idx = self.data.get('building_idx')
             
             
-            
-            
             #1. 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
             
             
             building = self._get_building(user_no, building_idx)
@@ -215,7 +221,7 @@ class BuildingManager():
                 return {"success": False, "message": "Building not found", "data": {}}
             
             #1-2.업그레이드 가능 상태 체크
-            if building.status != 0:  # 0이 아니면 이미 진행중인 작업이 있음
+            if building.status != 0: # 0이 아니면 이미 진행중인 작업이 있음
                 return {"success": False, "message": "Building is already under construction or upgrade", "data": {}}
             
             #1-3.최대 레벨 체크
@@ -239,7 +245,7 @@ class BuildingManager():
             building.end_time = end_time
             building.last_dt = start_time
                 
- 
+            
             self.db.commit()
             self.db.refresh(building)
             
@@ -255,11 +261,11 @@ class BuildingManager():
     
     def building_finish(self):
         """
-           api_code: 2004 (추정)
-           info: 건물 건설/업그레이드를 완료합니다.
+            api_code: 2004 (추정)
+            info: 건물 건설/업그레이드를 완료합니다.
         """
         try:
-            user_no = self.data.get('user_no')
+            user_no = self.user_no
             building_idx = self.data.get('building_idx')
             
             current_time = datetime.utcnow()
@@ -312,28 +318,29 @@ class BuildingManager():
         except Exception as e:
             self.db.rollback()
             return {"success": False, "message": f"Error finishing building: {str(e)}", "data": {}}
-        
+    
     def active(self):
         
         """API 요청을 적절한 메서드로 라우팅합니다."""
         
-        # 공통 입력값 검증
-        validation_error = self._validate_input()
-        if validation_error:
-            return validation_error
-       
-         
+        # 'user_no'는 __init__에서 이미 받았으므로, _validate_input에서는 'building_idx'만 확인하도록 수정
+        # 'building_info'의 경우 'building_idx'가 필수가 아니므로 validation을 건너뜁니다.
+        if self.api_code != self.API_BUILDING_INFO:
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
+            
         api_code = self.api_code
-        if api_code == 2001:
+        if api_code == self.API_BUILDING_INFO:
             return self.building_info()
         
-        elif api_code == 2002:
+        elif api_code == self.API_BUILDING_CREATE:
             return self.building_create()
         
-        elif api_code == 2003: 
+        elif api_code == self.API_BUILDING_UPGRADE: 
             return self.building_levelup()
         
-        elif api_code == 2004: 
+        elif api_code == self.API_BUILDING_FINISH: 
             return self.building_finish()
         else:
             return {

@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- head 섹션에 추가 -->
+    <script src="/templates/gameConfigManager.js"></script>
     <title>4X Game</title>
     <style>
         body {
@@ -372,8 +374,8 @@
                         <input type="number" id="apiCode" value="2001" placeholder="예: 2001, 3001" />
                     </div>
                     <div class="form-group">
-                        <label>대상 ID:</label>
-                        <input type="text" id="targetIdx" value="101" placeholder="예: 101, tech_001" />
+                        <label>데이터:</label>
+                        <input type="text" id="apiData" value="{}" placeholder="예: unit_id: 300" />
                     </div>
                     
                     <div class="buttons">
@@ -391,7 +393,7 @@
             <div class="game-layout">
                 <!-- 건물 관리 (왼쪽 상단) -->
                 <div class="game-section">
-                    <h3>건물 관리</h3>
+                    <h3>Construct</h3>
                     <iframe 
                         id="buildingFrame" 
                         src="building.html" 
@@ -409,10 +411,12 @@
                 
                 <!-- 유닛 관리 (왼쪽 중간) -->
                 <div class="game-section">
-                    <h3>유닛 관리 <button class="refresh-btn" onclick="loadUnits()">새로고침</button></h3>
-                    <div id="unitList" class="unit-list">
-                        <div>데이터를 로드해주세요</div>
-                    </div>
+                    <h3>Unit</h3>
+                    <iframe 
+                        id="unitFrame" 
+                        src="unit.html" 
+                        style="width: 100%; height: calc(100% - 40px); border: none;">
+                    </iframe>
                 </div>
                 
                 <!-- 자원 관리 (오른쪽 중간) -->
@@ -492,6 +496,110 @@
         let currentTab = 'api';
         let currentResource = 'food';
         
+        let gameConfigManager = null;
+        let gameConfig = null;
+        let loadConfigPromise = null; // Promise 캐시
+
+        // 초기 실행 함수
+        window.onload = function() {
+            // Promise 캐시 활용 - 게임 설정 자동 로드
+            if (!loadConfigPromise) {
+                loadConfigPromise = loadGameConfig();
+            }
+        };
+
+        // iframe에서 게임 설정 요청시 응답
+        window.addEventListener('message', async(event) => {
+            if (event.data && event.data.type === 'request_config') {
+                const requestedType = event.data.configType;
+                
+                // gameConfig가 없으면 로드 (Promise 재사용)
+                if (!gameConfig) {
+                    if (!loadConfigPromise) {
+                        console.log("게임 설정 로드 시작...");
+                        loadConfigPromise = loadGameConfig();
+                    } else {
+                        console.log("게임 설정 로드 중... 기다립니다.");
+                    }
+                    await loadConfigPromise;
+                }
+
+
+
+                let dataToSend = null;
+                if (gameConfig && gameConfig[requestedType]) {
+                    dataToSend = gameConfig[requestedType];
+                }
+                
+                event.source.postMessage({
+                    type: 'response_config',
+                    payload: dataToSend
+                }, event.origin);
+
+                
+            }
+        });
+
+        // 게임 설정 로드
+        async function loadGameConfig() {
+            try {
+                gameConfigManager = GameConfigManager.getInstance();
+                gameConfig = await gameConfigManager.loadGameConfig();
+                
+                console.log('게임 설정 로드 완료:', gameConfig);
+                showToast('게임 설정이 로드되었습니다', 'success');
+                
+                return gameConfig;
+            } catch (error) {
+                console.error('게임 설정 로드 실패:', error);
+                showToast('게임 설정 로드 실패: ' + error.message, 'error');
+                return null;
+            }
+        }
+        
+        // 전체 데이터 로드 - 이때만 iframe에 플레이어 ID 전송
+        async function loadAllData() {
+            const userId = document.getElementById('globalUserId').value;
+            if (!userId) {
+                showToast('플레이어 ID를 입력하세요', 'warning');
+                return;
+            }
+            
+            showToast('데이터를 로드하고 있습니다...', 'info');
+            
+            // 모든 iframe에 플레이어 ID 전달
+            const frameIds = ['buildingFrame', 'unitFrame'];
+            
+            frameIds.forEach(frameId => {
+                const frame = document.getElementById(frameId);
+                if (frame && frame.contentWindow) {
+                    try {
+                        frame.contentWindow.postMessage({
+                            type: 'set_player_id',
+                            userId: userId
+                        }, '*');
+                        console.log(`${frameId}에 플레이어 ID 전송: ${userId}`);
+                    } catch (error) {
+                        console.warn(`${frameId}에 메시지 전송 실패:`, error);
+                    }
+                }
+            });
+            
+            await Promise.all([
+                loadResearch(),
+                loadResources(),
+            ]);
+            
+            showToast('전체 데이터 로드가 완료되었습니다', 'success');
+        }
+
+        // 플레이어 ID 변경시 처리 - 메시지 전송하지 않음
+        document.getElementById('globalUserId').addEventListener('input', function() {
+            const userId = this.value;
+            document.getElementById('apiUserId').value = userId;
+            // iframe 메시지 전송 제거됨 - 전체 데이터 로드에서만 처리
+        });
+
         // 토스트 메시지 시스템
         function showToast(message, type = 'info', title = '') {
             const container = document.getElementById('toastContainer');
@@ -586,36 +694,6 @@
             document.getElementById(`${resourceType}-value`).textContent = newAmount;
         }
         
-        // 전체 데이터 로드
-        async function loadAllData() {
-            const userId = document.getElementById('globalUserId').value;
-            if (!userId) {
-                showToast('플레이어 ID를 입력하세요', 'warning');
-                return;
-            }
-            
-            showToast('데이터를 로드하고 있습니다...', 'info');
-            
-            // 건물 iframe에 플레이어 ID 전달
-            const buildingFrame = document.getElementById('buildingFrame');
-            if (buildingFrame && buildingFrame.contentWindow) {
-                buildingFrame.contentWindow.postMessage({
-                    type: 'set_player_id',
-                    userId: userId
-                }, '*');
-            }
-            
-            await Promise.all([
-                loadResearch(),
-                loadResources(),
-                loadUnits()
-            ]);
-            
-            showToast('전체 데이터 로드가 완료되었습니다', 'success');
-        }
-        
-        // 건물 관련 함수들 제거 (iframe에서 처리)
-        
         // 연구 데이터 로드
         async function loadResearch() {
             const userId = document.getElementById('globalUserId').value;
@@ -666,51 +744,17 @@
             document.getElementById('stone-value').textContent = stone;
         }
         
-        // 유닛 데이터 로드
-        async function loadUnits() {
-            const userId = document.getElementById('globalUserId').value;
-            const unitList = document.getElementById('unitList');
-            
-            if (!userId) {
-                unitList.innerHTML = '<div>플레이어 ID를 입력하세요</div>';
-                return;
-            }
-            
-            unitList.innerHTML = '<div>로딩 중...</div>';
-            
-            const units = [
-                { name: '농민', count: 5 },
-                { name: '전사', count: 10 },
-                { name: '궁수', count: 8 }
-            ];
-            
-            let html = '';
-            units.forEach(unit => {
-                html += `
-                    <div class="unit-item">
-                        <strong>${unit.name}</strong>: ${unit.count}명
-                        <button onclick="unitAction('recruit', '${unit.name}')">모집</button>
-                    </div>
-                `;
-            });
-            
-            unitList.innerHTML = html;
-        }
-        
         // API 호출
         async function callAPI() {
             const resultDiv = document.getElementById('apiResult');
             
             try {
                 const gameData = {
+                    user_no: parseInt(document.getElementById('apiUserId').value),
                     api_code: parseInt(document.getElementById('apiCode').value),
-                    data: {
-                        user_no: parseInt(document.getElementById('apiUserId').value),
-                        building_idx: parseInt(document.getElementById('targetIdx').value) || document.getElementById('targetIdx').value,
-                        research_idx: document.getElementById('targetIdx').value
-                    }
+                    data: JSON.parse(document.getElementById('apiData').value)
                 };
-
+                
                 resultDiv.style.display = 'block';
                 resultDiv.textContent = '요청 중...';
                 
@@ -762,40 +806,6 @@
             resultDiv.style.display = 'none';
             resultDiv.textContent = '';
         }
-        
-        // 플레이어 ID 변경시 처리
-        document.getElementById('globalUserId').addEventListener('input', function() {
-            const userId = this.value;
-            document.getElementById('apiUserId').value = userId;
-            
-            // 건물 iframe에 새로운 플레이어 ID 전달
-            const buildingFrame = document.getElementById('buildingFrame');
-            if (buildingFrame && buildingFrame.contentWindow) {
-                buildingFrame.contentWindow.postMessage({
-                    type: 'set_player_id',
-                    userId: userId
-                }, '*');
-            }
-        });
-        
-        // 초기 로드
-        window.onload = function() {
-            if (document.getElementById('globalUserId').value) {
-                loadAllData();
-            }
-            
-            // iframe 로드 완료 후 플레이어 ID 전달
-            const buildingFrame = document.getElementById('buildingFrame');
-            buildingFrame.onload = function() {
-                const userId = document.getElementById('globalUserId').value;
-                if (userId && buildingFrame.contentWindow) {
-                    buildingFrame.contentWindow.postMessage({
-                        type: 'set_player_id',
-                        userId: userId
-                    }, '*');
-                }
-            };
-        };
     </script>
 </body>
 </html>
