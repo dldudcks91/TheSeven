@@ -54,7 +54,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/meta_data_unit.csv')
+        df = pd.read_csv('./meta_data/meta_data_unit.csv', encoding= 'cp949')
         
         unit_configs = cls.REQUIRE_CONFIGS['unit']
         
@@ -69,7 +69,8 @@ class GameDataManager:
                 'unit_tier': row['unit_tier'],
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
                 'time': int(row['time']),
-                'name': row['description']
+                'name': row['description'],
+                'category': row['category']
             }
     
     @classmethod

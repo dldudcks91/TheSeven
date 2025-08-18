@@ -284,7 +284,7 @@
         let completedUnits = new Set();
         
         let units = {};
-        
+        let allUnits = {};
 
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'set_player_id') {
@@ -292,7 +292,7 @@
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
-                    console.log('unit.html - 부모로부터 새로운 userId 받음:', userId);
+                    
                     loadUnits();
                 }
             }
@@ -300,7 +300,12 @@
             if (event.data && event.data.type === 'response_config') {
                 const UnitConfig = event.data.payload;
                 units = UnitConfig
-                // 여기서 받은 데이터로 UI를 업데이트하는 로직 실행
+                
+                // 모든 유닛을 평면 배열로 변환
+                allUnits = Object.values(units).flat();
+                
+                
+                
                 
             }
         });
@@ -312,21 +317,7 @@
             }, '*');
             
             
-            const allUnits = Object.values(units).flat();
-            // 모든 유닛을 평면 배열로 변환
             
-
-            // 모든 유닛에 대해 기본값으로 초기화
-            allUnits.forEach(unit => {
-                unitData[unit.unit_idx] = {
-                    total: 0, ready: 0, training: 0, upgrading: 0, 
-                    field: 0, injured: 0, wounded: 0, healing: 0, death: 0
-                };
-            });
-            
-
-
-            generateUnitTables();
             startTimer();
             
             setTimeout(() => {
@@ -348,14 +339,20 @@
         }
 
         function generateUnitTables() {
-            Object.keys(units).forEach(category => {
+            
+            ['infantry', 'cavalry', 'archer'].forEach(category => {
+                
                 const tbody = document.getElementById(`${category}TableBody`);
                 if (!tbody) return;
                 
                 tbody.innerHTML = '';
                 
                 // 모든 유닛을 표시 (데이터가 없어도 기본값으로)
-                units[category].forEach(unit => {
+                
+                allUnits.forEach(unit => {
+                    if (unit.category !=category) return;
+                    
+                    
                     const data = unitData[unit.unit_idx] || { 
                         total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
                     };
@@ -456,8 +453,8 @@
             allUnits.forEach(unit => {
                 const productionElement = document.getElementById(`production-${unit.idx}`);
                 if (productionElement) {
-                    const data = unitData[unit.idx];
-                    productionElement.innerHTML = getProductionStatus(unit.idx, data);
+                    const data = unitData[unit.unit_idx];
+                    productionElement.innerHTML = getProductionStatus(unit.unit_idx, data);
                 }
             });
         }
@@ -491,7 +488,7 @@
                 let minRemainingTime = null;
                 
                 categoryUnits.forEach(unit => {
-                    const data = unitData[unit.idx];
+                    const data = unitData[unit.unit_idx];
                     if (data && data.current_task && data.current_task.remaining_time > 0) {
                         if (minRemainingTime === null || data.current_task.remaining_time < minRemainingTime) {
                             minRemainingTime = data.current_task.remaining_time;
@@ -510,7 +507,7 @@
             
             // 개별 유닛 타이머 업데이트
             allUnits.forEach(unit => {
-                const data = unitData[unit.idx];
+                const data = unitData[unit.unit_idx];
                 
                 if (!data || !data.current_task) {
                     return;
@@ -521,10 +518,10 @@
                     data.current_task.remaining_time = remaining - 1;
                     
                     if (remaining - 1 <= 0) {
-                        if (!completedUnits.has(unit.idx)) {
-                            console.log(`유닛 ${unit.idx} 자동 완료 시작`);
-                            autoCompleteUnit(unit.idx);
-                            completedUnits.add(unit.idx);
+                        if (!completedUnits.has(unit.unit_idx)) {
+                            console.log(`유닛 ${unit.unit_idx} 자동 완료 시작`);
+                            autoCompleteUnit(unit.unit_idx);
+                            completedUnits.add(unit.unit_idx);
                         }
                     }
                 }
@@ -547,9 +544,10 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        user_no: parseInt(userId),
                         api_code: 4004,
                         data: {
-                            user_no: parseInt(userId),
+                            
                             unit_idx: unitIdx
                         }
                     })
@@ -593,9 +591,10 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        user_no: parseInt(userId),
                         api_code: 4001,
                         data: {
-                            user_no: parseInt(userId)
+                            
                         }
                     })
                 });
@@ -607,8 +606,8 @@
                 
                 // 모든 유닛에 대해 기본값 설정 (API에서 데이터가 없는 경우)
                 allUnits.forEach(unit => {
-                    if (!unitData[unit.idx]) {
-                        unitData[unit.idx] = {
+                    if (!unitData[unit.unit_idx]) {
+                        unitData[unit.unit_idx] = {
                             total: 0, ready: 0, training: 0, upgrading: 0, 
                             field: 0, injured: 0, wounded: 0, healing: 0, death: 0
                         };
@@ -623,7 +622,7 @@
                 
                 // 에러가 발생해도 모든 유닛에 대해 기본값 설정
                 allUnits.forEach(unit => {
-                    unitData[unit.idx] = {
+                    unitData[unit.unit_idx] = {
                         total: 0, ready: 0, training: 0, upgrading: 0, 
                         field: 0, injured: 0, wounded: 0, healing: 0, death: 0
                     };

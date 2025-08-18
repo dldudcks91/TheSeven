@@ -17,7 +17,9 @@
             max-width: 100%;
             margin: 0;
         }
-        
+        strong {
+        margin-right: 10px; /* 원하는 간격(10px)을 지정합니다. */
+        }
         .building-table {
             width: 100%;
             border-collapse: collapse;
@@ -54,6 +56,40 @@
             font-size: 12px;
         }
         
+        .timer-display {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: #f0f8ff;
+            border-radius: 4px;
+            font-size: 12px;
+            
+        }
+        
+        .timer-item {
+            display: inline-block;
+            margin-right: 15px;
+            margin-bottom: 5px;
+            padding: 3px 6px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .timer-item.completed {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .timer-item.running {
+            background: #fff3e0;
+            border-color: #ff9800;
+            color: #f57c00;
+        }
+        
         .result-box {
             margin-top: 10px;
             padding: 8px;
@@ -70,6 +106,11 @@
 </head>
 <body>
     <div class="container">
+        <div id="timerDisplay" class="timer-display" style="display: none; ">
+            <strong>진행 중인 작업: </strong>
+            <div id="timerItems"></div>
+        </div>
+        
         <table class="building-table">
             <thead>
                 <tr>
@@ -99,18 +140,18 @@
         const maxLevel = 10;
 
         let userBuildingData = {};
-        let timerInterval;
+        let completionTimers = new Map(); // 완료 시점 타이머만 관리
+        let displayTimer = null; // 화면 업데이트용 타이머 (1초마다, 서버 요청 없음)
         let userId = null;
         let completedBuildings = new Set();
         let buildingCostData = {};
         
         window.onload = function() {
             window.parent.postMessage({
-                type: 'request_config',  // 메시지 타입 (요청임을 명시)
-                configType: 'building'  // 원하는 데이터 타입
+                type: 'request_config',
+                configType: 'building'
             }, '*');
-            //generateBuildingTable()
-            startTimer();
+            
             setTimeout(() => {
                 if (userId && buildingCostData) {
                     loadBuildings();
@@ -125,19 +166,100 @@
                 if (userId !== newUserId) {
                     userId = newUserId;
                     loadBuildings();
-                    
                 }
             }
             if (event.data && event.data.type === 'response_config') {
                 const buildingConfig = event.data.payload;
                 buildingCostData = buildingConfig;
                 console.log('Building data received:', buildingCostData);
-                // 여기서 받은 데이터로 UI를 업데이트하는 로직 실행
-                
             }
         });
 
-        
+        // UTC 시간을 확실하게 얻는 여러 방법들
+        function getCurrentUTC() {
+            // 방법 1: new Date()는 이미 UTC 기준 (가장 간단하고 정확)
+            return new Date();
+            
+            // 방법 2: 명시적으로 UTC 구성요소로 생성 (확실함을 원할 때)
+            // const now = new Date();
+            // return new Date(Date.UTC(
+            //     now.getUTCFullYear(),
+            //     now.getUTCMonth(),
+            //     now.getUTCDate(),
+            //     now.getUTCHours(),
+            //     now.getUTCMinutes(),
+            //     now.getUTCSeconds(),
+            //     now.getUTCMilliseconds()
+            // ));
+        }
+
+        // UTC 시간임을 확인하는 함수
+        function verifyUTCTime() {
+            const now = new Date();
+            console.log('=== UTC 시간 확인 ===');
+            console.log('toString():', now.toString());        // KST로 표시됨 (혼동 원인)
+            console.log('toISOString():', now.toISOString());   // UTC로 표시됨 (진실)
+            console.log('getTime():', now.getTime());          // UTC timestamp
+            console.log('UTC 년:', now.getUTCFullYear());
+            console.log('UTC 월:', now.getUTCMonth() + 1);
+            console.log('UTC 일:', now.getUTCDate());
+            console.log('UTC 시:', now.getUTCHours());
+            console.log('UTC 분:', now.getUTCMinutes());
+            console.log('UTC 초:', now.getUTCSeconds());
+            console.log('==================');
+        }
+
+        // 서버 UTC 시간을 올바르게 파싱하는 함수
+        function parseServerUTCTime(serverTimeString) {
+            // 서버에서 받은 UTC 시간 문자열을 Date 객체로 변환
+            let utcString = serverTimeString;
+            
+            // MySQL DATETIME 형태면 ISO 형태로 변환
+            if (utcString.includes(' ') && !utcString.includes('T')) {
+                utcString = utcString.replace(' ', 'T');
+            }
+            
+            // Z가 없으면 추가하여 UTC임을 명시
+            if (!utcString.endsWith('Z') && utcString.includes('T')) {
+                utcString += 'Z';
+            }
+            
+            return new Date(utcString);
+        }
+
+        // UTC 시간 차이 계산 함수
+        function calculateUTCTimeDiff(serverUTCTime) {
+            const endTime = parseServerUTCTime(serverUTCTime);
+            const now = new Date(); // 현재 UTC 시간
+            
+            const diffMs = endTime - now;
+            const diffSeconds = Math.max(0, Math.ceil(diffMs / 1000));
+            
+            return {
+                totalMs: diffMs,
+                totalSeconds: diffSeconds,
+                minutes: Math.floor(diffSeconds / 60),
+                seconds: diffSeconds % 60,
+                isCompleted: diffMs <= 0,
+                
+                // 포맷팅
+                format: () => {
+                    if (diffMs <= 0) return "완료";
+                    const mins = Math.floor(diffSeconds / 60);
+                    const secs = diffSeconds % 60;
+                    return `${mins}:${secs.toString().padStart(2, '0')}`;
+                },
+                
+                // 디버깅
+                debug: (label = '') => {
+                    console.log(`${label} 시간 계산:`);
+                    console.log(`  서버 UTC: ${endTime.toISOString()}`);
+                    console.log(`  현재 UTC: ${now.toISOString()}`);
+                    console.log(`  차이: ${Math.ceil(diffMs/1000)}초`);
+                    console.log(`  완료: ${diffMs <= 0 ? 'YES' : 'NO'}`);
+                }
+            };
+        }
 
         function generateBuildingTable() {
             const tbody = document.getElementById('buildingTableBody');
@@ -147,15 +269,11 @@
             }
             tbody.innerHTML = '';
             
-            
             buildings.forEach(building => {
-                
                 const data = userBuildingData[building.idx] || { building_lv: 0, status: 0 };
-                
                 
                 const buildingCost = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['cost']?.['food'] || 0;
                 const buildingTime = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['time'] || 0;
-                
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -169,7 +287,6 @@
                             ${data.building_lv === 0 ? 
                                 `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
                                 `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`
-                                
                             }
                         </div>
                     </td>
@@ -177,6 +294,10 @@
                 
                 tbody.appendChild(row);
             });
+            
+            // 테이블 생성 후 완료 타이머 + 화면 업데이트 타이머 설정
+            setupCompletionTimers();
+            startDisplayTimer(); // 화면 업데이트용 (서버 요청 없음)
         }
         
         function getStatusText(status) {
@@ -188,45 +309,130 @@
             }
         }
         
-        // 남은 시간을 초(seconds) 단위로 계산하여 반환하는 함수
-        function getRemainingSeconds(data) {
-            if (data.status === 0 || !data.end_time) {
-                return '-';
-            }
+        // 화면 업데이트용 타이머 (서버 요청 없음, UI만 업데이트)
+        function startDisplayTimer() {
+            if (displayTimer) clearInterval(displayTimer);
             
-            const endTime = new Date(data.end_time);
-            const now = new Date();
-            const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
-            
-            return remaining;
+            displayTimer = setInterval(() => {
+                updateDisplayOnly(); // 서버 요청 없이 화면만 업데이트
+            }, 1000);
         }
         
-        function startTimer() {
-            if (timerInterval) clearInterval(timerInterval);
-            timerInterval = setInterval(updateTimers, 1000);
-        }
-        
-        function updateTimers() {
+        // 서버 요청 없이 화면만 업데이트 (UTC 기준으로 통일)
+        function updateDisplayOnly() {
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timerItems = document.getElementById('timerItems');
+            
+            if (!timerDisplay || !timerItems) return;
+            
+            let hasActiveBuildings = false;
+            timerItems.innerHTML = '';
+            
             buildings.forEach(building => {
                 const data = userBuildingData[building.idx];
-                const timerElement = document.getElementById(`timer-${building.idx}`);
                 
-                if (!timerElement || !data || data.status === 0 || !data.end_time) {
-                    if (timerElement) timerElement.textContent = '-';
+                if (!data || data.status === 0 || !data.end_time) {
                     return;
                 }
                 
-                const remainingSeconds = getRemainingSeconds(data);
-                timerElement.textContent = remainingSeconds;
+                hasActiveBuildings = true;
                 
-                if (remainingSeconds <= 0) {
+                // 완료 타이머와 동일한 UTC 계산 방식 사용
+                const timeDiff = calculateUTCTimeDiff(data.end_time);
+                
+                const timerItem = document.createElement('span');
+                timerItem.className = 'timer-item';
+                
+                if (!timeDiff.isCompleted) {
+                    timerItem.textContent = `${building.korean_name}: ${timeDiff.format()}`;
+                    timerItem.classList.add('running');
+                } else {
+                    timerItem.textContent = `${building.korean_name}: 완료 대기중...`;
+                    timerItem.classList.add('completed');
+                }
+                
+                timerItems.appendChild(timerItem);
+            });
+            
+            // 진행중인 작업이 있을 때만 타이머 영역 표시
+            timerDisplay.style.display = hasActiveBuildings ? 'flex' : 'none';
+            
+            // 진행중인 건물이 없으면 화면 업데이트 타이머도 중단
+            if (!hasActiveBuildings && displayTimer) {
+                clearInterval(displayTimer);
+                displayTimer = null;
+                console.log('📺 진행중인 건물 없음 - 화면 업데이트 타이머 중단');
+            }
+        }
+        
+        // 완료 시점에만 실행되는 타이머 설정 (간편한 시간 계산)
+        function setupCompletionTimers() {
+            // 기존 타이머들 정리
+            clearAllCompletionTimers();
+            
+            // UTC 시간 확인 (디버깅용)
+            verifyUTCTime();
+            
+            buildings.forEach(building => {
+                const data = userBuildingData[building.idx];
+                
+                // 진행중이 아니면 타이머 설정 안함
+                if (!data || data.status === 0 || !data.end_time) {
+                    return;
+                }
+                
+                // 간편한 UTC 시간 차이 계산
+                const timeDiff = calculateUTCTimeDiff(data.end_time);
+                timeDiff.debug(`${building.korean_name} 타이머 설정`);
+                
+                if (timeDiff.isCompleted) {
+                    // 이미 완료된 상태 - 즉시 완료 처리
+                    console.log(`${building.korean_name}: 이미 완료됨, 즉시 서버에 완료 요청`);
                     if (!completedBuildings.has(building.idx)) {
-                        console.log(`건물 ${building.idx} 자동 완료 시작`);
                         autoCompleteBuilding(building.idx);
                         completedBuildings.add(building.idx);
                     }
+                } else {
+                    // 정확한 완료 시점에만 서버 요청하는 타이머 설정
+                    console.log(`${building.korean_name}: ${timeDiff.totalSeconds}초 후 자동 완료 예정`);
+                    
+                    const timerId = setTimeout(() => {
+                        console.log(`${building.korean_name}: 완료 시점 도달! 서버에 완료 요청 전송`);
+                        if (!completedBuildings.has(building.idx)) {
+                            autoCompleteBuilding(building.idx);
+                            completedBuildings.add(building.idx);
+                        }
+                        completionTimers.delete(building.idx);
+                    }, timeDiff.totalMs);
+                    
+                    completionTimers.set(building.idx, {
+                        timerId: timerId,
+                        endTime: parseServerUTCTime(data.end_time),
+                        buildingName: building.korean_name
+                    });
                 }
             });
+            
+            if (completionTimers.size > 0) {
+                console.log(`✅ ${completionTimers.size}개 건물의 완료 타이머 설정 완료`);
+            } else {
+                console.log('✅ 진행중인 건물 없음 - 완료 타이머 없음');
+            }
+        }
+        
+        function clearAllCompletionTimers() {
+            completionTimers.forEach((timerInfo) => {
+                clearTimeout(timerInfo.timerId);
+                console.log(`${timerInfo.buildingName} 완료 타이머 정리됨`);
+            });
+            completionTimers.clear();
+            
+            // 화면 업데이트 타이머도 정리
+            if (displayTimer) {
+                clearInterval(displayTimer);
+                displayTimer = null;
+                console.log('📺 화면 업데이트 타이머 정리됨');
+            }
         }
         
         async function autoCompleteBuilding(buildingIdx) {
@@ -235,8 +441,12 @@
                 return;
             }
             
+            const building = buildings.find(b => b.idx === buildingIdx);
+            const buildingName = building ? building.korean_name : buildingIdx;
+            
             try {
-                showResult(`건물 ${buildingIdx} 자동 완료 시도 중...`);
+                showResult(`${buildingName} 자동 완료 요청 중...`);
+                console.log(`🚀 ${buildingName}: 서버에 완료 API 요청 전송`);
                 
                 const response = await fetch('/api', {
                     method: 'POST',
@@ -245,28 +455,37 @@
                         user_no: parseInt(userId),
                         api_code: 2004,
                         data: {
-                            
                             building_idx: buildingIdx
                         }
                     })
                 });
                 
                 const result = await response.json();
+                console.log(`📨 ${buildingName} 서버 응답:`, result);
                 
                 if (result.success) {
                     if (result.data) {
                         userBuildingData[buildingIdx] = result.data;
-                        generateBuildingTable();
+                        generateBuildingTable(); // 새로운 상태로 테이블 업데이트
                     }
-                    showResult(`건물 ${buildingIdx} 자동 완료 성공`);
+                    showResult(`${buildingName} 자동 완료 성공!`);
                     completedBuildings.delete(buildingIdx);
                 } else {
-                    showResult(`건물 ${buildingIdx} 자동 완료 실패: ${result.message}`);
-                    completedBuildings.delete(buildingIdx);
+                    showResult(`${buildingName} 자동 완료 실패: ${result.message}`);
+                    // 실패 시 3초 후 재시도 (한 번만)
+                    setTimeout(() => {
+                        completedBuildings.delete(buildingIdx);
+                        console.log(`${buildingName}: 실패 후 재시도 가능 상태로 변경`);
+                    }, 3000);
                 }
             } catch (error) {
-                showResult(`건물 ${buildingIdx} 자동 완료 에러: ${error.message}`);
-                completedBuildings.delete(buildingIdx);
+                console.error(`❌ ${buildingName} 자동완성 에러:`, error);
+                showResult(`${buildingName} 자동 완료 에러: ${error.message}`);
+                // 에러 시 3초 후 재시도 (한 번만)
+                setTimeout(() => {
+                    completedBuildings.delete(buildingIdx);
+                    console.log(`${buildingName}: 에러 후 재시도 가능 상태로 변경`);
+                }, 3000);
             }
         }
         
@@ -278,35 +497,44 @@
             
             userBuildingData = {};
             completedBuildings.clear();
+            clearAllCompletionTimers();
             showResult('건물 정보 로딩 중...');
             
-            
-                try {
-                    const response = await fetch('/api', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            user_no: parseInt(userId),
-                            api_code: 2001,
-                            data: {}
-                        })
-                    });
-                    
-                    const result = await response.json();
-                    console.log(result.data)
-                    if (result.success) {
-                        
-                        for (const building of buildings) {
-                            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 2001,
+                        data: {}
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('🏗️ 건물 데이터 로드:', result.data);
+                
+                if (result.success && result.data) {
+                    for (const building of buildings) {
+                        if (result.data[building.idx]) {
                             userBuildingData[building.idx] = result.data[building.idx];
-                         
+                        } else {
+                            userBuildingData[building.idx] = { building_lv: 0, status: 0 };
                         }
-                        
                     }
-                } catch (error) {
-                    console.log(`정보 없음`);
+                } else {
+                    // 실패한 경우 기본값 설정
+                    for (const building of buildings) {
+                        userBuildingData[building.idx] = { building_lv: 0, status: 0 };
+                    }
                 }
-            
+            } catch (error) {
+                console.log(`정보 로드 에러:`, error);
+                // 에러 시 기본값 설정
+                for (const building of buildings) {
+                    userBuildingData[building.idx] = { building_lv: 0, status: 0 };
+                }
+            }
             
             generateBuildingTable();
             showResult('건물 정보 로드 완료');
@@ -318,8 +546,11 @@
                 return;
             }
             
+            const building = buildings.find(b => b.idx === buildingIdx);
+            const buildingName = building ? building.korean_name : buildingIdx;
+            
             try {
-                showResult('요청 중...');
+                showResult(`${buildingName} 요청 중...`);
                 
                 const response = await fetch('/api', {
                     method: 'POST',
@@ -334,34 +565,47 @@
                 });
                 
                 const result = await response.json();
+                console.log(`🔧 ${buildingName} API 호출 결과:`, result);
                 
                 if (result.success) {
                     if (result.data) {
                         userBuildingData[buildingIdx] = result.data;
-                        generateBuildingTable();
+                        generateBuildingTable(); // 새로운 상태로 타이머 재설정
                         if (apiCode === 2004) {
                             completedBuildings.delete(buildingIdx);
                         }
                     }
-                    showResult(`성공: ${result.message}`);
+                    showResult(`${buildingName} 성공: ${result.message || '완료'}`);
                 } else {
-                    showResult(`실패: ${result.message}`);
+                    showResult(`${buildingName} 실패: ${result.message || '알 수 없는 오류'}`);
                 }
             } catch (error) {
-                showResult(`에러: ${error.message}`);
+                console.error(`❌ ${buildingName} API 에러:`, error);
+                showResult(`${buildingName} 에러: ${error.message}`);
             }
         }
         
         function showResult(message) {
             const resultBox = document.getElementById('result');
             resultBox.style.display = 'block';
-            resultBox.textContent = message;
+            resultBox.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            console.log(`📢 ${message}`);
         }
         
-        window.onbeforeunload = function() {
-            if (timerInterval) {
-                clearInterval(timerInterval);
+        // 페이지 가시성 변화 감지 - 탭 복귀시 완료 시점 재계산
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('👀 페이지 활성화 - 완료 시점 재계산 및 화면 업데이트 재시작');
+                setupCompletionTimers();
+                startDisplayTimer();
+            } else {
+                console.log('😴 페이지 비활성화 - 타이머는 백그라운드 실행');
             }
+        });
+        
+        window.onbeforeunload = function() {
+            clearAllCompletionTimers();
+            console.log('🔄 페이지 종료 - 모든 타이머 정리');
         };
     </script>
 </body>
