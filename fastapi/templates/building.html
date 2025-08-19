@@ -193,21 +193,7 @@
             // ));
         }
 
-        // UTC 시간임을 확인하는 함수
-        function verifyUTCTime() {
-            const now = new Date();
-            console.log('=== UTC 시간 확인 ===');
-            console.log('toString():', now.toString());        // KST로 표시됨 (혼동 원인)
-            console.log('toISOString():', now.toISOString());   // UTC로 표시됨 (진실)
-            console.log('getTime():', now.getTime());          // UTC timestamp
-            console.log('UTC 년:', now.getUTCFullYear());
-            console.log('UTC 월:', now.getUTCMonth() + 1);
-            console.log('UTC 일:', now.getUTCDate());
-            console.log('UTC 시:', now.getUTCHours());
-            console.log('UTC 분:', now.getUTCMinutes());
-            console.log('UTC 초:', now.getUTCSeconds());
-            console.log('==================');
-        }
+        
 
         // 서버 UTC 시간을 올바르게 파싱하는 함수
         function parseServerUTCTime(serverTimeString) {
@@ -272,7 +258,7 @@
             buildings.forEach(building => {
                 const data = userBuildingData[building.idx] || { building_lv: 0, status: 0 };
                 
-                const buildingCost = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['cost']?.['food'] || 0;
+                const buildingCost = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['cost']?.['food_cost'] || 0;
                 const buildingTime = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['time'] || 0;
                 
                 const row = document.createElement('tr');
@@ -370,8 +356,7 @@
             // 기존 타이머들 정리
             clearAllCompletionTimers();
             
-            // UTC 시간 확인 (디버깅용)
-            verifyUTCTime();
+            
             
             buildings.forEach(building => {
                 const data = userBuildingData[building.idx];

@@ -47,7 +47,7 @@ class Unit(Base):
     total: Mapped[Optional[int]] = mapped_column(Integer)
     ready: Mapped[Optional[int]] = mapped_column(Integer)
     training: Mapped[Optional[int]] = mapped_column(Integer)
-    upgradeing: Mapped[Optional[int]] = mapped_column(Integer)
+    upgrading: Mapped[Optional[int]] = mapped_column(Integer)
     field: Mapped[Optional[int]] = mapped_column(Integer)
     injured: Mapped[Optional[int]] = mapped_column(Integer)
     wounded: Mapped[Optional[int]] = mapped_column(Integer)

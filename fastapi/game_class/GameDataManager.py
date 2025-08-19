@@ -44,8 +44,8 @@ class GameDataManager:
                             requires.append((int(idx), int(lv)))
                             
             building_configs[building_idx][building_lv] = {
-                'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
-                'time': int(row['time']),
+                'cost': {'food_cost': int(row['food_cost']), 'wood_cost': int(row['wood_cost']),'stone_cost': int(row['stone_cost']),'gold_cost': int(row['gold_cost'])},
+                'time': int(row['construct_time']),
                 'required_buildings': requires  # [(building_idx, level), ...]
             }
             
@@ -67,8 +67,8 @@ class GameDataManager:
             unit_configs[unit_idx] = {
                 'unit_idx': unit_idx,
                 'unit_tier': row['unit_tier'],
-                'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
-                'time': int(row['time']),
+                'cost': {'food_cost': int(row['food_cost']), 'wood_cost': int(row['wood_cost']),'stone_cost': int(row['stone_cost']),'gold_cost': int(row['gold_cost'])},
+                'time': int(row['train_time']),
                 'name': row['description'],
                 'category': row['category']
             }

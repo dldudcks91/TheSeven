@@ -72,13 +72,13 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 11px;
-            table-layout: fixed; /* 컬럼 너비 고정 */
+            table-layout: fixed;
         }
         
-        .unit-table th:nth-child(1) { width: 40%; } /* 유닛명 */
-        .unit-table th:nth-child(2) { width: 20%; } /* 보유 */
-        .unit-table th:nth-child(3) { width: 20%; } /* 대기 */
-        .unit-table th:nth-child(4) { width: 20%; } /* 생산중 */
+        .unit-table th:nth-child(1) { width: 40%; }
+        .unit-table th:nth-child(2) { width: 20%; }
+        .unit-table th:nth-child(3) { width: 20%; }
+        .unit-table th:nth-child(4) { width: 20%; }
         
         .unit-table th,
         .unit-table td {
@@ -89,7 +89,7 @@
         }
         
         .unit-table td:first-child {
-            text-align: left;  /* 첫 번째 컬럼(유닛명)만 좌측 정렬 */
+            text-align: left;
         }
         
         .unit-table th {
@@ -107,13 +107,13 @@
             display: flex;
             flex-direction: column;
             gap: 1px;
-            align-items: center; /* 가운데 정렬 추가 */
+            align-items: center;
         }
         
         .count-item {
             font-size: 9px;
             display: flex;
-            justify-content: center; /* 가운데 정렬로 변경 */
+            justify-content: center;
         }
         
         .count-label {
@@ -154,7 +154,7 @@
             background: #f5f5f5;
             border: 1px solid #ddd;
             border-radius: 4px;
-            display: none; /* 숨김 처리 */
+            display: none;
         }
         
         .controls input, .controls select {
@@ -193,12 +193,276 @@
             font-size: 8px;
             color: #666;
         }
+
+        /* 팝업 관련 스타일 */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .popup-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            width: 500px;
+            max-width: 90vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .popup-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .popup-close {
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .popup-close:hover {
+            background: #ff3742;
+        }
+
+        .popup-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+
+        .popup-tab {
+            padding: 10px 20px;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            flex: 1;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .popup-tab.active {
+            background: #4caf50;
+            color: white;
+            border-color: #4caf50;
+        }
+
+        .popup-tab:hover:not(.active) {
+            background: #e8e8e8;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .unit-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .unit-item {
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            background: none;
+            margin-bottom: 0;
+        }
+
+        .unit-item-header {
+            display: none;
+        }
+
+        .unit-item-name {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .unit-item-info {
+            display: none;
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .unit-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        /* 테이블 스타일로 변경 */
+        .popup-unit-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-bottom: 20px;
+        }
+
+        .popup-unit-table th,
+        .popup-unit-table td {
+            padding: 8px 6px;
+            text-align: center;
+            border: 1px solid #ddd;
+            line-height: 1.2;
+        }
+
+        .popup-unit-table td:first-child {
+            text-align: left;
+        }
+
+        .popup-unit-table th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+            font-size: 10px;
+        }
+
+        .popup-unit-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .quantity-input {
+            width: 50px;
+            padding: 3px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .train-btn {
+            padding: 4px 8px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+
+        .train-btn:hover {
+            background: #45a049;
+        }
+
+        .train-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .upgrade-item {
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            background: none;
+            margin-bottom: 0;
+        }
+
+        .upgrade-header {
+            display: none;
+        }
+
+        .upgrade-path {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .upgrade-arrow {
+            color: #4caf50;
+            font-size: 14px;
+        }
+
+        .upgrade-info {
+            display: none;
+        }
+
+        .upgrade-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .available-units {
+            font-size: 12px;
+            color: #666;
+            margin-right: 10px;
+        }
+
+        .cost-info {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+        }
+
+        .cost-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .resource-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        .gold { background: #ffd700; }
+        .food { background: #8bc34a; }
+        .wood { background: #795548; }
+        .stone { background: #9e9e9e; }
     </style>
 </head>
 <body>
     <div class="container">
-
-        
         <div id="categoryLayout" class="unit-categories">
             <!-- 보병 -->
             <div class="category-section">
@@ -269,22 +533,47 @@
                 </table>
             </div>
         </div>
-        
 
-        
         <div id="result" class="result-box"></div>
     </div>
 
+    <!-- 훈련 팝업 -->
+    <div id="trainingPopup" class="popup-overlay">
+        <div class="popup-container">
+            <div class="popup-header">
+                <div class="popup-title" id="popupTitle">병종 훈련</div>
+                <button class="popup-close" onclick="closeTrainingPopup()">×</button>
+            </div>
+            
+            <div class="popup-tabs">
+                <div class="popup-tab active" onclick="switchTab('train')">생산</div>
+                <div class="popup-tab" onclick="switchTab('upgrade')">업그레이드</div>
+            </div>
+            
+            <!-- 생산 탭 -->
+            <div id="trainTab" class="tab-content active">
+                <div id="trainUnits" class="unit-list">
+                    <!-- 생산 가능한 유닛들이 여기에 동적으로 생성됩니다 -->
+                </div>
+            </div>
+            
+            <!-- 업그레이드 탭 -->
+            <div id="upgradeTab" class="tab-content">
+                <div id="upgradeUnits" class="unit-list">
+                    <!-- 업그레이드 가능한 유닛들이 여기에 동적으로 생성됩니다 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        
-        
-        let unitData = {};
+        let userUnitData = {};
         let timerInterval;
         let userId = null;
         let completedUnits = new Set();
-        
         let units = {};
         let allUnits = {};
+        let currentPopupCategory = null;
 
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'set_player_id') {
@@ -292,31 +581,22 @@
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
-                    
                     loadUnits();
                 }
             }
 
             if (event.data && event.data.type === 'response_config') {
                 const UnitConfig = event.data.payload;
-                units = UnitConfig
-                
-                // 모든 유닛을 평면 배열로 변환
+                units = UnitConfig;
                 allUnits = Object.values(units).flat();
-                
-                
-                
-                
             }
         });
 
         window.onload = function() {
             window.parent.postMessage({
-                type: 'request_config',  // 메시지 타입 (요청임을 명시)
-                configType: 'unit'  // 원하는 데이터 타입
+                type: 'request_config',
+                configType: 'unit'
             }, '*');
-            
-            
             
             startTimer();
             
@@ -325,35 +605,309 @@
                     loadUnits();
                 }
             }, 100);
-        
-        
         };
-        
-        
 
-        
         function openTrainingPopup(category) {
-            // 나중에 팝업을 띄울 함수
-            showResult(`${category} 훈련 팝업을 열 예정입니다.`);
-            console.log(`${category} 훈련 팝업 열기`);
+            currentPopupCategory = category;
+            const categoryNames = {
+                'infantry': '🛡️ 보병',
+                'cavalry': '🐎 기병', 
+                'archer': '🏹 궁병'
+            };
+            
+            document.getElementById('popupTitle').textContent = `${categoryNames[category]} 훈련`;
+            document.getElementById('trainingPopup').style.display = 'flex';
+            
+            // 기본적으로 생산 탭 활성화
+            switchTab('train');
         }
 
-        function generateUnitTables() {
+        function closeTrainingPopup() {
+            document.getElementById('trainingPopup').style.display = 'none';
+            currentPopupCategory = null;
+        }
+
+        function switchTab(tabType) {
+            // 탭 버튼 스타일 변경
+            document.querySelectorAll('.popup-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`.popup-tab:nth-child(${tabType === 'train' ? '1' : '2'})`).classList.add('active');
             
-            ['infantry', 'cavalry', 'archer'].forEach(category => {
+            // 탭 내용 변경
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabType === 'train' ? 'trainTab' : 'upgradeTab').classList.add('active');
+            
+            // 해당 탭 내용 생성
+            if (tabType === 'train') {
+                generateTrainContent();
+            } else {
+                generateUpgradeContent();
+            }
+        }
+
+        function generateTrainContent() {
+            if (!currentPopupCategory || !units[currentPopupCategory]) return;
+            
+            const trainUnitsContainer = document.getElementById('trainUnits');
+            trainUnitsContainer.innerHTML = '';
+            
+            // 테이블 생성
+            const table = document.createElement('table');
+            table.className = 'popup-unit-table';
+            
+            // 헤더 생성
+            const thead = document.createElement('thead');
+            thead.innerHTML = `
+                <tr>
+                    <th style="width: 30%">유닛</th>
+                    <th style="width: 15%">보유</th>
+                    <th style="width: 20%">비용</th>
+                    <th style="width: 10%">시간</th>
+                    <th style="width: 8%">수량</th>
+                    <th style="width: 17%">훈련</th>
+                </tr>
+            `;
+            table.appendChild(thead);
+            
+            // 바디 생성
+            const tbody = document.createElement('tbody');
+            
+            units[currentPopupCategory].forEach(unit => {
+                const unitData = userUnitData[unit.unit_idx] || { total: 0, ready: 0 };
                 
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <div class="unit-item-name">
+                            <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
+                            ${unit.name}
+                        </div>
+                    </td>
+                    <td>${unitData.total}</td>
+                    <td>${formatCost(unit)}</td>
+                    <td>${formatTime(unit.train_time)}</td>
+                    <td>
+                        <input type="number" class="quantity-input" min="1" max="100" value="1" id="train-qty-${unit.unit_idx}">
+                    </td>
+                    <td>
+                        <button class="train-btn" onclick="trainUnit(${unit.unit_idx})">훈련</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            table.appendChild(tbody);
+            trainUnitsContainer.appendChild(table);
+        }
+
+        function generateUpgradeContent() {
+            if (!currentPopupCategory || !units[currentPopupCategory]) return;
+            
+            const upgradeUnitsContainer = document.getElementById('upgradeUnits');
+            upgradeUnitsContainer.innerHTML = '';
+            
+            // 업그레이드 가능한 조합 찾기
+            const categoryUnits = units[currentPopupCategory];
+            const upgradeOptions = [];
+            
+            for (let i = 0; i < categoryUnits.length - 1; i++) {
+                const fromUnit = categoryUnits[i];
+                const toUnit = categoryUnits[i + 1];
+                
+                const fromData = userUnitData[fromUnit.unit_idx] || { total: 0, ready: 0 };
+                
+                if (fromData.ready > 0) {
+                    upgradeOptions.push({ from: fromUnit, to: toUnit, available: fromData.ready });
+                }
+            }
+            
+            if (upgradeOptions.length === 0) {
+                upgradeUnitsContainer.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">업그레이드 가능한 유닛이 없습니다.</div>';
+                return;
+            }
+            
+            // 테이블 생성
+            const table = document.createElement('table');
+            table.className = 'popup-unit-table';
+            
+            // 헤더 생성
+            const thead = document.createElement('thead');
+            thead.innerHTML = `
+                <tr>
+                    <th style="width: 35%">업그레이드</th>
+                    <th style="width: 10%">보유</th>
+                    <th style="width: 20%">추가비용</th>
+                    <th style="width: 10%">시간</th>
+                    <th style="width: 8%">수량</th>
+                    <th style="width: 17%">업그레이드</th>
+                </tr>
+            `;
+            table.appendChild(thead);
+            
+            // 바디 생성
+            const tbody = document.createElement('tbody');
+            
+            upgradeOptions.forEach(option => {
+                const { from, to, available } = option;
+                const costDiff = calculateUpgradeCost(from, to);
+                const timeDiff = Math.max(0, to.train_time - from.train_time);
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <div class="upgrade-path">
+                            <span class="tier-badge tier-${from.unit_tier}">T${from.unit_tier}</span>
+                            ${from.name}
+                            <span class="upgrade-arrow">→</span>
+                            <span class="tier-badge tier-${to.unit_tier}">T${to.unit_tier}</span>
+                            ${to.name}
+                        </div>
+                    </td>
+                    <td>${available}</td>
+                    <td>${formatCostDiff(costDiff)}</td>
+                    <td>${formatTime(timeDiff)}</td>
+                    <td>
+                        <input type="number" class="quantity-input" min="1" max="${available}" value="1" id="upgrade-qty-${from.unit_idx}-${to.unit_idx}">
+                    </td>
+                    <td>
+                        <button class="train-btn" onclick="upgradeUnit(${from.unit_idx}, ${to.unit_idx})">업그레이드</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            table.appendChild(tbody);
+            upgradeUnitsContainer.appendChild(table);
+        }
+
+        function formatCost(unit) {
+            const costs = [];
+            if (unit.gold_cost > 0) costs.push(`💰${unit.gold_cost}`);
+            if (unit.food_cost > 0) costs.push(`🌾${unit.food_cost}`);
+            if (unit.wood_cost > 0) costs.push(`🪵${unit.wood_cost}`);
+            if (unit.stone_cost > 0) costs.push(`🗿${unit.stone_cost}`);
+            return costs.join(' ');
+        }
+
+        function formatCostDiff(costDiff) {
+            const costs = [];
+            if (costDiff.gold > 0) costs.push(`💰${costDiff.gold}`);
+            if (costDiff.food > 0) costs.push(`🌾${costDiff.food}`);
+            if (costDiff.wood > 0) costs.push(`🪵${costDiff.wood}`);
+            if (costDiff.stone > 0) costs.push(`🗿${costDiff.stone}`);
+            return costs.length > 0 ? costs.join(' ') : '무료';
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return `${seconds}초`;
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return remainingSeconds > 0 ? `${minutes}분 ${remainingSeconds}초` : `${minutes}분`;
+        }
+
+        function calculateUpgradeCost(fromUnit, toUnit) {
+            return {
+                gold: Math.max(0, toUnit.gold_cost - fromUnit.gold_cost),
+                food: Math.max(0, toUnit.food_cost - fromUnit.food_cost),
+                wood: Math.max(0, toUnit.wood_cost - fromUnit.wood_cost),
+                stone: Math.max(0, toUnit.stone_cost - fromUnit.stone_cost)
+            };
+        }
+
+        async function trainUnit(unitIdx) {
+            const quantity = parseInt(document.getElementById(`train-qty-${unitIdx}`).value);
+            if (!quantity || quantity < 1) {
+                showResult('수량을 올바르게 입력해주세요.');
+                return;
+            }
+
+            try {
+                showResult(`유닛 ${unitIdx} 훈련 시작 중... (수량: ${quantity})`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 4002, // 훈련 API 코드
+                        data: {
+                            unit_idx: unitIdx,
+                            quantity: quantity
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult(`유닛 훈련 시작 성공! (${quantity}개)`);
+                    loadUnits(); // 데이터 새로고침
+                    closeTrainingPopup();
+                } else {
+                    showResult(`훈련 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`훈련 에러: ${error.message}`);
+            }
+        }
+
+        async function upgradeUnit(fromUnitIdx, toUnitIdx) {
+            const quantity = parseInt(document.getElementById(`upgrade-qty-${fromUnitIdx}-${toUnitIdx}`).value);
+            if (!quantity || quantity < 1) {
+                showResult('수량을 올바르게 입력해주세요.');
+                return;
+            }
+
+            try {
+                showResult(`유닛 업그레이드 시작 중... (수량: ${quantity})`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 4003, // 업그레이드 API 코드
+                        data: {
+                            from_unit_idx: fromUnitIdx,
+                            to_unit_idx: toUnitIdx,
+                            quantity: quantity
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult(`유닛 업그레이드 시작 성공! (${quantity}개)`);
+                    loadUnits(); // 데이터 새로고침
+                    closeTrainingPopup();
+                } else {
+                    showResult(`업그레이드 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`업그레이드 에러: ${error.message}`);
+            }
+        }
+
+        // 팝업 외부 클릭 시 닫기
+        document.getElementById('trainingPopup').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeTrainingPopup();
+            }
+        });
+
+        function generateUnitTables() {
+            ['infantry', 'cavalry', 'archer'].forEach(category => {
                 const tbody = document.getElementById(`${category}TableBody`);
                 if (!tbody) return;
                 
                 tbody.innerHTML = '';
                 
-                // 모든 유닛을 표시 (데이터가 없어도 기본값으로)
-                
                 allUnits.forEach(unit => {
-                    if (unit.category !=category) return;
+                    if (unit.category != category) return;
                     
-                    
-                    const data = unitData[unit.unit_idx] || { 
+                    const data = userUnitData[unit.unit_idx] || { 
                         total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
                     };
                     
@@ -363,13 +917,6 @@
                             <div class="unit-name">
                                 <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
                                 ${unit.name}
-                            </div>
-                        </td>
-                        <td>
-                            <div class="unit-counts">
-                                <div class="count-item">    
-                                    <span class="count-value">${data.total}</span>
-                                </div>
                             </div>
                         </td>
                         <td>
@@ -391,45 +938,6 @@
             });
         }
         
-        function generateSingleTable() {
-            if (currentLayout !== 'single') return;
-            
-            const tbody = document.getElementById('singleTableBody');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            
-            Object.keys(units).forEach(category => {
-                // 모든 유닛을 표시 (데이터가 없어도 기본값으로)
-                units[category].forEach(unit => {
-                    const data = unitData[unit.unit_idx] || { 
-                        total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
-                    };
-                    
-                    const categoryName = category === 'infantry' ? '🛡️보병' : category === 'cavalry' ? '🐎기병' : '🏹궁병';
-                    
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${categoryName}</td>
-                        <td>
-                            <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
-                            ${unit.name}
-                        </td>
-                        <td>${data.total}</td>
-                        <td class="ready">${data.ready}</td>
-                        <td>
-                            <div class="production-status" id="production-${unit.unit_idx}">
-                                ${getProductionStatus(unit.unit_idx, data)}
-                            </div>
-                            <div class="timer" id="timer-${unit.unit_idx}">${getRemainingTime(unit.unit_idx)}</div>
-                        </td>
-                    `;
-                    
-                    tbody.appendChild(row);
-                });
-            });
-        }
-        
         function getProductionStatus(unitIdx, data) {
             const taskData = data && data.current_task;
             
@@ -438,10 +946,8 @@
             }
             
             if (taskData.task_type === 0) {
-                // 훈련중
                 return `훈련 ${taskData.quantity}개`;
             } else if (taskData.task_type === 1) {
-                // 업그레이드중
                 const targetUnit = allUnits.find(u => u.unit_idx === taskData.target_unit_idx);
                 return `업그레이드 ${taskData.quantity}개<br><small>→ ${targetUnit ? targetUnit.name : '알 수 없음'}</small>`;
             }
@@ -451,21 +957,21 @@
         
         function updateProductionStatus() {
             allUnits.forEach(unit => {
-                const productionElement = document.getElementById(`production-${unit.idx}`);
+                const productionElement = document.getElementById(`production-${unit.unit_idx}`);
                 if (productionElement) {
-                    const data = unitData[unit.unit_idx];
+                    const data = userUnitData[unit.unit_idx];
                     productionElement.innerHTML = getProductionStatus(unit.unit_idx, data);
                 }
             });
         }
         
         function hasOngoingTask(unitIdx) {
-            const data = unitData[unitIdx];
+            const data = userUnitData[unitIdx];
             return data && data.current_task && data.current_task.remaining_time > 0;
         }
         
         function getRemainingTime(unitIdx) {
-            const data = unitData[unitIdx];
+            const data = userUnitData[unitIdx];
             if (!data || !data.current_task || data.current_task.remaining_time <= 0) {
                 return '-';
             }
@@ -478,17 +984,15 @@
         }
         
         function updateTimers() {
-            // 각 병종별 헤더 타이머 업데이트
             ['infantry', 'cavalry', 'archer'].forEach(category => {
                 const categoryTimerElement = document.getElementById(`timer-${category}`);
                 if (!categoryTimerElement) return;
                 
-                // 해당 병종의 유닛들 중 진행중인 작업이 있는지 확인
-                const categoryUnits = units[category];
+                const categoryUnits = units[category] || [];
                 let minRemainingTime = null;
                 
                 categoryUnits.forEach(unit => {
-                    const data = unitData[unit.unit_idx];
+                    const data = userUnitData[unit.unit_idx];
                     if (data && data.current_task && data.current_task.remaining_time > 0) {
                         if (minRemainingTime === null || data.current_task.remaining_time < minRemainingTime) {
                             minRemainingTime = data.current_task.remaining_time;
@@ -505,9 +1009,8 @@
                 }
             });
             
-            // 개별 유닛 타이머 업데이트
             allUnits.forEach(unit => {
-                const data = unitData[unit.unit_idx];
+                const data = userUnitData[unit.unit_idx];
                 
                 if (!data || !data.current_task) {
                     return;
@@ -527,7 +1030,6 @@
                 }
             });
             
-            // 생산중 상태도 업데이트
             updateProductionStatus();
         }
         
@@ -547,7 +1049,6 @@
                         user_no: parseInt(userId),
                         api_code: 4004,
                         data: {
-                            
                             unit_idx: unitIdx
                         }
                     })
@@ -557,7 +1058,7 @@
                 
                 if (result.success) {
                     if (result.data) {
-                        unitData[unitIdx] = result.data;
+                        userUnitData[unitIdx] = result.data;
                         generateCurrentTable();
                     }
                     showResult(`유닛 ${unitIdx} 자동 완료 성공`);
@@ -582,7 +1083,7 @@
                 return;
             }
             
-            unitData = {};
+            userUnitData = {};
             completedUnits.clear();
             showResult('유닛 정보 로딩 중...');
             
@@ -593,21 +1094,19 @@
                     body: JSON.stringify({
                         user_no: parseInt(userId),
                         api_code: 4001,
-                        data: {
-                            
-                        }
+                        data: {}
                     })
                 });
                 
                 const result = await response.json();
                 if (result.success && result.data && result.data.units) {
-                    unitData = result.data.units;
+                    userUnitData = result.data.units;
                 }
+                console.log('loadUnits - userUnitData: ',userUnitData)
                 
-                // 모든 유닛에 대해 기본값 설정 (API에서 데이터가 없는 경우)
                 allUnits.forEach(unit => {
-                    if (!unitData[unit.unit_idx]) {
-                        unitData[unit.unit_idx] = {
+                    if (!userUnitData[unit.unit_idx]) {
+                        userUnitData[unit.unit_idx] = {
                             total: 0, ready: 0, training: 0, upgrading: 0, 
                             field: 0, injured: 0, wounded: 0, healing: 0, death: 0
                         };
@@ -620,9 +1119,8 @@
             } catch (error) {
                 console.log('유닛 정보 로드 실패:', error);
                 
-                // 에러가 발생해도 모든 유닛에 대해 기본값 설정
                 allUnits.forEach(unit => {
-                    unitData[unit.unit_idx] = {
+                    userUnitData[unit.unit_idx] = {
                         total: 0, ready: 0, training: 0, upgrading: 0, 
                         field: 0, injured: 0, wounded: 0, healing: 0, death: 0
                     };
