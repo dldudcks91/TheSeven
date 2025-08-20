@@ -104,32 +104,13 @@ class BuildingManager():
             # 건물 조회
             user_buildings = self._get_all_user_buildings(user_no)
             
-            
-            
             # 건물 데이터 구성
             buildings_data = {}
             
             # 기존 건물들 추가
             for building in user_buildings:
                 buildings_data[building.building_idx] = self._format_building_data(building)
-            
-            
-            # 건설 가능한 모든 건물 목록
-            # available_buildings = self._get_available_buildings()
-            # # 건설되지 않은 건물들 기본값으로 추가
-            # for building_idx in available_buildings:
-            #     if building_idx not in buildings_data:
-            #         buildings_data[building_idx] = {
-            #             "id": None,
-            #             "user_no": user_no,
-            #             "building_idx": building_idx,
-            #             "building_lv": 0,
-            #             "status": 0,
-            #             "start_time": None,
-            #             "end_time": None,
-            #             "last_dt": None
-            #         }
-            
+        
             return {
                 "success": True,
                 "message": f"Retrieved {len(buildings_data)} buildings info",

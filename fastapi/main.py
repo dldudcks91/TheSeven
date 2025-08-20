@@ -34,6 +34,9 @@ async def startup_event():
 async def read_root(request: Request):
     
     return templates.TemplateResponse("main.html", {"request": request})
+@app.get("/resource.html")
+async def get_resource(request: Request):
+    return templates.TemplateResponse("resource.html", {"request": request})
 
 @app.get("/building.html")
 async def get_building(request: Request):

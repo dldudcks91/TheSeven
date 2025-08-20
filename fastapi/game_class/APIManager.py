@@ -1,5 +1,5 @@
 #APIManager.py
-from game_class import GameDataManager, BuildingManager, ResearchManager, UnitManager
+from game_class import GameDataManager, ResourceManager, BuildingManager, ResearchManager, UnitManager
 from fastapi import HTTPException
 class APIManager():
     
@@ -8,7 +8,6 @@ class APIManager():
         2: BuildingManager,
         3: ResearchManager,
         4: UnitManager,
-        
         }
     
     def __init__(self, db):
@@ -29,6 +28,9 @@ class APIManager():
         if api_code == 1002:  # GAME_CONFIG_ALL
             return {"success": True, "message": "게임 설정 로드 성공", "data": GameDataManager.REQUIRE_CONFIGS}
         
+        if api_code == 5001: # 자원 확인
+            resource_manager = ResourceManager(self.db)
+            return resource_manager.resource_info(user_no)
         
         #빌딩, 연구, 병사 등
         ServiceClass = self.api_dic[api_category]
