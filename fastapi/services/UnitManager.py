@@ -1,47 +1,65 @@
 # UnitManager.py
 from sqlalchemy.orm import Session
 import models, schemas
-from game_class import GameDataManager, ResourceManager
+from services import GameDataManager, ResourceManager
 from datetime import datetime, timedelta
-
-
 
 class UnitManager():
     CONFIG_TYPE = 'unit'
-    
-    # API 코드 상수
-    API_UNIT_INFO = 4001
-    API_UNIT_PRODUCE = 4002
-    API_UNIT_UPGRADE = 4003
-    API_UNIT_FINISH = 4004
-    API_UNIT_CANCEL = 4005
     
     # 작업 상태 상수
     TASK_PROCESSING = 1
     
     # 작업 타입 상수
-    TASK_PRODUCE = 0
+    TASK_TRAIN = 0
     TASK_UPGRADE = 1
     
-    def __init__(self, user_no: int, api_code: int,  data: dict, db: Session):
-        self.api_code = api_code
-        self.user_no = user_no
-        self.data = data
+    def __init__(self, db: Session):
+        self._user_no = None
+        self._data = None
         self.db = db
-        self.unit_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
-    
-    def _validate_input(self):
-        # self.user_no는 이미 __init__에서 받았으므로 유효성 검사 로직에서 제거
-        unit_idx = self.data.get('unit_idx')
+        self.unit_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]    
         
+    @property
+    def user_no(self):
+        """사용자 번호의 getter"""
+        return self._user_no
+
+    @user_no.setter
+    def user_no(self, no: int):
+        """사용자 번호의 setter. 정수형인지 확인"""
+        if not isinstance(no, int):
+            raise ValueError("user_no는 정수여야 합니다.")
+        self._user_no = no
+
+    @property
+    def data(self):
+        """요청 데이터의 getter"""
+        return self._data
+
+    @data.setter
+    def data(self, value: dict):
+        """요청 데이터의 setter. 딕셔너리인지 확인"""
+        if not isinstance(value, dict):
+            raise ValueError("data는 딕셔너리여야 합니다.")
+        self._data = value
+        
+    def _validate_input(self):
+        """공통 입력값 검증"""
+        if not self._data:
+            return {
+                "success": False,
+                "message": "Missing required data payload",
+                "data": {}
+            }
+        
+        unit_idx = self.data.get('unit_idx')
         if not unit_idx:
             return {"success": False, "message": "Missing unit_idx", "data": {}}
         
         return None
     
     def _format_unit_data(self, unit):
-        config = self.unit_config.get(unit.unit_idx, {})
-        
         return {
             "id": unit.id,
             "user_no": unit.user_no,
@@ -70,7 +88,6 @@ class UnitManager():
     
     def _handle_resource_transaction(self, user_no, unit_idx, quantity=1):
         try:
-            
             required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][unit_idx]
             
             costs = required['cost']
@@ -88,7 +105,6 @@ class UnitManager():
             return base_time, None
             
         except Exception as e:
-            
             return None, f"Resource error: {str(e)}"
     
     def _update_unit_counts(self, unit):
@@ -114,6 +130,9 @@ class UnitManager():
         ).first()
     
     def unit_info(self):
+        """
+        유닛 정보를 조회합니다.
+        """
         try:
             user_no = self.user_no
             
@@ -130,9 +149,18 @@ class UnitManager():
         except Exception as e:
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
     
-    def unit_produce(self):
+    def unit_train(self):
+        """
+        유닛을 훈련합니다.
+        """
         try:
             user_no = self.user_no
+            
+            # 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
+            
             unit_idx = self.data.get('unit_idx')
             quantity = self.data.get('quantity', 0)
                 
@@ -152,7 +180,6 @@ class UnitManager():
                     user_no=user_no,
                     unit_idx=unit_idx,
                     total=0, ready=0, field=0, injured=0, wounded=0, healing=0, death=0, training=0, upgrading=0,
-                    
                 )
                 self.db.add(unit)
                 self.db.flush()
@@ -174,7 +201,7 @@ class UnitManager():
             task = models.UnitTasks(
                 user_no=user_no,
                 unit_idx=unit_idx,
-                task_type=self.TASK_PRODUCE,
+                task_type=self.TASK_TRAIN,
                 quantity=quantity,
                 target_unit_idx=None,
                 status=self.TASK_PROCESSING,
@@ -202,15 +229,20 @@ class UnitManager():
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
     
     def unit_upgrade(self):
+        """
+        유닛을 업그레이드합니다.
+        """
         try:
             user_no = self.user_no
-            unit_idx = self.data.get('unit_idx')
-            target_unit_idx = self.data.get('target_unit_idx')
-            quantity = self.data.get('quantity', 1)
             
+            # 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
+            
+            unit_idx = self.data.get('unit_idx')
+            target_unit_idx = self.data.get('target_unit_idx')
+            quantity = self.data.get('quantity', 1)
             
             if not target_unit_idx:
                 return {"success": False, "message": "Missing target_unit_idx", "data": {}}
@@ -266,8 +298,17 @@ class UnitManager():
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
     
     def unit_finish(self):
+        """
+        유닛 훈련/업그레이드를 완료합니다.
+        """
         try:
             user_no = self.user_no
+            
+            # 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
+            
             unit_idx = self.data.get('unit_idx')
             
             unit = self._get_unit(user_no, unit_idx)
@@ -284,7 +325,7 @@ class UnitManager():
                 remaining_time = int((task.end_time - current_time).total_seconds())
                 return {"success": False, "message": f"Task not ready yet. {remaining_time} seconds remaining", "data": {}}
             
-            if task.task_type == self.TASK_PRODUCE:
+            if task.task_type == self.TASK_TRAIN:
                 unit.total += task.quantity
                 unit.ready += task.quantity
                 unit.training -= task.quantity
@@ -300,7 +341,6 @@ class UnitManager():
                         user_no=task.user_no,
                         unit_idx=task.target_unit_idx,
                         total=0, ready=0, field=0, injured=0, wounded=0, healing=0, death=0, training=0, upgrading=0,
-                        
                     )
                     self.db.add(target_unit)
                     self.db.flush()
@@ -329,8 +369,17 @@ class UnitManager():
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
     
     def unit_cancel(self):
+        """
+        유닛 훈련/업그레이드를 취소합니다.
+        """
         try:
             user_no = self.user_no
+            
+            # 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
+            
             unit_idx = self.data.get('unit_idx')
             
             unit = self._get_unit(user_no, unit_idx)
@@ -340,8 +389,6 @@ class UnitManager():
             task = self._get_current_task(user_no, unit_idx)
             if not task:
                 return {"success": False, "message": "No task to cancel", "data": {}}
-            
-            
             
             try:
                 if task.task_type == self.TASK_UPGRADE:
@@ -358,7 +405,7 @@ class UnitManager():
                     refund_costs[resource] = int(cost * task.quantity)
                 
                 resource_manager = ResourceManager(self.db)
-                resource_manager.add_resources(user_no, refund_costs)
+                resource_manager.produce_resources(user_no, refund_costs)  # add_resources 대신 produce_resources 사용
                 
             except Exception as refund_error:
                 print(f"Refund failed: {refund_error}")
@@ -371,7 +418,7 @@ class UnitManager():
             
             return {
                 "success": True,
-                "message": f"Task cancelled resources refunded",
+                "message": f"Task cancelled, resources refunded",
                 "data": self._format_unit_data(unit)
             }
             
@@ -380,6 +427,9 @@ class UnitManager():
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
     
     def check_and_complete_tasks(self, user_no=None):
+        """
+        완료된 작업들을 자동으로 처리합니다.
+        """
         try:
             current_time = datetime.utcnow()
             
@@ -397,7 +447,7 @@ class UnitManager():
             for task in completed_tasks:
                 unit = self._get_unit(task.user_no, task.unit_idx)
                 
-                if task.task_type == self.TASK_PRODUCE:
+                if task.task_type == self.TASK_TRAIN:
                     unit.total += task.quantity
                     unit.ready += task.quantity
                     unit.training -= task.quantity
@@ -412,7 +462,6 @@ class UnitManager():
                             user_no=task.user_no,
                             unit_idx=task.target_unit_idx,
                             total=0, ready=0, field=0, injured=0, wounded=0, healing=0, death=0, training=0, upgrading=0,
-                            
                         )
                         self.db.add(target_unit)
                         self.db.flush()
@@ -443,24 +492,3 @@ class UnitManager():
         except Exception as e:
             self.db.rollback()
             return {"success": False, "message": f"Error: {str(e)}", "data": {}}
-    
-    def active(self):
-        # 'user_no'는 이제 __init__에서 직접 받으므로 _validate_input에서 'user_no' 검사를 제거했습니다.
-        
-        if self.api_code == self.API_UNIT_INFO:
-            return self.unit_info()
-        else:
-            validation_error = self._validate_input()
-            if validation_error:
-                return validation_error
-                
-        if self.api_code == self.API_UNIT_PRODUCE:
-            return self.unit_produce()
-        elif self.api_code == self.API_UNIT_UPGRADE:
-            return self.unit_upgrade()
-        elif self.api_code == self.API_UNIT_FINISH:
-            return self.unit_finish()
-        elif self.api_code == self.API_UNIT_CANCEL:
-            return self.unit_cancel()
-        else:
-            return {"success": False, "message": f"Unknown API code: {self.api_code}", "data": {}}

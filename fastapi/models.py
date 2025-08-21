@@ -8,6 +8,16 @@ class Base(DeclarativeBase):
     pass
 
 
+class Buff(Base):
+    __tablename__ = 'buff'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    buff_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+
 class Item(Base):
     __tablename__ = 'item'
 

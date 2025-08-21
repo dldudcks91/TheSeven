@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
-from game_class import GameDataManager, ResourceManager
+from services import GameDataManager, ResourceManager
 
 import time
 from datetime import datetime, timedelta

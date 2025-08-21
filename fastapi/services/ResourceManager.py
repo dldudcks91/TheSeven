@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
-from game_class import GameDataManager
+from services import GameDataManager
 
 
 import time
@@ -15,7 +15,7 @@ status 값
 class ResourceManager:
     RESOURCE_TYPES = ['food', 'wood', 'stone', 'gold', 'ruby']
     #API 코드 상수 정의
-    API_RESOURCE_INFO = 5001
+    API_RESOURCE_INFO = 1011
     def __init__(self, db: Session):
         self.db = db
         self.now_resources = None

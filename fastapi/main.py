@@ -7,12 +7,17 @@ from schemas import ApiRequest
 from sqlalchemy.orm import Session
 
 import models, schemas, database
-from game_class.APIManager import APIManager
-from game_class import GameDataManager
+from services.APIManager import APIManager
+from services import GameDataManager
+
+from routers import pages
+
+
 app = FastAPI()
 
 
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
@@ -29,22 +34,9 @@ async def startup_event():
     print("✅ Game Server is ready!")
 
 
-# templates 폴더의 "main.html" 응답
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    
-    return templates.TemplateResponse("main.html", {"request": request})
-@app.get("/resource.html")
-async def get_resource(request: Request):
-    return templates.TemplateResponse("resource.html", {"request": request})
 
-@app.get("/building.html")
-async def get_building(request: Request):
-    return templates.TemplateResponse("building.html", {"request": request})
+app.include_router(pages.router)
 
-@app.get("/unit.html")
-async def get_unit(request: Request):
-    return templates.TemplateResponse("unit.html", {"request": request})
 
 # 사용자가 폼을 통해 보낸 데이터(content)를 받아서 "result.html" 템플릿에 넘김
 @app.post("/api", response_class=HTMLResponse)

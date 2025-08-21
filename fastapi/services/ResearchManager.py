@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
-from game_class import GameDataManager, ResourceManager
+from services import GameDataManager, ResourceManager
 
 import time
 from datetime import datetime, timedelta
@@ -26,12 +26,47 @@ class ResearchManager():
     STATUS_RESEARCHING = 1
     STATUS_COMPLETED = 2
     
-    def __init__(self, api_code: int, user_no: int, data: dict, db: Session):
-        self.api_code = api_code
-        self.user_no = user_no
-        self.data = data
+    def __init__(self, db: Session):
+        self._api_code: int = None 
+        self._user_no: int= None 
+        self._data: dict = None
         self.db = db
         
+    @property
+    def api_code(self):
+        """API 코드의 getter"""
+        return self._api_code
+
+    @api_code.setter
+    def api_code(self, code: int):
+        """API 코드의 setter. 정수형인지 확인"""
+        if not isinstance(code, int):
+            raise ValueError("api_code는 정수여야 합니다.")
+        self._api_code = code
+
+    @property
+    def user_no(self):
+        """사용자 번호의 getter"""
+        return self._user_no
+
+    @user_no.setter
+    def user_no(self, no: int):
+        """사용자 번호의 setter. 정수형인지 확인"""
+        if not isinstance(no, int):
+            raise ValueError("user_no는 정수여야 합니다.")
+        self._user_no = no
+
+    @property
+    def data(self):
+        """요청 데이터의 getter"""
+        return self._data
+
+    @data.setter
+    def data(self, value: dict):
+        """요청 데이터의 setter. 딕셔너리인지 확인"""
+        if not isinstance(value, dict):
+            raise ValueError("data는 딕셔너리여야 합니다.")
+        self._data = value
     def _validate_input(self):
         """공통 입력값 검증"""
         research_idx = self.data.get('research_idx')

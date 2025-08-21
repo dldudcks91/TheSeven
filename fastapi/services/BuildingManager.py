@@ -1,8 +1,6 @@
-#APIManager.py
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
-from game_class import GameDataManager, ResourceManager
-
+from services import GameDataManager, ResourceManager, BuffManager
 
 import time
 from datetime import datetime, timedelta
@@ -16,31 +14,53 @@ status 값
 class BuildingManager():
     MAX_LEVEL = 10
     CONFIG_TYPE = 'building'
-    ABALIABLE_BUILDINGS = [101, 201, 301, 401]
+    AVAILABLE_BUILDINGS = [101, 201, 301, 401]
     
-    #API 코드 상수 정의
-    API_BUILDING_INFO = 2001
-    API_BUILDING_CREATE = 2002
-    API_BUILDING_UPGRADE = 2003
-    API_BUILDING_FINISH = 2004     # 생산/업그레이드 완료
-    API_BUILDING_CANCEL = 2005
-    
-    def __init__(self, user_no: int, api_code: int,  data: dict, db: Session):
-        self.api_code = api_code
-        self.user_no = user_no
-        self.data = data
+    def __init__(self, db: Session):
+        self._user_no: int = None 
+        self._data: dict = None
         self.db = db
         
-        return
-    
+    @property
+    def user_no(self):
+        """사용자 번호의 getter"""
+        return self._user_no
+
+    @user_no.setter
+    def user_no(self, no: int):
+        """사용자 번호의 setter. 정수형인지 확인"""
+        if not isinstance(no, int):
+            raise ValueError("user_no는 정수여야 합니다.")
+        self._user_no = no
+
+    @property
+    def data(self):
+        """요청 데이터의 getter"""
+        return self._data
+
+    @data.setter
+    def data(self, value: dict):
+        """요청 데이터의 setter. 딕셔너리인지 확인"""
+        if not isinstance(value, dict):
+            raise ValueError("data는 딕셔너리여야 합니다.")
+        self._data = value
+        
     def _validate_input(self):
         """공통 입력값 검증"""
+        # data가 설정되지 않았을 경우를 대비한 체크
+        if not self._data:
+            return {
+                "success": False,
+                "message": "Missing required data payload",
+                "data": {}
+            }
+
         building_idx = self.data.get('building_idx')
         
         if not building_idx:
             return {
-                "success": False, 
-                "message": f"Missing required fields: building_idx: {building_idx}", 
+                "success": False,  
+                "message": f"Missing required fields: building_idx: {building_idx}",  
                 "data": {}
             }
         return None
@@ -76,7 +96,7 @@ class BuildingManager():
         try:
             return list(GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].keys())
         except:
-            return self.ABALIABLE_BUILDINGS
+            return self.AVAILABLE_BUILDINGS
         
     def _handle_resource_transaction(self, user_no, building_idx, target_level):
         """자원 체크 및 소모를 한번에 처리"""
@@ -86,16 +106,14 @@ class BuildingManager():
         
         resource_manager = ResourceManager(self.db)
         if not resource_manager.check_require_resources(user_no, costs):
-            return None, "Need More Food"
+            return None, "Need More Resources"
         
         resource_manager.consume_resources(user_no, costs)
         return upgrade_time, None
     
-    
     def building_info(self):
         """
-            api_code: 2001
-            info: 건물 정보를 조회합니다.
+        건물 정보를 조회합니다.
         """
         try:
             # 입력값 검증
@@ -110,12 +128,11 @@ class BuildingManager():
             # 기존 건물들 추가
             for building in user_buildings:
                 buildings_data[building.building_idx] = self._format_building_data(building)
-        
+            
             return {
                 "success": True,
                 "message": f"Retrieved {len(buildings_data)} buildings info",
                 "data": buildings_data
-                
             }
             
         except Exception as e:
@@ -123,21 +140,19 @@ class BuildingManager():
     
     def building_create(self):
         """
-            api_code: 2002
-            info: 새 건물을 생성하고 DB에 저장합니다.
+        새 건물을 생성하고 DB에 저장합니다.
         """
-        
         try:
             user_no = self.user_no
-            building_idx = self.data.get('building_idx')
             
-            
-            #1. 입력값 검증
+            # 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
             
-            #1-1.중복 체크
+            building_idx = self.data.get('building_idx')
+            
+            # 중복 체크
             building = self._get_building(user_no, building_idx)
             if building:
                 return {"success": False, "message": "Building already exists", "data": {}}
@@ -147,92 +162,82 @@ class BuildingManager():
             if error_msg:
                 return {"success": False, "message": error_msg, "data": {}}
             
-            #2-3. 시간
+            # 시간 설정
             start_time = datetime.utcnow()
-            end_time = start_time + timedelta(seconds = upgrade_time) 
+            end_time = start_time + timedelta(seconds=upgrade_time) 
             
-            #3. 새 건물 생성
+            # 새 건물 생성
             building = models.Building(
                 user_no=user_no, 
                 building_idx=building_idx, 
                 building_lv=0,
                 status=1,
-                start_time = start_time,
-                end_time = end_time,
-                last_dt = start_time
-                
+                start_time=start_time,
+                end_time=end_time,
+                last_dt=start_time
             )
             
             self.db.add(building)
             self.db.commit()
             self.db.refresh(building)
-            result = { 
+            
+            return { 
                 "success": True,
                 "message": f"Building create started. Will complete in {upgrade_time} seconds",
                 "data": self._format_building_data(building)
             }
-            return result 
             
         except Exception as e:
             self.db.rollback() 
-            return {"success": False, "message": str(e)}
-        
-    
+            return {"success": False, "message": str(e), "data": {}}
     
     def building_levelup(self):
         """
-            api_code: 2003
-            info: 건물 레벨을 업그레이드합니다.
+        건물 레벨을 업그레이드합니다.
         """
         try:
             user_no = self.user_no
-            building_idx = self.data.get('building_idx')
             
-            
-            #1. 입력값 검증
+            # 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
             
-            
+            building_idx = self.data.get('building_idx')
             building = self._get_building(user_no, building_idx)
             
-            #1-1. 건물 존재하는지 체크
+            # 건물 존재하는지 체크
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
             
-            #1-2.업그레이드 가능 상태 체크
+            # 업그레이드 가능 상태 체크
             if building.status != 0: # 0이 아니면 이미 진행중인 작업이 있음
                 return {"success": False, "message": "Building is already under construction or upgrade", "data": {}}
             
-            #1-3.최대 레벨 체크
+            # 최대 레벨 체크
             if building.building_lv >= self.MAX_LEVEL:
                 return {"success": False, "message": f"Building is already at maximum level ({self.MAX_LEVEL})", "data": {}}
             
-            
-            #2. 자원 및 시간 처리
-            upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building.building_lv +1)
+            # 자원 및 시간 처리
+            upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building.building_lv + 1)
             if error_msg:
                 return {"success": False, "message": error_msg, "data": {}}
             
-            
             start_time = datetime.utcnow()
-            end_time = start_time + timedelta(seconds = upgrade_time) 
+            end_time = start_time + timedelta(seconds=upgrade_time) 
             
-            
-            #3. 건물 업그레이드
+            # 건물 업그레이드
             building.status = 2
             building.start_time = start_time
             building.end_time = end_time
             building.last_dt = start_time
-                
             
             self.db.commit()
             self.db.refresh(building)
             
             return {
                 "success": True,
-                "message": f"Building {building_idx} upgrade started to {building.building_lv +1} lv. Will complete in {upgrade_time} seconds",
+                "message": f"Building {building_idx} upgrade started to {building.building_lv + 1} lv. Will complete in {upgrade_time} seconds",
                 "data": self._format_building_data(building)
             }
             
@@ -242,13 +247,17 @@ class BuildingManager():
     
     def building_finish(self):
         """
-            api_code: 2004 (추정)
-            info: 건물 건설/업그레이드를 완료합니다.
+        건물 건설/업그레이드를 완료합니다.
         """
         try:
             user_no = self.user_no
-            building_idx = self.data.get('building_idx')
             
+            # 입력값 검증
+            validation_error = self._validate_input()
+            if validation_error:
+                return validation_error
+            
+            building_idx = self.data.get('building_idx')
             current_time = datetime.utcnow()
             
             # 건물 조회
@@ -265,8 +274,8 @@ class BuildingManager():
             if building.end_time and current_time < building.end_time:
                 remaining_time = int((building.end_time - current_time).total_seconds())
                 return {
-                    "success": False, 
-                    "message": f"Building is not ready yet. {remaining_time} seconds remaining", 
+                    "success": False,  
+                    "message": f"Building is not ready yet. {remaining_time} seconds remaining",  
                     "data": {}
                 }
             
@@ -300,32 +309,53 @@ class BuildingManager():
             self.db.rollback()
             return {"success": False, "message": f"Error finishing building: {str(e)}", "data": {}}
     
-    def active(self):
-        
-        """API 요청을 적절한 메서드로 라우팅합니다."""
-        
-        # 'user_no'는 __init__에서 이미 받았으므로, _validate_input에서는 'building_idx'만 확인하도록 수정
-        # 'building_info'의 경우 'building_idx'가 필수가 아니므로 validation을 건너뜁니다.
-        if self.api_code != self.API_BUILDING_INFO:
+    def building_cancel(self):
+        """
+        건물 건설/업그레이드를 취소합니다.
+        """
+        try:
+            user_no = self.user_no
+            
+            # 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
             
-        api_code = self.api_code
-        if api_code == self.API_BUILDING_INFO:
-            return self.building_info()
-        
-        elif api_code == self.API_BUILDING_CREATE:
-            return self.building_create()
-        
-        elif api_code == self.API_BUILDING_UPGRADE: 
-            return self.building_levelup()
-        
-        elif api_code == self.API_BUILDING_FINISH: 
-            return self.building_finish()
-        else:
+            building_idx = self.data.get('building_idx')
+            
+            # 건물 조회
+            building = self._get_building(user_no, building_idx)
+            
+            if not building:
+                return {"success": False, "message": "Building not found", "data": {}}
+            
+            # 건설/업그레이드 중인 상태가 아닌 경우
+            if building.status not in [1, 2]:
+                return {"success": False, "message": "Building is not under construction or upgrade", "data": {}}
+            
+            # 취소 처리
+            if building.status == 1:
+                # 건설 취소 - 건물 삭제
+                self.db.delete(building)
+                message = "Building construction cancelled and removed"
+                building_data = {}
+            elif building.status == 2:
+                # 업그레이드 취소 - 상태만 원복
+                building.status = 0
+                building.start_time = None
+                building.end_time = None
+                building.last_dt = datetime.utcnow()
+                message = "Building upgrade cancelled"
+                building_data = self._format_building_data(building)
+            
+            self.db.commit()
+            
             return {
-                "success": False, 
-                "message": f"Unknown API code: {api_code}", 
-                "data": {}
+                "success": True,
+                "message": message,
+                "data": building_data
             }
+            
+        except Exception as e:
+            self.db.rollback()
+            return {"success": False, "message": f"Error cancelling building: {str(e)}", "data": {}}
