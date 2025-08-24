@@ -1,9 +1,12 @@
 
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
+
 import models, schemas # 모델 및 스키마 파일 import
 from services import GameDataManager
 import time
 from datetime import datetime, timedelta
+
 
 '''
 status 값
@@ -33,19 +36,33 @@ class BuffManager:
         self.now_buffs = None
         self.buff_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
         
-    def _get_buffs(self, user_no):
+    def _get_buffs(self, user_no, ally_no = 0):
         """버프 조회 헬퍼 메서드"""
-        return self.db.query(models.Buff).filter(models.Buff.user_no == user_no).first()
+        return self.db.query(models.Buff).filter(
+            
+            or_((models.Buff.buff_type == 0, models.Buff.target_no == 0),
+                (models.Buff.buff_type == 1, models.Buff.target_no == ally_no)
+                (models.Buff.buff_type == 2, models.Buff.target_no == user_no)
+                
+                )
+            )
+    
     
     def _format_buffs_data(self, buff):
         """버프 데이터를 응답 형태로 포맷팅"""
         return {
             "id": buff.id,
-            "user_no": buff.user_no,
+            "buff_type": buff.buff_type,
+            "target_no": buff.target_no,
             "buff_idx": buff.buff_idx,
             "start_time": buff.start_time.isoformat() if buff.start_time else None,
             "end_time": buff.end_time.isoformat() if buff.end_time else None
         }
+    
+    
+    
+    
+    
     
     def buff_info(self, user_no):
         """
@@ -68,7 +85,7 @@ class BuffManager:
         except Exception as e:
             return {"success": False, "message": f"Error retrieving buff info: {str(e)}", "data": {}}
     
-    def check_buff_active(self, user_no, buff_type):
+    def check_buff_by_user(self, user_no, buff_type):
         """특정 버프가 활성화되어 있는지 확인"""
         self.now_buffs = self._get_buffs(user_no)
         
@@ -77,6 +94,7 @@ class BuffManager:
             
         buff_status = getattr(self.now_buffs, buff_type, 0)
         return buff_status == 1  # 1이면 활성
+    
     
     def get_buff_value(self, user_no, buff_type):
         """특정 버프의 효과값을 반환"""

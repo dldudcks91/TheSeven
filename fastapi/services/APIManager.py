@@ -37,7 +37,7 @@ class APIManager():
         4001: "unit_info",
         4002: "unit_train",
         4003: "unit_upgrade",
-        4004: "unit_dismiss",
+        4004: "unit_finish",
         
         
     }

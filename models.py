@@ -9,6 +9,18 @@ class Base(DeclarativeBase):
     pass
 
 
+class Buff(Base):
+    __tablename__ = 'buff'
+    __table_args__ = {'comment': '\t\t'}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    buff_type: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    buff_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+
 class StatNation(Base):
     __tablename__ = 'stat_nation'
     __table_args__ = (
@@ -19,6 +31,7 @@ class StatNation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     account_no: Mapped[int] = mapped_column(Integer, nullable=False)
     user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    ally_no: Mapped[Optional[int]] = mapped_column(Integer)
     cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 

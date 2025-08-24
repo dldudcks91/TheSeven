@@ -340,8 +340,8 @@
         }
 
         .unit-main-image {
-            width: 192x;
-            height: 192px;
+            width: 180x;
+            height: 180px;
             object-fit: cover;
             border-radius: 6px;
             border: 1px solid #ddd;
@@ -398,7 +398,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 32px;
+            margin-bottom: 20px;
         }
 
         /* 슬라이더 컨테이너 - 크기 고정 */
@@ -491,7 +491,7 @@
 
         /* 생산 버튼 - 오른쪽 고정 */
         .production-button {
-            padding: 8px 16px;
+            /*padding: 4px 8px;*/
             border: 1px solid #4caf50;
             background: #e8f5e8;
             cursor: pointer;
@@ -499,7 +499,8 @@
             border-radius: 4px;
             color: #2e7d2e;
             font-weight: bold;
-            height: 24px;
+            height: 32px;
+            width: 48px;
             
             margin-left: auto; /* 오른쪽으로 밀기 */
             
@@ -619,7 +620,7 @@
         <div class="unit-item">
             <div class="unit-training-layout">
                 <!-- Left side: Large unit image -->
-                <img class="unit-main-image" src="" alt="">
+                <img id = "unit-main-image" class="unit-main-image" src="" alt="">
 
                 <!-- Right side: Controls -->
                 <div class="unit-controls">
@@ -648,10 +649,10 @@
                         <div class="resource-container">
                             <div class="resource-item">
                                 <div class="resource-icon">🌾</div>
-                                <div class="resource-amount">6,000</div>
+                                <div class="resource-amount"></div>
                             </div>
                             
-                            <button class="production-button">생산</button>
+                            <button class="production-button" >생산</button>
                         </div>
 
                         
@@ -692,6 +693,7 @@
                 const UnitConfig = event.data.payload;
                 units = UnitConfig;
                 allUnits = Object.values(units).flat();
+                
             }
         });
 
@@ -701,7 +703,6 @@
                 configType: 'unit'
             }, '*');
             
-            startTimer();
             
             setTimeout(() => {
                 if (userId) {
@@ -716,6 +717,7 @@
         
         function generateCurrentTable() {
             generateUnitTables();
+
         }
         
         async function loadUnits() {
@@ -797,13 +799,22 @@
                         <td>
                             <div class="unit-counts">
                                 <div class="count-item">    
+                                    <span class="count-value ready">${data.total}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="unit-counts">
+                                <div class="count-item">    
                                     <span class="count-value ready">${data.ready}</span>
                                 </div>
                             </div>
                         </td>
                         <td>
-                            <div class="production-status" id="production-${unit.unit_idx}">
-                                ${getProductionStatus(unit.unit_idx, data)}
+                            <div class="unit-counts">
+                                <div class="count-item">    
+                                    <span class="count-value ready">${data.training}</span>
+                                </div>
                             </div>
                         </td>
                     `;
@@ -910,10 +921,10 @@
 
         function formatCost(unit) {
             const costs = [];
-            if (unit.gold_cost > 0) costs.push(`💰${unit.gold_cost}`);
-            if (unit.food_cost > 0) costs.push(`🌾${unit.food_cost}`);
-            if (unit.wood_cost > 0) costs.push(`🪵${unit.wood_cost}`);
-            if (unit.stone_cost > 0) costs.push(`🗿${unit.stone_cost}`);
+            if (unit.gold > 0) costs.push(`💰${unit.gold}`);
+            if (unit.food > 0) costs.push(`🌾${unit.food}`);
+            if (unit.wood > 0) costs.push(`🪵${unit.wood}`);
+            if (unit.stone > 0) costs.push(`🗿${unit.stone}`);
             return costs.join(' ');
         }
 
@@ -935,10 +946,10 @@
 
         function calculateUpgradeCost(fromUnit, toUnit) {
             return {
-                gold: Math.max(0, toUnit.gold_cost - fromUnit.gold_cost),
-                food: Math.max(0, toUnit.food_cost - fromUnit.food_cost),
-                wood: Math.max(0, toUnit.wood_cost - fromUnit.wood_cost),
-                stone: Math.max(0, toUnit.stone_cost - fromUnit.stone_cost)
+                gold: Math.max(0, toUnit.gold - fromUnit.gold),
+                food: Math.max(0, toUnit.food - fromUnit.food),
+                wood: Math.max(0, toUnit.wood - fromUnit.wood),
+                stone: Math.max(0, toUnit.stone - fromUnit.stone)
             };
         }
 
@@ -955,32 +966,9 @@
 
         
         
-        function getProductionStatus(unitIdx, data) {
-            const taskData = data && data.current_task;
-            
-            if (!taskData || taskData.remaining_time <= 0) {
-                return '-';
-            }
-            
-            if (taskData.task_type === 0) {
-                return `훈련 ${taskData.quantity}개`;
-            } else if (taskData.task_type === 1) {
-                const targetUnit = allUnits.find(u => u.unit_idx === taskData.target_unit_idx);
-                return `업그레이드 ${taskData.quantity}개<br><small>→ ${targetUnit ? targetUnit.description : '알 수 없음'}</small>`;
-            }
-            
-            return '-';
-        }
         
-        function updateProductionStatus() {
-            allUnits.forEach(unit => {
-                const productionElement = document.getElementById(`production-${unit.unit_idx}`);
-                if (productionElement) {
-                    const data = userUnitData[unit.unit_idx];
-                    productionElement.innerHTML = getProductionStatus(unit.unit_idx, data);
-                }
-            });
-        }
+        
+       
         
         function hasOngoingTask(unitIdx) {
             const data = userUnitData[unitIdx];
@@ -1043,85 +1031,130 @@
             // Filter units based on the selected category.
             const filteredUnits = allUnits.filter(unit => unit.category === category);
             console.log(category, filteredUnits);
+            
 
-            if (filteredUnits.length > 0) {
-                filteredUnits.forEach((unit, index) => {
-                    const template = document.getElementById('unit-training-template');
-                    const unitDiv = template.content.cloneNode(true);
+            // 유닛 이미지와 이름 설정
+
+            const template = document.getElementById('unit-training-template');
+            const unitDiv = template.content.cloneNode(true);
+            const unitImage = unitDiv.querySelector('.unit-main-image');
+            unitImage.src = `static/unit_${filteredUnits[0].unit_idx}.jpg`;
+
+            mainUnitIdx = filteredUnits[0].unit_idx
+
+            
+            const tierUnits = unitDiv.querySelector('.tier-units');
+            filteredUnits.forEach((tier_unit, tierIndex) => {
+                const tierTemplate = document.getElementById('tier-button-template');
+                const tierClone = tierTemplate.content.cloneNode(true);
+                
+                const tierUnit = tierClone.querySelector('.tier-unit');
+                tierUnit.src = `static/unit_${tier_unit.unit_idx}.jpg`;
+                
+                // 티어 버튼 클릭 이벤트 추가
+                tierUnit.addEventListener('click', function() {
+                    // 왼쪽 큰 이미지 변경
+                    unitImage.src = `static/unit_${tier_unit.unit_idx}.jpg`;
+                    unitImage.alt = tier_unit.name;
+                    mainUnitIdx = tier_unit.unit_idx;
                     
-                    // 유닛 이미지와 이름 설정
-                    const unitImage = unitDiv.querySelector('.unit-main-image');
-                    unitImage.src = `static/unit_${unit.unit_idx}.jpg`;
-                    unitImage.alt = unit.name;
-                    
-                    // 티어 버튼들 생성
-                    const tierUnits = unitDiv.querySelector('.tier-units');
-                    filteredUnits.forEach((tier_unit, tierIndex) => {
-                        const tierTemplate = document.getElementById('tier-button-template');
-                        const tierClone = tierTemplate.content.cloneNode(true);
-                        
-                        const tierUnit = tierClone.querySelector('.tier-unit');
-                        tierUnit.src = `static/unit_${tier_unit.unit_idx}.jpg`;
-                        
-                        
-                        
-                        tierUnits.appendChild(tierClone);
-                    });
-
-                    // 슬라이더 이벤트 설정
-                    const slider = unitDiv.querySelector('.quantity-slider');
-                    const quantityDisplay = unitDiv.querySelector('.quantity-display');
-                    const resourceContainer = unitDiv.querySelector('.resource-container');
-
-                    const resources = [
-                        { value: 6000, emoji: '🌾', name: 'food' },
-                        { value: 4500, emoji: '🪵', name: 'wood' },
-                        { value: 0, emoji: '🪨', name: 'stone' }
-                    ];
-
-                    // Update resource costs when slider changes
-                    slider.addEventListener('input', function() {
-                        const value = parseInt(this.value);
-                        quantityDisplay.textContent = value;
-                        
-                        // Update resource costs
-                        resources.forEach((res, resIndex) => {
-                            if (res.value > 0) {
-                                const resourceItems = resourceContainer.children;
-                                let displayIndex = 0;
-                                for (let i = 0; i < resIndex; i++) {
-                                    if (resources[i].value > 0) displayIndex++;
-                                }
-                                if (resourceItems[displayIndex]) {
-                                    const amountElement = resourceItems[displayIndex].querySelector('.resource-amount');
-                                    amountElement.textContent = (res.value * value).toLocaleString();
-                                }
-                            }
-                        });
-                    });
-
-                    // 생산 버튼 이벤트
-                    const productionButton = unitDiv.querySelector('.production-button');
-                    productionButton.addEventListener('click', function() {
-                        const quantity = slider.value;
-                        alert(`${quantity}개 유닛 생산을 시작합니다!`);
-                    });
-
-                    // Set display for the current unit.
-                    const unitItem = unitDiv.querySelector('.unit-item');
-                    if (index !== 0) {
-                        unitItem.style.display = 'none';
-                    }
-
-                    trainUnitsContainer.appendChild(unitDiv);
                 });
-            } else {
-                trainUnitsContainer.textContent = '해당 카테고리의 유닛을 찾을 수 없습니다.';
+                
+                tierUnits.appendChild(tierClone);
+            });
+              
+                
+
+            // 슬라이더 이벤트 설정
+            const slider = unitDiv.querySelector('.quantity-slider');
+            const quantityDisplay = unitDiv.querySelector('.quantity-display');
+            const resourceContainer = unitDiv.querySelector('.resource-container');
+            
+
+            const resources = [{value: units[mainUnitIdx]['cost']['food'], emoji: '🌾', name: 'food'}]
+            
+
+            
+            resourceContainer.children[0].querySelector('.resource-amount').textContent= (resources[0].value * 1).toLocaleString();
+            console.log(resources)
+
+
+            // Update resource costs when slider changes
+            slider.addEventListener('input', function() {
+                const value = parseInt(this.value);
+                quantityDisplay.textContent = value;
+                
+                // Update resource costs
+                resources.forEach((res, resIndex) => {
+                    if (res.value > 0) {
+                        const resourceItems = resourceContainer.children;
+                        let displayIndex = 0;
+                        for (let i = 0; i < resIndex; i++) {
+                            if (resources[i].value > 0) displayIndex++;
+                        }
+                        if (resourceItems[displayIndex]) {
+                            const amountElement = resourceItems[displayIndex].querySelector('.resource-amount');
+                            amountElement.textContent = (res.value * value).toLocaleString();
+                            
+                        }
+                    }
+                });
+            });
+
+            // 생산 버튼 이벤트
+            const productionButton = unitDiv.querySelector('.production-button');
+            productionButton.addEventListener('click', function() {
+                const quantity = slider.value;
+                callAPI(4002, mainUnitIdx, quantity)
+                callAPI(4004, mainUnitIdx)
+            });
+
+
+            trainUnitsContainer.appendChild(unitDiv);
+        };
+
+
+        async function callAPI(apiCode, unitIdx, quantity) {
+            if (!userId) {
+                showResult('플레이어 ID를 입력하세요');
+                return;
+            }
+            
+            
+            try {
+                showResult(`${unitIdx} 요청 중...`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: apiCode,
+                        data: {
+                            unit_idx: unitIdx,
+                            quantity: quantity
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('result:', result)
+                
+                if (result.success) {
+                    if (result.data) {
+                        userUnitData[unitIdx] = result.data;
+                        generateUnitTables(); // 새로운 상태로 타이머 재설정
+                    }
+                    showResult(`${unitIdx} 성공: ${result.message }`);
+                    
+                } else {
+                    showResult(`${unitIdx} 실패: ${result.message || '알 수 없는 오류'}`);
+                }
+            } catch (error) {
+                console.error(`❌ ${unitIdx} API 에러:`, error);
+                showResult(`${unitIdx} 에러: ${error.message}`);
             }
         }
-
-        
-        
 
         window.onbeforeunload = function() {
             if (timerInterval) {

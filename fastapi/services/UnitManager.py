@@ -112,11 +112,12 @@ class UnitManager():
         if unit.total != calculated_total:
             unit.total = calculated_total
     
-    def _has_ongoing_task(self, user_no, unit_idx):
+    def _has_ongoing_task(self, user_no, unit_idxs):
         """해당 유닛 타입에 진행중인 작업이 있는지 확인"""
+        
         task = self.db.query(models.UnitTasks).filter(
             models.UnitTasks.user_no == user_no,
-            models.UnitTasks.unit_idx == unit_idx,
+            models.UnitTasks.unit_idx.in_(unit_idxs),
             models.UnitTasks.status == self.TASK_PROCESSING
         ).first()
         return task is not None
@@ -162,7 +163,11 @@ class UnitManager():
                 return validation_error
             
             unit_idx = self.data.get('unit_idx')
-            quantity = self.data.get('quantity', 0)
+            
+            try:
+                quantity = int(self.data.get('quantity', 0))
+            except:
+                return {"success": False, "message": "Quantity must be Integer", "data": {}}
                 
             if quantity <= 0:
                 return {"success": False, "message": "Quantity must be greater than 0", "data": {}}
@@ -171,10 +176,20 @@ class UnitManager():
                 return {"success": False, "message": "Invalid unit type", "data": {}}
             
             # 진행중인 작업이 있는지 확인
-            if self._has_ongoing_task(user_no, unit_idx):
+            unit_category = self.unit_config[unit_idx]['category']
+            
+            unit_idxs = [] 
+            for key, value in self.unit_config.items():
+                
+                if value['category'] == unit_category:
+                    unit_idxs.append(key)
+            
+            
+            if self._has_ongoing_task(user_no, unit_idxs):
                 return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
             
             unit = self._get_unit(user_no, unit_idx)
+            
             if not unit:
                 unit = models.Unit(
                     user_no=user_no,
@@ -299,7 +314,7 @@ class UnitManager():
     
     def unit_finish(self):
         """
-        유닛 훈련/업그레이드를 완료합니다.
+        api_code(4004): 유닛 훈련/업그레이드를 완료합니다.
         """
         try:
             user_no = self.user_no

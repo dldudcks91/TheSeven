@@ -1,4 +1,4 @@
-building_idx,building_lv,construct_time,food_cost,wood_cost,stone_cost,gold_cost, required_buildings,description
+building_idx,building_lv,construct_time,food,wood,stone,gold, required_buildings,description
 201,1,2,100,0,0,0,,townhall
 201,2,4,200,0,0,0,,townhall
 201,3,6,400,0,0,0,,townhall
