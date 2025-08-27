@@ -43,8 +43,9 @@ class APIManager():
     }
     
         
-    def __init__(self, db):
+    def __init__(self, db, redis_mgr):
         self.db = db
+        self.redis_mgr = redis_mgr
         return
     
 
@@ -62,21 +63,20 @@ class APIManager():
         else: 
             
             method_name = self.api_map.get(api_code)
-            if method_name:
-                ServiceClass = self.service_dic.get(api_category)
-                if ServiceClass:
+            ServiceClass = self.service_dic.get(api_category)
+            if method_name and ServiceClass:
+                
+                
                     
-                    service_instance = ServiceClass(self.db)
-                    service_instance.user_no = user_no
-                    service_instance.data = data
+                service_instance = ServiceClass(self.db, self.redis_mgr)
+                service_instance.user_no = user_no
+                service_instance.data = data
                     
                     
-                    method = getattr(service_instance, method_name)
+                method = getattr(service_instance, method_name)
                     
-                    return  method()
-                else:
-                    
-                    raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")
+                return  method()
+                
             else:
                 raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")
             

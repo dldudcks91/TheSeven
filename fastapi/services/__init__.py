@@ -2,7 +2,7 @@
 
 from .SystemManager import SystemManager
 from .GameDataManager import GameDataManager
-from .RedisManager import RedisManager
+
 
 from .ResourceManager import ResourceManager
 from .BuffManager import BuffManager 
