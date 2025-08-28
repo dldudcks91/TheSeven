@@ -68,17 +68,7 @@ class BuildingManager():
     
     def _format_building_data(self, building):
         """건물 데이터를 응답 형태로 포맷팅"""
-        # Redis에서 실제 완료 시간을 조회 (서버에서 관리하는 시간)
-        redis_completion_time = None
-        if building.status in [1, 2]:  # 건설/업그레이드 중인 경우
-            try:
-                building_redis = self.redis_manager.get_building_manager()
-                redis_completion_time = building_redis.get_building_completion_time(
-                    building.user_no, building.building_idx
-                )
-            except Exception as redis_error:
-                print(f"Redis error: {redis_error}")
-                redis_completion_time = building.end_time
+        
         
         return {
             "id": building.id,
@@ -87,7 +77,7 @@ class BuildingManager():
             "building_lv": building.building_lv,
             "status": building.status,
             "start_time": building.start_time.isoformat() if building.start_time else None,
-            "end_time": redis_completion_time.isoformat() if redis_completion_time else None,
+            "end_time": building.end_time.isoformat() if building.end_time else None,
             "last_dt": building.last_dt.isoformat() if building.last_dt else None
         }
     
@@ -145,6 +135,21 @@ class BuildingManager():
         except Exception as e:
             print(f"Error applying building buffs: {e}")
             return base_time
+    
+    def building_info(self):
+        """건물 정보를 조회합니다 - Redis 캐싱 활용"""
+        try:
+            user_no = self.user_no
+            
+            # BuildingRedisManager에서 캐시 우선 조회
+            building_redis = self.redis_manager.get_building_manager()
+            result = building_redis.get_buildings_with_cache(user_no, self.db, self)
+            
+            return result
+            
+        except Exception as e:
+            return {"success": False, "message": f"Error retrieving buildings info: {str(e)}", "data": {}}
+    
     
     def building_info(self):
         """
@@ -282,13 +287,13 @@ class BuildingManager():
             
             # Redis 완료 큐에 추가 (Redis 기능이 활성화된 경우에만)
             try:
-                if hasattr(self.redis_manager, 'add_building_to_queue'):
-                    self.redis_manager.add_building_to_queue(user_no, building_idx, completion_time)
-                    # Redis 사용시에는 DB의 end_time을 None으로 설정
-                    building.end_time = None
-                    self.db.commit()
-                else:
-                    print(f"Redis building queue not available, using DB end_time fallback")
+                building_redis = self.redis_manager.get_building_manager()
+                print('redis_client: ', self.redis_manager.redis_client)
+                building_redis.add_building_to_queue(user_no, building_idx, completion_time)
+                # Redis 사용시에는 DB의 end_time을 None으로 설정
+                building.end_time = None
+                    
+                
             except Exception as redis_error:
                 print(f"Redis error: {redis_error}")
             

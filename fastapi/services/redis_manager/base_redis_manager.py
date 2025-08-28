@@ -8,7 +8,7 @@ class BaseRedisTaskManager(ABC):
     """Redis 작업 관리의 기본 클래스"""
     
     def __init__(self, redis_client, task_type: TaskType):
-        self.redis = redis_client
+        self.redis_client = redis_client
         self.task_type = task_type
         self.queue_key = f"completion_queue:{task_type.value}"
     
@@ -36,10 +36,15 @@ class BaseRedisTaskManager(ABC):
             
             if metadata:
                 metadata_key = f"{self.queue_key}:metadata:{member}"
-                self.redis.hset(metadata_key, mapping=metadata)
-                self.redis.expire(metadata_key, 86400)
+                self.redis_client.hset(metadata_key, mapping=metadata)
+                self.redis_client.expire(metadata_key, 86400)
             
-            result = self.redis.zadd(self.queue_key, {member: score})
+            result = self.redis_client.zadd(self.queue_key, {member: score})
+            
+            all_keys = self.redis_client.scan_iter(match='*')
+
+          
+            print("redis_key:", all_keys)
             return result > 0
         except Exception as e:
             print(f"Error adding {self.task_type.value} to queue: {e}")
@@ -52,7 +57,7 @@ class BaseRedisTaskManager(ABC):
                 current_time = datetime.utcnow()
             
             max_score = current_time.timestamp()
-            completed = self.redis.zrangebyscore(self.queue_key, 0, max_score, withscores=True)
+            completed = self.redis_client.zrangebyscore(self.queue_key, 0, max_score, withscores=True)
             
             result = []
             for member, score in completed:
@@ -60,7 +65,7 @@ class BaseRedisTaskManager(ABC):
                 parsed = self._parse_member_key(member_str)
                 
                 metadata_key = f"{self.queue_key}:metadata:{member_str}"
-                metadata = self.redis.hgetall(metadata_key)
+                metadata = self.redis_client.hgetall(metadata_key)
                 if metadata:
                     metadata = {k.decode('utf-8'): v.decode('utf-8') for k, v in metadata.items()}
                 
@@ -87,10 +92,10 @@ class BaseRedisTaskManager(ABC):
         """큐에서 작업 제거"""
         try:
             member = self._create_member_key(user_no, task_id, sub_id)
-            result = self.redis.zrem(self.queue_key, member)
+            result = self.redis_client.zrem(self.queue_key, member)
             
             metadata_key = f"{self.queue_key}:metadata:{member}"
-            self.redis.delete(metadata_key)
+            self.redis_client.delete(metadata_key)
             
             return result > 0
         except Exception as e:
@@ -104,8 +109,8 @@ class BaseRedisTaskManager(ABC):
             member = self._create_member_key(user_no, task_id, sub_id)
             score = new_completion_time.timestamp()
             
-            self.redis.zrem(self.queue_key, member)
-            result = self.redis.zadd(self.queue_key, {member: score})
+            self.redis_client.zrem(self.queue_key, member)
+            result = self.redis_client.zadd(self.queue_key, {member: score})
             return result > 0
         except Exception as e:
             print(f"Error updating {self.task_type.value} completion time: {e}")
@@ -116,7 +121,7 @@ class BaseRedisTaskManager(ABC):
         """완료 시간 조회"""
         try:
             member = self._create_member_key(user_no, task_id, sub_id)
-            score = self.redis.zscore(self.queue_key, member)
+            score = self.redis_client.zscore(self.queue_key, member)
             
             if score is not None:
                 return datetime.fromtimestamp(score)
@@ -129,7 +134,7 @@ class BaseRedisTaskManager(ABC):
         """특정 사용자의 모든 작업 조회"""
         try:
             # 해당 사용자의 작업들만 필터링
-            all_tasks = self.redis.zrange(self.queue_key, 0, -1, withscores=True)
+            all_tasks = self.redis_client.zrange(self.queue_key, 0, -1, withscores=True)
             user_tasks = []
             
             for member, score in all_tasks:
@@ -138,7 +143,7 @@ class BaseRedisTaskManager(ABC):
                 
                 if parsed['user_no'] == user_no:
                     metadata_key = f"{self.queue_key}:metadata:{member_str}"
-                    metadata = self.redis.hgetall(metadata_key)
+                    metadata = self.redis_client.hgetall(metadata_key)
                     if metadata:
                         metadata = {k.decode('utf-8'): v.decode('utf-8') for k, v in metadata.items()}
                     
@@ -163,9 +168,9 @@ class BaseRedisTaskManager(ABC):
     def get_queue_status(self) -> Dict[str, int]:
         """큐 상태 조회"""
         try:
-            total_count = self.redis.zcard(self.queue_key)
+            total_count = self.redis_client.zcard(self.queue_key)
             current_time = datetime.utcnow().timestamp()
-            completed_count = self.redis.zcount(self.queue_key, 0, current_time)
+            completed_count = self.redis_client.zcount(self.queue_key, 0, current_time)
             pending_count = total_count - completed_count
             
             return {
@@ -185,14 +190,14 @@ class BaseRedisTaskManager(ABC):
             cutoff_timestamp = cutoff_time.timestamp()
             
             # 삭제할 항목들의 메타데이터도 함께 정리
-            old_tasks = self.redis.zrangebyscore(self.queue_key, 0, cutoff_timestamp)
+            old_tasks = self.redis_client.zrangebyscore(self.queue_key, 0, cutoff_timestamp)
             for member in old_tasks:
                 member_str = member.decode('utf-8') if isinstance(member, bytes) else member
                 metadata_key = f"{self.queue_key}:metadata:{member_str}"
-                self.redis.delete(metadata_key)
+                self.redis_client.delete(metadata_key)
             
             # 오래된 항목들 제거
-            removed_count = self.redis.zremrangebyscore(self.queue_key, 0, cutoff_timestamp)
+            removed_count = self.redis_client.zremrangebyscore(self.queue_key, 0, cutoff_timestamp)
             return removed_count
         except Exception as e:
             print(f"Error cleaning up old {self.task_type.value} entries: {e}")

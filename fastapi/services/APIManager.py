@@ -24,7 +24,7 @@ class APIManager():
         2001: "building_info",
         2002: "building_create", 
         2003: "building_levelup",
-        2004: "building_finish",
+        #2004: "building_finish",
         2005: "building_cancel",
         
         # === 연구 API (3xxx) ===
@@ -69,6 +69,7 @@ class APIManager():
                 
                     
                 service_instance = ServiceClass(self.db, self.redis_mgr)
+                
                 service_instance.user_no = user_no
                 service_instance.data = data
                     

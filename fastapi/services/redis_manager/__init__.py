@@ -6,7 +6,10 @@ from .unit_redis_manager import UnitRedisManager
 from .research_redis_manager import ResearchRedisManager
 
 from .buff_redis_manager import BuffRedisManager
+
+
 from .RedisManager import RedisManager
+from .GameDataCacheManager import GameDataCacheManager
 
 __all__ = [
     'TaskType',
@@ -20,4 +23,5 @@ __all__ = [
     
     'RedisTaskManagerFactory',
     'RedisManager'
+    'GameDataCacheManager'
 ]
