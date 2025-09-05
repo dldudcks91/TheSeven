@@ -44,8 +44,8 @@ class APIManager():
     }
     
         
-    def __init__(self, db, redis_mgr):
-        self.db = db
+    def __init__(self, db_manager, redis_mgr):
+        self.db_manager = db_manager
         self.redis_mgr = redis_mgr
         return
     
@@ -69,7 +69,7 @@ class APIManager():
                 
                 
                     
-                service_instance = ServiceClass(self.db, self.redis_mgr)
+                service_instance = ServiceClass(self.db_manager, self.redis_manager)
                 
                 service_instance.user_no = user_no
                 service_instance.data = data

@@ -41,10 +41,8 @@ class BaseRedisTaskManager(ABC):
             
             result = self.redis_client.zadd(self.queue_key, {member: score})
             
-            all_keys = self.redis_client.scan_iter(match='*')
-
-          
-            print("redis_key:", all_keys)
+            #all_keys = self.redis_client.scan_iter(match='*')
+            #print("redis_key:", all_keys)
             return result > 0
         except Exception as e:
             print(f"Error adding {self.task_type.value} to queue: {e}")

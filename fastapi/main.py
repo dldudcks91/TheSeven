@@ -8,6 +8,7 @@ import models, schemas, database
 
 
 from services.system import APIManager, GameDataManager, WebsocketManager
+from services.db_manager import DBManager 
 from services.redis_manager import RedisManager
 from services.background_workers import BackgroundWorkerManager
 
@@ -17,8 +18,11 @@ from routers import pages
 
 app = FastAPI()
 
-# 전역 변수로 Redis 관리자 & BackGround Worker 저장
+# 전역 변수로 DB, Redis 관리자 & BackGround Worker 저장
+
+db_manager = None
 websocket_manager = None
+
 redis_manager = None
 redis_client = None
 worker_manager = None
@@ -34,10 +38,12 @@ app.include_router(pages.router)
 @app.on_event("startup")
 async def startup_event():
     """서버 시작시 게임 데이터 및 Redis 초기화"""
-    global redis_manager, redis_client
+    
     
     print("🚀 Starting Game Server...")
     
+    
+    #0. DB 연결
     # 1. Redis 클라이언트 초기화
     
     redis_client = redis.Redis(
@@ -79,7 +85,12 @@ async def startup_event():
     print("✅ Game data loaded")
     
     print("✅ Game Server is ready!")
-    
+
+
+def get_db_manager(db: Session = Depends(database.get_db)) -> DBManager:
+    """DB 관리자를 반환하는 의존성 함수"""
+    return DBManager(db)
+
 def get_redis_manager() -> RedisManager:
     """Redis 관리자를 반환하는 의존성 함수"""
     if redis_manager is None:
@@ -118,7 +129,7 @@ async def shutdown_event():
 @app.post("/api", response_class=HTMLResponse)
 async def api_post(
     request: ApiRequest, 
-    db: Session = Depends(database.get_db),
+    db: Session = Depends(get_db_manager),
     redis_mgr: RedisManager = Depends(get_redis_manager)
 ):
     api_manager = APIManager(db, redis_mgr)  # RedisManager 전달
