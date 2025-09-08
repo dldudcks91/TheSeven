@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from .base_redis_manager import BaseRedisTaskManager
+from .base_redis_task_manager import BaseRedisTaskManager
 from .task_types import TaskType
 
 class UnitRedisManager(BaseRedisTaskManager):

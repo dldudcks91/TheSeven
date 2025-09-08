@@ -1,5 +1,5 @@
 #APIManager.py
-from services.system import SystemManager, GameDataManager
+from services.system import SystemManager, GameDataManager, LoginManager
 from services.game import ResourceManager, BuildingManager, ResearchManager, UnitManager, BuffManager
 from fastapi import HTTPException
 class APIManager():
@@ -18,8 +18,9 @@ class APIManager():
         # === 시스템 API (1xxx) ===
         1001: "get_all_configs",
         1002: "get_game_config",
+        1010: "get_user_info",
         1011: "get_resource_info",
-        1012: "get_user_summary",
+        
         
         # === 건물 API (2xxx) ===
         2001: "building_info",
@@ -89,12 +90,15 @@ class APIManager():
         if api_code == 1002:  # GAME_CONFIG_ALL
             return {"success": True, "message": "게임 설정 로드 성공", "data": GameDataManager.REQUIRE_CONFIGS}
         
+        if api_code == 1010:
+            
+            login_manager = LoginManager(self.db_manager)
+            return login_manager.handle_user_login(user_no)
+        
         if api_code == 1011: # 자원 확인
-            resource_manager = ResourceManager(self.db)
+            resource_manager = ResourceManager(self.db_manager)
             return resource_manager.resource_info(user_no)
         
-        if api_code == 1012:
-            
-            return 
+        
         
         raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")

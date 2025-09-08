@@ -4,12 +4,12 @@ from typing import Dict, Any, List
 import models
 
 from services.redis_manager import RedisManager
-
+from services.db_manager import DBManager
 class LoginManager:
     """통합 사용자 로그인 서비스"""
     
-    def __init__(self, db: Session, redis_manager: RedisManager):
-        self.db = db
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
+        self.db_manager = db_manager
         self.redis_manager = redis_manager
         
     

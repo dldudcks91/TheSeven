@@ -129,13 +129,18 @@ async def shutdown_event():
 @app.post("/api", response_class=HTMLResponse)
 async def api_post(
     request: ApiRequest, 
-    db: Session = Depends(get_db_manager),
+    db_manager: Session = Depends(get_db_manager),
     redis_mgr: RedisManager = Depends(get_redis_manager)
 ):
-    api_manager = APIManager(db, redis_mgr)  # RedisManager 전달
+    api_manager = APIManager(db_manager, redis_mgr)  # RedisManager 전달
     
     result = api_manager.process_request(request.user_no, request.api_code, request.data)
     return JSONResponse(content=result)
+    
+    return
+    
+    
+    
 
 
 @app.websocket("/ws/{user_no}")

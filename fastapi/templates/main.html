@@ -572,6 +572,9 @@
             }
             
             showToast('데이터를 로드하고 있습니다...', 'info');
+            // 1. 서버에 캐시 프리로드 요청 (api_code: 1010)
+            const cacheResponse = await preloadServerCache(userId);
+            
             
             // 모든 iframe에 플레이어 ID 전달
             const frameIds = ['buildingFrame', 'unitFrame','resourceFrame'];
@@ -599,6 +602,34 @@
             showToast('전체 데이터 로드가 완료되었습니다', 'success');
         }
 
+        // 서버 캐시 프리로드 요청 함수
+        async function preloadServerCache(userId) {
+            
+            const gameData = {
+                user_no: parseInt(userId),
+                api_code: 1010,  // 캐시 프리로드 API 코드
+                data: {}
+            };
+            
+            console.log('서버 캐시 프리로드 요청:', gameData);
+            
+            const response = await fetch('/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(gameData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('서버 캐시 프리로드 응답:', result);
+            
+            return result;
+                
+            
+        }
         // 플레이어 ID 변경시 처리 - 메시지 전송하지 않음
         document.getElementById('globalUserId').addEventListener('input', function() {
             const userId = this.value;

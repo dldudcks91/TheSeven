@@ -29,8 +29,10 @@ class BuildingDBManager(BaseDBManager):
         """건물 생성"""
         return self.create(**kwargs)
     
+    
+    
     def get_user_buildings(self, user_no: int, status: Optional[int] = None) -> Dict[str, Any]:
-        """사용자의 건물 조회"""
+        """사용자의 모든 건물 조회"""
         filters = {}
         if status is not None:
             filters['status'] = status

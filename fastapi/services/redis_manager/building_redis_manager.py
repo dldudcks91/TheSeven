@@ -1,46 +1,52 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from .base_redis_manager import BaseRedisTaskManager
+from .base_redis_task_manager import BaseRedisTaskManager
+from .base_redis_cache_manager import BaseRedisCacheManager
 from .task_types import TaskType
 import json
 
-class BuildingRedisManager(BaseRedisTaskManager):
-    """건물 전용 Redis 관리자 - Hash 기반 효율적 캐싱"""
+
+class BuildingRedisManager:
+    """건물 전용 Redis 관리자 - Task Manager와 Cache Manager 컴포넌트 조합"""
     
     def __init__(self, redis_client):
-        super().__init__(redis_client, TaskType.BUILDING)
+        # 두 개의 매니저 컴포넌트 초기화
+        self.task_manager = BaseRedisTaskManager(redis_client, TaskType.BUILDING)
+        self.cache_manager = BaseRedisCacheManager(redis_client)
+        
         self.cache_expire_time = 3600  # 1시간
+        self.task_type = TaskType.BUILDING
     
     def validate_task_data(self, building_idx: int, metadata: Optional[Dict[str, Any]] = None) -> bool:
         """건물 데이터 유효성 검증"""
         return isinstance(building_idx, int) and building_idx > 0
     
-    # === 완료 큐 관리 메서드들 ===
+    # === Task Manager 위임 메서드들 ===
     def add_building_to_queue(self, user_no: int, building_idx: int, completion_time: datetime) -> bool:
         """건물을 완료 큐에 추가"""
         if not self.validate_task_data(building_idx):
             return False
-        return self.add_to_queue(user_no, building_idx, completion_time)
+        return self.task_manager.add_to_queue(user_no, building_idx, completion_time)
     
     def remove_building_from_queue(self, user_no: int, building_idx: int) -> bool:
         """건물을 완료 큐에서 제거"""
-        return self.remove_from_queue(user_no, building_idx)
+        return self.task_manager.remove_from_queue(user_no, building_idx)
     
     def get_building_completion_time(self, user_no: int, building_idx: int) -> Optional[datetime]:
         """건물 완료 시간 조회"""
-        return self.get_completion_time(user_no, building_idx)
+        return self.task_manager.get_completion_time(user_no, building_idx)
     
     def update_building_completion_time(self, user_no: int, building_idx: int, new_completion_time: datetime) -> bool:
         """건물 완료 시간 업데이트"""
-        return self.update_completion_time(user_no, building_idx, new_completion_time)
+        return self.task_manager.update_completion_time(user_no, building_idx, new_completion_time)
     
     def get_completed_buildings(self, current_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """완료된 건물들 조회"""
-        return self.get_completed_tasks(current_time)
+        return self.task_manager.get_completed_tasks(current_time)
     
     def speedup_building(self, user_no: int, building_idx: int) -> bool:
         """건물 즉시 완료"""
-        return self.update_completion_time(user_no, building_idx, datetime.utcnow())
+        return self.task_manager.update_completion_time(user_no, building_idx, datetime.utcnow())
     
     # === Hash 기반 캐싱 관리 메서드들 ===
     def _get_buildings_hash_key(self, user_no: int) -> str:
@@ -55,36 +61,32 @@ class BuildingRedisManager(BaseRedisTaskManager):
         """Hash 구조로 건물 데이터 캐싱"""
         if not buildings_data:
             return True
-            
+        
         try:
             hash_key = self._get_buildings_hash_key(user_no)
             meta_key = self._get_buildings_meta_key(user_no)
             
-            pipeline = self.redis_client.pipeline()
-            
-            # 기존 Hash 데이터 삭제
-            pipeline.delete(hash_key)
-            
-            # 각 건물을 Hash 필드로 저장
-            for building_idx, building_data in buildings_data.items():
-                pipeline.hset(hash_key, building_idx, json.dumps(building_data, default=str))
-            
-            # 메타데이터 저장 (캐시 시간, 건물 개수 등)
+            # 메타데이터 준비
             meta_data = {
                 'cached_at': datetime.utcnow().isoformat(),
                 'building_count': len(buildings_data),
                 'user_no': user_no
             }
-            pipeline.set(meta_key, json.dumps(meta_data))
             
-            # TTL 설정
-            pipeline.expire(hash_key, self.cache_expire_time)
-            pipeline.expire(meta_key, self.cache_expire_time)
+            # Cache Manager를 통해 Hash 형태로 저장
+            success = self.cache_manager.set_hash_data(
+                hash_key, 
+                buildings_data, 
+                expire_time=self.cache_expire_time
+            )
             
-            pipeline.execute()
+            if success:
+                # 메타데이터도 저장
+                self.cache_manager.set_data(meta_key, meta_data, expire_time=self.cache_expire_time)
+                print(f"Successfully cached {len(buildings_data)} buildings for user {user_no} using Hash")
+                return True
             
-            print(f"Successfully cached {len(buildings_data)} buildings for user {user_no} using Hash")
-            return True
+            return False
             
         except Exception as e:
             print(f"Error caching buildings data: {e}")
@@ -94,11 +96,11 @@ class BuildingRedisManager(BaseRedisTaskManager):
         """특정 건물 하나만 캐시에서 조회"""
         try:
             hash_key = self._get_buildings_hash_key(user_no)
-            building_data = self.redis_client.hget(hash_key, str(building_idx))
+            building_data = self.cache_manager.get_hash_field(hash_key, str(building_idx))
             
             if building_data:
                 print(f"Cache hit: Retrieved building {building_idx} for user {user_no}")
-                return json.loads(building_data)
+                return building_data
             
             print(f"Cache miss: Building {building_idx} not found for user {user_no}")
             return None
@@ -111,21 +113,9 @@ class BuildingRedisManager(BaseRedisTaskManager):
         """모든 건물을 캐시에서 조회"""
         try:
             hash_key = self._get_buildings_hash_key(user_no)
+            buildings = self.cache_manager.get_hash_data(hash_key)
             
-            # Hash의 모든 필드 조회
-            cached_data = self.redis_client.hgetall(hash_key)
-            
-            if cached_data:
-                buildings = {}
-                for building_idx, building_data in cached_data.items():
-                    # Redis에서 받은 bytes를 string으로 변환
-                    if isinstance(building_idx, bytes):
-                        building_idx = building_idx.decode('utf-8')
-                    if isinstance(building_data, bytes):
-                        building_data = building_data.decode('utf-8')
-                    
-                    buildings[building_idx] = json.loads(building_data)
-                
+            if buildings:
                 print(f"Cache hit: Retrieved {len(buildings)} buildings for user {user_no}")
                 return buildings
             
@@ -141,18 +131,18 @@ class BuildingRedisManager(BaseRedisTaskManager):
         try:
             hash_key = self._get_buildings_hash_key(user_no)
             
-            # Hash에서 해당 건물 필드만 업데이트
-            result = self.redis_client.hset(
+            # Cache Manager를 통해 Hash 필드 업데이트
+            success = self.cache_manager.set_hash_field(
                 hash_key, 
                 str(building_idx), 
-                json.dumps(building_data, default=str)
+                building_data,
+                expire_time=self.cache_expire_time
             )
             
-            # TTL 갱신
-            self.redis_client.expire(hash_key, self.cache_expire_time)
+            if success:
+                print(f"Updated cached building {building_idx} for user {user_no}")
             
-            print(f"Updated cached building {building_idx} for user {user_no}")
-            return bool(result)
+            return success
             
         except Exception as e:
             print(f"Error updating cached building {building_idx} for user {user_no}: {e}")
@@ -162,10 +152,12 @@ class BuildingRedisManager(BaseRedisTaskManager):
         """특정 건물을 캐시에서 제거"""
         try:
             hash_key = self._get_buildings_hash_key(user_no)
-            result = self.redis_client.hdel(hash_key, str(building_idx))
+            success = self.cache_manager.delete_hash_field(hash_key, str(building_idx))
             
-            print(f"Removed cached building {building_idx} for user {user_no}")
-            return result > 0
+            if success:
+                print(f"Removed cached building {building_idx} for user {user_no}")
+            
+            return success
             
         except Exception as e:
             print(f"Error removing cached building {building_idx} for user {user_no}: {e}")
@@ -177,16 +169,15 @@ class BuildingRedisManager(BaseRedisTaskManager):
             hash_key = self._get_buildings_hash_key(user_no)
             meta_key = self._get_buildings_meta_key(user_no)
             
-            pipeline = self.redis_client.pipeline()
-            pipeline.delete(hash_key)
-            pipeline.delete(meta_key)
-            results = pipeline.execute()
+            # 두 키 모두 삭제
+            hash_deleted = self.cache_manager.delete_data(hash_key)
+            meta_deleted = self.cache_manager.delete_data(meta_key)
             
-            deleted_count = sum(results)
-            if deleted_count > 0:
+            success = hash_deleted or meta_deleted
+            if success:
                 print(f"Cache invalidated for user {user_no}")
             
-            return deleted_count > 0
+            return success
             
         except Exception as e:
             print(f"Error invalidating cache for user {user_no}: {e}")
@@ -198,15 +189,10 @@ class BuildingRedisManager(BaseRedisTaskManager):
             hash_key = self._get_buildings_hash_key(user_no)
             meta_key = self._get_buildings_meta_key(user_no)
             
-            pipeline = self.redis_client.pipeline()
-            pipeline.hlen(hash_key)  # Hash 크기
-            pipeline.ttl(hash_key)   # TTL
-            pipeline.get(meta_key)   # 메타데이터
-            results = pipeline.execute()
-            
-            building_count = results[0] or 0
-            ttl = results[1] or -1
-            meta_data = json.loads(results[2]) if results[2] else {}
+            # Cache Manager를 통해 정보 조회
+            building_count = self.cache_manager.get_hash_length(hash_key)
+            ttl = self.cache_manager.get_ttl(hash_key)
+            meta_data = self.cache_manager.get_data(meta_key) or {}
             
             return {
                 "user_no": user_no,
@@ -226,7 +212,7 @@ class BuildingRedisManager(BaseRedisTaskManager):
             updated_buildings = cached_buildings.copy()
             
             for building_idx, building_data in updated_buildings.items():
-                # 진행 중인 건물들만 Redis 큐에서 완료 시간 업데이트
+                # 진행 중인 건물들만 Task Manager에서 완료 시간 업데이트
                 if building_data.get('status') in [1, 2]:
                     redis_completion_time = self.get_building_completion_time(
                         user_no, int(building_idx)
@@ -243,3 +229,42 @@ class BuildingRedisManager(BaseRedisTaskManager):
         except Exception as e:
             print(f"Error updating building times from Redis: {e}")
             return cached_buildings
+    
+    # === 컴포넌트 접근 메서드들 (필요시 직접 접근) ===
+    def get_task_manager(self) -> BaseRedisTaskManager:
+        """Task Manager 컴포넌트 반환"""
+        return self.task_manager
+    
+    def get_cache_manager(self) -> BaseRedisCacheManager:
+        """Cache Manager 컴포넌트 반환"""
+        return self.cache_manager
+    
+    # === 통합 유틸리티 메서드들 ===
+    def get_building_status(self, user_no: int, building_idx: int) -> Dict[str, Any]:
+        """건물의 전체 상태 조회 (캐시 + 큐 정보)"""
+        try:
+            # 캐시에서 기본 정보 조회
+            cached_building = self.get_cached_building(user_no, building_idx)
+            
+            # 큐에서 완료 시간 조회
+            completion_time = self.get_building_completion_time(user_no, building_idx)
+            
+            status = {
+                "building_idx": building_idx,
+                "user_no": user_no,
+                "cached_data": cached_building,
+                "completion_time": completion_time.isoformat() if completion_time else None,
+                "in_queue": completion_time is not None,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            return status
+            
+        except Exception as e:
+            print(f"Error getting building status for {building_idx}: {e}")
+            return {
+                "building_idx": building_idx,
+                "user_no": user_no,
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }

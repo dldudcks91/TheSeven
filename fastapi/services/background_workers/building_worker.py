@@ -19,7 +19,7 @@ class BuildingCompletionWorker(BaseWorker):
         """완료된 건물들 처리"""
         try:
             building_redis = self.redis_manager.get_building_manager()
-            completed_buildings = building_redis.get_completed_tasks()
+            completed_buildings = building_redis.get_completed_buildings()
             
             if not completed_buildings:
                 return
