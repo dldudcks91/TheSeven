@@ -265,7 +265,7 @@ class BuildingManager:
             }
     
     def building_levelup(self):
-        """건물 레벨을 업그레이드합니다."""
+        """건물 레벨을 업그레이드합니다 - DB status 업데이트 + Redis 작업 스케줄링"""
         user_no = self.user_no
         
         try:
@@ -296,14 +296,16 @@ class BuildingManager:
             upgrade_time = self._apply_building_buffs(user_no, base_upgrade_time)
             
             start_time = datetime.utcnow()
-            completion_time = start_time + timedelta(seconds=upgrade_time) 
+            completion_time = start_time + timedelta(seconds=upgrade_time)
+            target_level = building['building_lv'] + 1
             
-            # DBManager를 통한 건물 업그레이드
-            building_db = self.db_manager.get_building_manager()
+            # building_db_manager를 직접 가져와서 DB 업데이트
+            building_db_manager = self.db_manager.get_building_manager()
             building_id = building.get('id') or building.get('building_idx')
-            update_result = building_db.update(
-                building_id,
-                status=2,
+            
+            update_result = building_db_manager.update_building_status(
+                building_id=building_id,
+                status=2,  # 업그레이드 중
                 start_time=start_time,
                 end_time=completion_time,
                 last_dt=start_time
@@ -312,24 +314,44 @@ class BuildingManager:
             if not update_result['success']:
                 return update_result
             
-            # Redis 완료 큐에 추가
+            # Redis 완료 큐에 레벨업 완료 작업 스케줄링
             building_redis = self.redis_manager.get_building_manager()
-            queue_added = building_redis.add_building_to_queue(user_no, building_idx, completion_time)
             
-            if not queue_added:
-                self.logger.warning(f"Failed to add building {building_idx} to completion queue for user {user_no}")
             
-            # 캐시 무효화
-            self.invalidate_user_building_cache(user_no)
+            # 캐시에서 건물 상태 업데이트
+            updated_building = {
+                **building,
+                'status': 2,  # 업그레이드 중
+                'start_time': start_time.isoformat(),
+                'end_time': completion_time.isoformat(),
+                'last_dt': start_time.isoformat(),
+                'target_level': target_level  # 목표 레벨 추가
+            }
+            
+            # Redis 캐시 업데이트
+            building_redis.update_cached_building(user_no, building_idx, updated_building)
+            
+            # 메모리 캐시 업데이트
+            if self._cached_buildings and str(building_idx) in self._cached_buildings:
+                self._cached_buildings[str(building_idx)] = updated_building
+            
+            self.logger.info(f"Building {building_idx} upgrade started for user {user_no}: {building['building_lv']} -> {target_level}, completing in {upgrade_time}s")
             
             return {
                 "success": True,
-                "message": f"Building {building_idx} upgrade started to {building['building_lv'] + 1} lv. Will complete in {upgrade_time} seconds",
-                "data": update_result['data']
+                "message": f"Building {building_idx} upgrade started to level {target_level}. Will complete in {upgrade_time} seconds",
+                "data": {
+                    "building_idx": building_idx,
+                    "current_level": building['building_lv'],
+                    "target_level": target_level,
+                    "upgrade_time": upgrade_time,
+                    "completion_time": completion_time.isoformat(),
+                    "status": 2
+                }
             }
             
         except Exception as e:
-            self.logger.error(f"Error upgrading building for user {user_no}: {e}")
+            self.logger.error(f"Error starting building upgrade for user {user_no}: {e}")
             return {
                 "success": False,
                 "message": f"Building upgrade failed: {str(e)}",

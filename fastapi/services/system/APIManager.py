@@ -45,9 +45,9 @@ class APIManager():
     }
     
         
-    def __init__(self, db_manager, redis_mgr):
+    def __init__(self, db_manager, redis_manager):
         self.db_manager = db_manager
-        self.redis_mgr = redis_mgr
+        self.redis_manager = redis_manager
         return
     
 
@@ -92,7 +92,7 @@ class APIManager():
         
         if api_code == 1010:
             
-            login_manager = LoginManager(self.db_manager)
+            login_manager = LoginManager(self.db_manager, self.redis_manager)
             return login_manager.handle_user_login(user_no)
         
         if api_code == 1011: # 자원 확인
