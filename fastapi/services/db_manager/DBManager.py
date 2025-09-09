@@ -1,10 +1,9 @@
 # DBManager.py (메인 매니저)
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
-from .building_db_manager import BuildingDBManager
-from .unit_db_manager import UnitDBManager
-from .research_db_manager import ResearchDBManager
-from .buff_db_manager import BuffDBManager
+
+from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager
+
 
 class DBManager:
     """DB 작업 관리자들의 중앙 접근점"""
@@ -15,6 +14,10 @@ class DBManager:
         self._unit_manager = None
         self._research_manager = None
         self._buff_manager = None
+        self._resource_manager = None
+        
+    
+    
     
     def get_building_manager(self) -> BuildingDBManager:
         """건물 DB 관리자 반환 (싱글톤 패턴)"""
@@ -33,6 +36,12 @@ class DBManager:
         if self._research_manager is None:
             self._research_manager = ResearchDBManager(self.db_session)
         return self._research_manager
+    
+    def get_resource_manager(self) -> ResourceDBManager:
+        """건물 DB 관리자 반환 (싱글톤 패턴)"""
+        if self._resource_manager is None:
+            self._resource_manager = ResourceDBManager(self.db_session)
+        return self._resource_manager
     
     def get_buff_manager(self) -> BuffDBManager:
         """버프 DB 관리자 반환 (싱글톤 패턴)"""

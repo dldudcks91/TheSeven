@@ -192,6 +192,8 @@ class BuildingManager:
                 "data": {}
             }
     
+    
+
     def building_create(self):
         """새 건물을 생성하고 즉시 완성하여 DB에 저장합니다."""
         user_no = self.user_no
@@ -210,30 +212,48 @@ class BuildingManager:
             if existing_building:
                 return {"success": False, "message": "Building already exists", "data": {}}
             
-            # 자원 처리 및 건물 생성을 트랜잭션으로 묶어서 처리
-            current_time = datetime.utcnow()
+            # === 전체 트랜잭션 시작 ===
+            try:
+                current_time = datetime.utcnow()
+                
+                # 1. 자원 체크 및 소모 (commit 안함)
+                base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, 1)
+                if error_msg:
+                    self.db_manager.rollback()
+                    return {"success": False, "message": error_msg, "data": {}}
+                
+                # 2. 건물 생성 (commit 안함)
+                building_db = self.db_manager.get_building_manager()
+                create_result = building_db.create_building(
+                    user_no=user_no,
+                    building_idx=building_idx,
+                    building_lv=1,
+                    status=0,
+                    start_time=current_time,
+                    end_time=current_time,
+                    last_dt=current_time
+                )
+                
+                if not create_result['success']:
+                    self.db_manager.rollback()
+                    return create_result
+                
+                # 3. 모든 작업 성공 - 전체 commit
+                self.db_manager.commit()
+                self.logger.info(f"Building creation transaction committed for user {user_no}, building {building_idx}")
+                
+            except Exception as transaction_error:
+                # 전체 트랜잭션 롤백
+                self.db_manager.rollback()
+                self.logger.error(f"Building creation transaction failed: {transaction_error}")
+                return {
+                    "success": False,
+                    "message": f"Building creation failed: {str(transaction_error)}",
+                    "data": {}
+                }
+            # === 전체 트랜잭션 끝 ===
             
-            # 1. 자원 체크 및 소모
-            base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, 1)
-            if error_msg:
-                return {"success": False, "message": error_msg, "data": {}}
-            
-            # 2. DBManager를 통한 새 건물 생성 (즉시 완성된 상태)
-            building_db = self.db_manager.get_building_manager()
-            create_result = building_db.create_building(
-                user_no=user_no,
-                building_idx=building_idx,
-                building_lv=1,  # 레벨 1로 완성
-                status=0,       # 완성 상태 (0: 완성, 1: 건설중, 2: 업그레이드중)
-                start_time=current_time,
-                end_time=current_time,  # 즉시 완성
-                last_dt=current_time
-            )
-            
-            if not create_result['success']:
-                return create_result
-            
-            # 캐시 업데이트 (새로운 건물을 캐시에 추가)
+            # 캐시 업데이트 (DB 작업 완료 후)
             new_building_data = self._format_building_for_cache(create_result['data'])
             
             # Redis 캐시에 새 건물 추가
@@ -244,11 +264,6 @@ class BuildingManager:
             if self._cached_buildings is not None:
                 self._cached_buildings[str(building_idx)] = new_building_data
                 self.logger.debug(f"Added building {building_idx} to memory cache for user {user_no}")
-            
-            if cache_updated:
-                self.logger.debug(f"Successfully updated cache with new building {building_idx} for user {user_no}")
-            else:
-                self.logger.warning(f"Failed to update cache for new building {building_idx}, user {user_no}")
             
             return { 
                 "success": True,
@@ -265,7 +280,7 @@ class BuildingManager:
             }
     
     def building_levelup(self):
-        """건물 레벨을 업그레이드합니다 - DB status 업데이트 + Redis 작업 스케줄링"""
+        """건물 레벨을 업그레이드합니다 - 전체 트랜잭션 처리"""
         user_no = self.user_no
         
         try:
@@ -276,47 +291,68 @@ class BuildingManager:
             
             building_idx = self.data.get('building_idx')
             
-            # 캐시된 데이터에서 건물 조회
+            # 1. 캐시된 데이터에서 건물 조회
             buildings_data = self.get_user_buildings()
             building = buildings_data.get(str(building_idx))
+            
+            # 건물 존재 및 상태 확인
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
             
             if building['status'] != 0:
                 return {"success": False, "message": "Building is already under construction or upgrade", "data": {}}
-            
+                
             if building['building_lv'] >= self.MAX_LEVEL:
                 return {"success": False, "message": f"Building is already at maximum level ({self.MAX_LEVEL})", "data": {}}
             
-            # 자원 및 시간 처리
-            base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building['building_lv'] + 1)
-            if error_msg:
-                return {"success": False, "message": error_msg, "data": {}}
+            # === 전체 트랜잭션 시작 ===
+            try:
+                # 2. 자원 및 시간 처리 (commit 안함)
+                base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building['building_lv'] + 1)
+                if error_msg:
+                    self.db_manager.rollback()
+                    return {"success": False, "message": error_msg, "data": {}}
+                
+                #upgrade_time = self._apply_building_buffs(user_no, base_upgrade_time)
+                upgrade_time = base_upgrade_time
+                start_time = datetime.utcnow()
+                completion_time = start_time + timedelta(seconds=upgrade_time)
+                target_level = building['building_lv'] + 1
+                
+                # 3. 건물 상태 업데이트 (commit 안함)
+                building_db_manager = self.db_manager.get_building_manager()
+                building_id = building.get('id') or building.get('building_idx')
+                
+                update_result = building_db_manager.update_building_status(
+                    user_no=user_no,  # 권한 확인용
+                    building_idx=building_idx,
+                    status=2,  # 업그레이드 중
+                    start_time=start_time,
+                    end_time=completion_time,
+                    last_dt=start_time
+                )
+                
+                if not update_result['success']:
+                    self.db_manager.rollback()
+                    return update_result
+                
+                # 4. 모든 작업 성공 - 전체 commit
+                self.db_manager.commit()
+                self.logger.info(f"Building upgrade transaction committed for user {user_no}, building {building_idx}")
+                
+            except Exception as transaction_error:
+                # 전체 트랜잭션 롤백
+                self.db_manager.rollback()
+                self.logger.error(f"Building upgrade transaction failed: {transaction_error}")
+                return {
+                    "success": False,
+                    "message": f"Building upgrade failed: {str(transaction_error)}",
+                    "data": {}
+                }
+            # === 전체 트랜잭션 끝 ===
             
-            upgrade_time = self._apply_building_buffs(user_no, base_upgrade_time)
-            
-            start_time = datetime.utcnow()
-            completion_time = start_time + timedelta(seconds=upgrade_time)
-            target_level = building['building_lv'] + 1
-            
-            # building_db_manager를 직접 가져와서 DB 업데이트
-            building_db_manager = self.db_manager.get_building_manager()
-            building_id = building.get('id') or building.get('building_idx')
-            
-            update_result = building_db_manager.update_building_status(
-                building_id=building_id,
-                status=2,  # 업그레이드 중
-                start_time=start_time,
-                end_time=completion_time,
-                last_dt=start_time
-            )
-            
-            if not update_result['success']:
-                return update_result
-            
-            # Redis 완료 큐에 레벨업 완료 작업 스케줄링
+            # 캐시 및 Redis 업데이트 (DB 작업 완료 후)
             building_redis = self.redis_manager.get_building_manager()
-            
             
             # 캐시에서 건물 상태 업데이트
             updated_building = {
@@ -500,9 +536,9 @@ class BuildingManager:
             return False
     
     def _handle_resource_transaction(self, user_no, building_idx, target_level):
-        """자원 체크 및 소모를 한번에 처리"""
+        """자원 체크 및 소모 - commit하지 않음"""
         try:
-            # GameDataManager에서 설정 조회
+            # 설정 조회
             if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
                 return None, "Building configuration not found"
             
@@ -519,15 +555,18 @@ class BuildingManager:
             if not costs or upgrade_time <= 0:
                 return None, "Invalid building configuration"
             
-            # 자원 체크 및 소모
+            # 자원 매니저 초기화
             resource_manager = ResourceManager(self.db_manager)
+            
+            # 자원 체크 (한 번의 DB 조회로 now_resources에 저장)
             if not resource_manager.check_require_resources(user_no, costs):
                 return None, "Need More Resources"
             
-            consume_result = resource_manager.consume_resources(user_no, costs)
-            if not consume_result:
+            # 자원 소모 (이미 로드된 인스턴스 직접 업데이트) - commit 안함!
+            if not resource_manager.consume_resources(user_no, costs):
                 return None, "Failed to consume resources"
             
+            # commit하지 않고 반환 - 상위에서 전체 트랜잭션 처리
             return upgrade_time, None
             
         except Exception as e:
