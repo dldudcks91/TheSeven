@@ -1,5 +1,5 @@
 # =================================
-# building_worker.py
+# building_worker.py (비동기 버전)
 # =================================
 import asyncio
 from abc import ABC, abstractmethod
@@ -13,13 +13,13 @@ from .base_worker import BaseWorker
 import models
 
 class BuildingCompletionWorker(BaseWorker):
-    """건물 완성 처리 워커"""
+    """건물 완성 처리 워커 (비동기 버전)"""
     
     async def _process_completed_tasks(self):
         """완료된 건물들 처리"""
         try:
             building_redis = self.redis_manager.get_building_manager()
-            completed_buildings = building_redis.get_completed_buildings()
+            completed_buildings = await building_redis.get_completed_buildings()
             
             if not completed_buildings:
                 return
@@ -41,7 +41,7 @@ class BuildingCompletionWorker(BaseWorker):
                         db.close()
                         
         except Exception as e:
-            print(f"Error processing completed buildings: {e}")
+            print(f"Error getting completed building: {e}")
     
     async def _complete_task(self, completed_task: Dict[str, Any], db: Session):
         """개별 건물 완성 처리"""
@@ -50,7 +50,8 @@ class BuildingCompletionWorker(BaseWorker):
         
         # Redis 락으로 동시성 제어
         lock_key = f"building_completion_lock:{user_no}:{building_idx}"
-        if not self.redis_manager.redis_client.set(lock_key, "1", nx=True, ex=30):
+        lock_set = await self.redis_manager.redis_client.set(lock_key, "1", nx=True, ex=30)
+        if not lock_set:
             return  # 다른 워커가 처리 중
         
         try:
@@ -62,7 +63,7 @@ class BuildingCompletionWorker(BaseWorker):
             if not building or building.status not in [1, 2]:
                 # Redis에서 항목 제거
                 building_redis = self.redis_manager.get_building_manager()
-                building_redis.remove_building_from_queue(user_no, building_idx)
+                await building_redis.remove_building_from_queue(user_no, building_idx)
                 return
             
             # 건물 완성 처리
@@ -80,10 +81,10 @@ class BuildingCompletionWorker(BaseWorker):
             
             # Redis에서 제거
             building_redis = self.redis_manager.get_building_manager()
-            building_redis.remove_building_from_queue(user_no, building_idx)
+            await building_redis.remove_building_from_queue(user_no, building_idx)
             
             print(f"Building {action} completed: user_no={user_no}, building_idx={building_idx}, level={building.building_lv}")
             
         finally:
             # 락 해제
-            self.redis_manager.redis_client.delete(lock_key)
+            await self.redis_manager.redis_client.delete(lock_key)

@@ -11,15 +11,18 @@ from services.db_manager import DBManager
 from services.redis_manager import RedisManager
 from services.background_workers import BackgroundWorkerManager
 
-import redis
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
 import json
 import logging
 from routers import pages
+import asyncio
 
 app = FastAPI()
 
 # 전역 변수 선언
 redis_client = None
+redis_pool = None
 redis_manager = None
 websocket_manager = None
 worker_manager = None
@@ -37,25 +40,37 @@ app.include_router(pages.router)
 
 @app.on_event("startup")
 async def startup_event():
-    """서버 시작시 게임 데이터 및 Redis 초기화"""
-    global redis_client, redis_manager, websocket_manager, worker_manager
+    """서버 시작시 게임 데이터 및 커넥션 풀 초기화"""
+    global redis_client, redis_pool, redis_manager, websocket_manager, worker_manager
     
     try:
         print("🚀 Starting Game Server...")
         
-        # 1. Redis 클라이언트 초기화
-        redis_client = redis.Redis(
-            host='localhost',  # Redis 서버 주소
-            port=6379,         # Redis 포트
-            db=0,              # 데이터베이스 번호
-            decode_responses=True,  # 문자열 응답 자동 디코딩
-            socket_connect_timeout=5,  # 연결 타임아웃
-            socket_timeout=5,          # 소켓 타임아웃
+        # 1. Redis 커넥션 풀 초기화
+        redis_pool = ConnectionPool(
+            host='localhost',
+            port=6379,
+            db=0,
+            max_connections=50,  # 최대 연결 수 증가
+            retry_on_timeout=True,
+            retry_on_error=[ConnectionError, TimeoutError],
+            socket_connect_timeout=5,
+            socket_timeout=10,
+            socket_keepalive=True,
+            socket_keepalive_options={},
+            health_check_interval=30,  # 30초마다 헬스체크
+            decode_responses=True
+        )
+        
+        redis_client = aioredis.Redis(
+            connection_pool=redis_pool,
+            socket_timeout=10,
+            socket_connect_timeout=5
         )
         
         # Redis 연결 테스트
-        redis_client.ping()
-        print("✅ Redis connection established")
+        await redis_client.ping()
+        print(f"✅ Redis connection pool established (max_connections: {redis_pool.max_connections})")
         
         # RedisManager 초기화
         redis_manager = RedisManager(redis_client)
@@ -63,6 +78,7 @@ async def startup_event():
         
         # app.state에 저장
         app.state.redis_client = redis_client
+        app.state.redis_pool = redis_pool
         app.state.redis_manager = redis_manager
         
         # 워커 관리자 초기화 및 시작
@@ -92,8 +108,8 @@ def get_db_manager(db: Session = Depends(database.get_db)) -> DBManager:
     return DBManager(db)
 
 
-def get_redis_manager() -> RedisManager:
-    """Redis 관리자를 반환하는 의존성 함수"""
+async def get_redis_manager() -> RedisManager:
+    """Redis 관리자를 반환하는 의존성 함수 (비동기)"""
     if not hasattr(app.state, 'redis_manager') or app.state.redis_manager is None:
         logger.error("Redis manager is not available")
         raise HTTPException(status_code=503, detail="Redis service is not available")
@@ -111,7 +127,7 @@ def get_websocket_manager() -> WebsocketManager:
 @app.on_event("shutdown")
 async def shutdown_event():
     """서버 종료시 정리"""
-    global redis_client, worker_manager
+    global redis_client, redis_pool, worker_manager
     
     try:
         print("🛑 Shutting down Game Server...")
@@ -127,10 +143,17 @@ async def shutdown_event():
         # Redis 연결 정리
         if redis_client:
             try:
-                redis_client.close()
-                print("✅ Redis connections closed")
+                await redis_client.aclose()
+                print("✅ Redis client closed")
             except Exception as e:
-                logger.error(f"Error closing Redis connection: {e}")
+                logger.error(f"Error closing Redis client: {e}")
+        
+        if redis_pool:
+            try:
+                await redis_pool.aclose()
+                print("✅ Redis connection pool closed")
+            except Exception as e:
+                logger.error(f"Error closing Redis pool: {e}")
         
         print("✅ Game Server shutdown complete")
         
@@ -147,10 +170,8 @@ async def api_post(
     """API 요청 처리"""
     
     api_manager = APIManager(db_manager, redis_manager)
-    result = api_manager.process_request(request.user_no, request.api_code, request.data)
+    result = await api_manager.process_request(request.user_no, request.api_code, request.data)
     return JSONResponse(content=result)
-        
-    
 
 
 @app.websocket("/ws/{user_no}")
@@ -210,15 +231,23 @@ async def websocket_endpoint(websocket: WebSocket, user_no: int):
 
 @app.get("/health")
 async def health_check():
-    """헬스 체크 엔드포인트"""
+    """헬스 체크 엔드포인트 - 커넥션 풀 상태 포함"""
     try:
-        # Redis 연결 상태 확인
+        # Redis 연결 상태 및 풀 정보 확인
         redis_status = "ok"
-        if redis_client:
+        redis_pool_info = {}
+        
+        if redis_client and redis_pool:
             try:
-                redis_client.ping()
-            except Exception:
-                redis_status = "error"
+                await redis_client.ping()
+                redis_pool_info = {
+                    "created_connections": redis_pool.created_connections,
+                    "available_connections": len(redis_pool._available_connections),
+                    "in_use_connections": len(redis_pool._in_use_connections),
+                    "max_connections": redis_pool.max_connections
+                }
+            except Exception as e:
+                redis_status = f"error: {str(e)}"
         else:
             redis_status = "not_initialized"
         
@@ -229,6 +258,7 @@ async def health_check():
             "status": "ok",
             "services": {
                 "redis": redis_status,
+                "redis_pool": redis_pool_info,
                 "game_data": game_data_status,
                 "websocket": "ok" if websocket_manager else "not_initialized",
                 "background_worker": "ok" if worker_manager else "not_initialized"
@@ -243,11 +273,50 @@ async def health_check():
         }
 
 
+# 커넥션 풀 상태 확인 엔드포인트 추가
+@app.get("/pool-status")
+async def pool_status():
+    """커넥션 풀 상세 상태 확인"""
+    try:
+        if not redis_pool:
+            return {"error": "Redis pool not initialized"}
+        
+        pool_stats = {
+            "redis_pool": {
+                "created_connections": redis_pool.created_connections,
+                "available_connections": len(redis_pool._available_connections),
+                "in_use_connections": len(redis_pool._in_use_connections),
+                "max_connections": redis_pool.max_connections,
+                "connection_kwargs": {
+                    k: v for k, v in redis_pool.connection_kwargs.items() 
+                    if k not in ['password']  # 민감한 정보 제외
+                }
+            }
+        }
+        
+        # 데이터베이스 풀 정보도 추가 가능
+        db_engine = database.engine  # database.py에서 engine import 필요
+        if hasattr(db_engine, 'pool'):
+            pool_stats["db_pool"] = {
+                "size": db_engine.pool.size(),
+                "checked_in": db_engine.pool.checkedin(),
+                "checked_out": db_engine.pool.checkedout(),
+                "overflow": db_engine.pool.overflow(),
+                "invalid": db_engine.pool.invalid()
+            }
+        
+        return pool_stats
+        
+    except Exception as e:
+        logger.error(f"Pool status check error: {e}")
+        return {"error": str(e)}
+
+
 # 개발용 루트 엔드포인트
 @app.get("/")
 async def root():
     """루트 페이지"""
-    return {"message": "Game Server is running"}
+    return {"message": "Game Server is running with connection pools"}
 
 
 # 예외 핸들러
@@ -273,4 +342,9 @@ async def general_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        workers=1  # 단일 워커로 시작 (멀티 워커 시 Redis 풀 공유 문제 고려 필요)
+    )

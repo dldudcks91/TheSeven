@@ -1,5 +1,5 @@
 # =================================
-# unit_worker.py
+# unit_worker.py (비동기 버전)
 # =================================
 from .base_worker import BaseWorker
 import models
@@ -10,13 +10,14 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from services.redis_manager import RedisManager
 from database import get_db
+
 class UnitProductionWorker(BaseWorker):
-    """유닛 생산 완성 처리 워커"""
+    """유닛 생산 완성 처리 워커 (비동기 버전)"""
     
     async def _process_completed_tasks(self):
         try:
             unit_redis = self.redis_manager.get_unit_manager()
-            completed_units = unit_redis.get_completed_tasks()
+            completed_units = await unit_redis.get_completed_units()
             
             if not completed_units:
                 return
@@ -38,7 +39,7 @@ class UnitProductionWorker(BaseWorker):
                         db.close()
                         
         except Exception as e:
-            print(f"Error processing completed units: {e}")
+            print(f"Error getting completed unit_training: {e}")
     
     async def _complete_task(self, completed_task: Dict[str, Any], db: Session):
         user_no = completed_task['user_no']
@@ -46,7 +47,8 @@ class UnitProductionWorker(BaseWorker):
         queue_slot = int(completed_task.get('sub_id', 0))  # 생산 큐 슬롯
         
         lock_key = f"unit_completion_lock:{user_no}:{unit_idx}:{queue_slot}"
-        if not self.redis_manager.redis_client.set(lock_key, "1", nx=True, ex=30):
+        lock_set = await self.redis_manager.redis_client.set(lock_key, "1", nx=True, ex=30)
+        if not lock_set:
             return
         
         try:
@@ -60,7 +62,7 @@ class UnitProductionWorker(BaseWorker):
             
             if not unit_queue:
                 unit_redis = self.redis_manager.get_unit_manager()
-                unit_redis.remove_from_queue(user_no, unit_idx, queue_slot)
+                await unit_redis.remove_unit_training(user_no, unit_idx, queue_slot)
                 return
             
             # 사용자 유닛 인벤토리에 추가
@@ -84,9 +86,9 @@ class UnitProductionWorker(BaseWorker):
             
             # Redis에서 제거
             unit_redis = self.redis_manager.get_unit_manager()
-            unit_redis.remove_from_queue(user_no, unit_idx, queue_slot)
+            await unit_redis.remove_unit_training(user_no, unit_idx, queue_slot)
             
             print(f"Unit production completed: user_no={user_no}, unit_idx={unit_idx}, quantity={unit_queue.quantity}")
             
         finally:
-            self.redis_manager.redis_client.delete(lock_key)
+            await self.redis_manager.redis_client.delete(lock_key)

@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 import models, schemas # 모델 및 스키마 파일 import
 from services.system import GameDataManager
+
+from services.redis_manager import RedisManager
 from services.db_manager import DBManager, ResourceDBManager
 import time
 from datetime import datetime, timedelta
@@ -14,8 +16,9 @@ class ResourceManager:
     # API 코드 상수 정의
     API_RESOURCE_INFO = 1011
     
-    def __init__(self, db_manager: DBManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self.db_manager = db_manager
+        self.redis_manager = redis_manager
         self.now_resources = None
         self.logger = logging.getLogger(self.__class__.__name__)
         self.resource_db = self.db_manager.get_resource_manager()

@@ -1,14 +1,5 @@
-# background_workers/
-# ├── __init__.py
-# ├── base_worker.py          # 공통 워커 기능
-# ├── building_worker.py      # 건물 완성 처리
-# ├── unit_worker.py          # 유닛 생산 완성 처리
-# ├── research_worker.py      # 연구 완성 처리
-# ├── buff_worker.py          # 버프 만료 처리
-# └── worker_manager.py       # 모든 워커 통합 관리
-
 # =================================
-# base_worker.py
+# base_worker.py (비동기 버전)
 # =================================
 import asyncio
 from abc import ABC, abstractmethod
@@ -19,31 +10,54 @@ from services.redis_manager import RedisManager
 from database import get_db
 
 class BaseWorker(ABC):
-    """모든 백그라운드 워커의 기본 클래스"""
+    """모든 백그라운드 워커의 기본 클래스 (비동기 버전)"""
     
     def __init__(self, redis_manager: RedisManager, check_interval: int = 10):
         self.redis_manager = redis_manager
         self.check_interval = check_interval
         self.is_running = False
         self.worker_name = self.__class__.__name__
+        self._stop_event = asyncio.Event()
     
     async def start(self):
         """워커 시작"""
         self.is_running = True
+        self._stop_event.clear()
         print(f"{self.worker_name} started. Check interval: {self.check_interval}s")
         
-        while self.is_running:
-            try:
-                await self._process_completed_tasks()
-                await asyncio.sleep(self.check_interval)
-            except Exception as e:
-                print(f"Error in {self.worker_name}: {e}")
-                await asyncio.sleep(self.check_interval)
+        try:
+            while self.is_running and not self._stop_event.is_set():
+                try:
+                    await self._process_completed_tasks()
+                    
+                    # 인터럽트 가능한 대기
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(), timeout=self.check_interval)
+                        # stop_event가 설정되면 종료
+                        break
+                    except asyncio.TimeoutError:
+                        # 타임아웃은 정상적인 동작
+                        continue
+                        
+                except Exception as e:
+                    print(f"Error in {self.worker_name}: {e}")
+                    # 에러 발생 시에도 인터럽트 가능한 대기
+                    try:
+                        await asyncio.wait_for(self._stop_event.wait(), timeout=self.check_interval)
+                        break
+                    except asyncio.TimeoutError:
+                        continue
+        except asyncio.CancelledError:
+            print(f"{self.worker_name} was cancelled")
+        finally:
+            self.is_running = False
+            print(f"{self.worker_name} loop ended")
     
-    def stop(self):
+    async def stop(self):
         """워커 중지"""
         self.is_running = False
-        print(f"{self.worker_name} stopped")
+        self._stop_event.set()
+        print(f"{self.worker_name} stop requested")
     
     def get_db_session(self) -> Session:
         """새로운 DB 세션 생성"""
@@ -65,12 +79,6 @@ class BaseWorker(ABC):
             "worker_name": self.worker_name,
             "is_running": self.is_running,
             "check_interval": self.check_interval,
-            "current_time": datetime.utcnow().isoformat()
+            "current_time": datetime.utcnow().isoformat(),
+            "stop_event_set": self._stop_event.is_set()
         }
-
-
-
-
-
-
-

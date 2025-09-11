@@ -1,5 +1,5 @@
 # =================================
-# worker_manager.py
+# worker_manager.py (비동기 버전)
 # =================================
 import asyncio
 from typing import Dict, Any, Optional
@@ -10,10 +10,11 @@ from .research_worker import ResearchCompletionWorker
 from .buff_worker import BuffExpirationWorker
 
 class BackgroundWorkerManager:
-    """모든 백그라운드 워커들을 통합 관리하는 클래스"""
+    """모든 백그라운드 워커들을 통합 관리하는 클래스 (비동기 버전)"""
     
     def __init__(self):
         self.workers = {}
+        self.worker_tasks = {}
         self.is_initialized = False
     
     async def initialize(self, redis_manager: RedisManager, config: Optional[Dict[str, int]] = None):
@@ -60,36 +61,60 @@ class BackgroundWorkerManager:
         if not self.is_initialized:
             raise RuntimeError("Worker manager not initialized")
         
-        tasks = []
         for worker_name, worker in self.workers.items():
-            task = asyncio.create_task(worker.start())
-            tasks.append(task)
-            print(f"Started {worker_name} worker")
+            if worker_name not in self.worker_tasks:
+                task = asyncio.create_task(worker.start())
+                self.worker_tasks[worker_name] = task
+                print(f"Started {worker_name} worker")
         
         print(f"All {len(self.workers)} background workers started")
-        return tasks
+        return list(self.worker_tasks.values())
     
     async def start_worker(self, worker_name: str):
         """특정 워커만 시작"""
         if worker_name not in self.workers:
             raise ValueError(f"Unknown worker: {worker_name}")
         
-        worker = self.workers[worker_name]
-        task = asyncio.create_task(worker.start())
-        print(f"Started {worker_name} worker")
-        return task
+        if worker_name not in self.worker_tasks:
+            worker = self.workers[worker_name]
+            task = asyncio.create_task(worker.start())
+            self.worker_tasks[worker_name] = task
+            print(f"Started {worker_name} worker")
+            return task
     
-    def stop_all_workers(self):
+    async def stop_all_workers(self):
         """모든 워커 중지"""
         for worker_name, worker in self.workers.items():
-            worker.stop()
+            await worker.stop()
             print(f"Stopped {worker_name} worker")
+        
+        # 모든 태스크 취소
+        for worker_name, task in self.worker_tasks.items():
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        
+        self.worker_tasks.clear()
     
-    def stop_worker(self, worker_name: str):
+    async def stop_worker(self, worker_name: str):
         """특정 워커 중지"""
         if worker_name in self.workers:
-            self.workers[worker_name].stop()
+            await self.workers[worker_name].stop()
             print(f"Stopped {worker_name} worker")
+            
+            # 해당 태스크 취소
+            if worker_name in self.worker_tasks:
+                task = self.worker_tasks[worker_name]
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                del self.worker_tasks[worker_name]
     
     def get_all_worker_status(self) -> Dict[str, Any]:
         """모든 워커 상태 조회"""
@@ -100,7 +125,9 @@ class BackgroundWorkerManager:
         }
         
         for worker_name, worker in self.workers.items():
-            status['workers'][worker_name] = worker.get_worker_status()
+            worker_status = worker.get_worker_status()
+            worker_status['task_running'] = worker_name in self.worker_tasks and not self.worker_tasks[worker_name].done()
+            status['workers'][worker_name] = worker_status
         
         return status
     
@@ -109,7 +136,9 @@ class BackgroundWorkerManager:
         if worker_name not in self.workers:
             return {'error': f'Worker {worker_name} not found'}
         
-        return self.workers[worker_name].get_worker_status()
+        worker_status = self.workers[worker_name].get_worker_status()
+        worker_status['task_running'] = worker_name in self.worker_tasks and not self.worker_tasks[worker_name].done()
+        return worker_status
     
     async def manual_process_all(self):
         """수동으로 모든 워커의 완료된 작업들 처리 (테스트/디버깅용)"""
@@ -133,7 +162,3 @@ class BackgroundWorkerManager:
             return {'status': 'processed'}
         except Exception as e:
             return {'error': str(e)}
-
-
-
-
