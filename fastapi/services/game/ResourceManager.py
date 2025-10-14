@@ -22,10 +22,23 @@ class ResourceManager:
         self.now_resources = None
         self.logger = logging.getLogger(self.__class__.__name__)
         self.resource_db = self.db_manager.get_resource_manager()
-        
-    def _get_resources(self, user_no):
+
+        self.user_no: int = None
+
+    @property
+    def user_no(self):
+        return self._user_no
+
+    @user_no.setter
+    def user_no(self, no: int):
+        if not isinstance(no, int):
+            raise ValueError("user_no는 정수여야 합니다.")
+        self._user_no = no
+        self._cached_buildings = None
+
+    async def _get_resources(self, user_no):
         """자원 조회 헬퍼 메서드"""
-        return self.resource_db.get_user_resources(user_no)
+        return await self.resource_db.get_user_resources(user_no)
     
     def _format_resources_data(self, resource):
         """자원 데이터를 응답 형태로 포맷팅"""
@@ -39,10 +52,11 @@ class ResourceManager:
             "ruby": resource.ruby,
         }
     
-    def resource_info(self, user_no):
+    async def resource_info(self):
         """자원 정보를 조회합니다"""
+        user_no = self.user_no
         try:
-            user_resources = self._get_resources(user_no)
+            user_resources = await self._get_resources(user_no)
             
             if not user_resources:
                 return {

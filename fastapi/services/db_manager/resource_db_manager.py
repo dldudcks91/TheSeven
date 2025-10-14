@@ -15,10 +15,10 @@ class ResourceDBManager:
         self.db = db
         self.logger = logging.getLogger(self.__class__.__name__)
     
-    def get_user_resources(self, user_no: int):
+    async def get_user_resources(self, user_no: int):
         """사용자 자원 조회 - 객체 반환"""
         try:
-            resources = self.db.query(models.Resources).filter(
+            resources = await self.db.query(models.Resources).filter(
                 models.Resources.user_no == user_no
             ).first()
             return resources

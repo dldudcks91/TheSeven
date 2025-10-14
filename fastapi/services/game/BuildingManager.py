@@ -63,7 +63,7 @@ class BuildingManager:
             }
         return None
     
-    def get_user_buildings(self):
+    async def get_user_buildings(self):
         """사용자 건물 데이터를 캐시 우선으로 조회"""
         if self._cached_buildings is not None:
             return self._cached_buildings
@@ -73,10 +73,10 @@ class BuildingManager:
         try:
             # 1. Redis 캐시에서 먼저 조회
             building_redis = self.redis_manager.get_building_manager()
-            self._cached_buildings = building_redis.get_cached_buildings(user_no)
-            
+            self._cached_buildings = await building_redis.get_cached_buildings(user_no)
+            self.logger.debug(self._cached_buildings)
             if self._cached_buildings:
-                self.logger.debug(f"Cache hit: Retrieved {len(self._cached_buildings)} buildings for user {user_no}")
+                self.logger.debug(f"Cache hit: Retrieved {self._cached_buildings} buildings for user {user_no}")
                 return self._cached_buildings
             
             # 2. 캐시 미스: DB에서 조회
@@ -84,9 +84,9 @@ class BuildingManager:
             
             if buildings_data['success'] and buildings_data['data']:
                 # 3. Redis에 캐싱
-                cache_success = building_redis.cache_user_buildings_data(user_no, buildings_data['data'])
+                cache_success = await building_redis.cache_user_buildings_data(user_no, buildings_data['data'])
                 if cache_success:
-                    self.logger.debug(f"Successfully cached {len(buildings_data['data'])} buildings for user {user_no}")
+                    self.logger.debug(f"Successfully cached {buildings_data['data']} buildings for user {user_no}")
                 
                 self._cached_buildings = buildings_data['data']
             else:
@@ -95,7 +95,8 @@ class BuildingManager:
         except Exception as e:
             self.logger.error(f"Error getting user buildings for user {user_no}: {e}")
             self._cached_buildings = {}
-            
+        
+        
         return self._cached_buildings
     
     def _format_building_for_cache(self, building_data):
@@ -173,20 +174,20 @@ class BuildingManager:
             self.logger.error(f"Error invalidating cache for user {user_no}: {e}")
             return False
     
-    def building_info(self):
+    async def  building_info(self):
         """건물 정보를 조회합니다 - 캐시 우선 접근"""
         try:
-            buildings_data = self.get_user_buildings()
+            buildings_data = await self.get_user_buildings()
             
-            return {
+            return  {
                 "success": True,
-                "message": f"Retrieved {len(buildings_data)} buildings",
+                "message": f"Retrieved {buildings_data} buildings",
                 "data": buildings_data
             }
             
         except Exception as e:
             self.logger.error(f"Error getting building info for user {self.user_no}: {e}")
-            return {
+            return  {
                 "success": False,
                 "message": f"Failed to retrieve building info: {str(e)}",
                 "data": {}

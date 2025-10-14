@@ -42,7 +42,7 @@ class APIManager():
         """API 요청 처리 (비동기 버전)"""
         
         ServiceClass, method = self.api_map.get(api_code)
-        
+        print("preccess request:", user_no, api_code, data)
         if not method: 
             
             raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")
