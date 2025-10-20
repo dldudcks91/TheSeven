@@ -131,12 +131,12 @@ class LoginManager:
                 return {"success": False, "count": 0, "error": buildings_result.get('message', 'DB Load Failed')}
             
             # 건물 데이터 포맷팅 로직 (CPU 바운드)
-            buildings_data = {}
+            buildings_dict = {}
             for building in buildings_result.get('data', []):
                 # ... 기존 포맷팅 로직 유지 ... (여기서는 생략)
                 building_idx = building.get('building_idx') if isinstance(building, dict) else getattr(building, 'building_idx', None)
                 if building_idx is not None:
-                    buildings_data[str(building_idx)] = {
+                    buildings_dict[str(building_idx)] = {
                         "id": building.get('id') if isinstance(building, dict) else getattr(building, 'id', None),
                         "user_no": building.get('user_no') if isinstance(building, dict) else getattr(building, 'user_no', None),
                         "building_idx": building_idx,
@@ -149,13 +149,11 @@ class LoginManager:
                     }
 
             # 2. Redis 캐싱 (동기 함수를 스레드 풀에서 비동기로 실행)
-            def cache_to_redis():
-                building_redis = self.redis_manager.get_building_manager()
-                return building_redis.cache_user_buildings_data(user_no, buildings_data)
             
-            success = await loop.run_in_executor(self.executor, cache_to_redis)
+            building_redis =  self.redis_manager.get_building_manager()
+            success = await building_redis.cache_user_buildings_data(user_no, buildings_dict)
             
-            return {"success": success, "count": len(buildings_data)}
+            return {"success": success, "count": len(buildings_dict)}
             
         except Exception as e:
             self.logger.error(f"Error caching buildings for user {user_no}: {e}")
@@ -179,12 +177,12 @@ class LoginManager:
                 return {"success": False, "count": 0, "error": units_result.get('message', 'DB Load Failed')}
             
             # ... 유닛 데이터 포맷팅 로직 (CPU 바운드) ...
-            units_data = {'inventory': {}, 'production_queue': {}}
+            units_dict = {'inventory': {}, 'production_queue': {}}
             for unit in units_result.get('data', []):
                  # ... 보유 유닛 처리 로직 유지 ...
                 unit_idx = unit.get('unit_idx') if isinstance(unit, dict) else getattr(unit, 'unit_idx', None)
                 if unit_idx is not None:
-                     units_data['inventory'][str(unit_idx)] = {
+                     units_dict['inventory'][str(unit_idx)] = {
                          "unit_idx": unit_idx,
                          "quantity": unit.get('quantity') if isinstance(unit, dict) else getattr(unit, 'quantity', 0),
                          "last_dt": unit.get('last_dt') if isinstance(unit, dict) else (getattr(unit, 'last_dt', None).isoformat() if getattr(unit, 'last_dt', None) else None)
@@ -205,7 +203,7 @@ class LoginManager:
                     queue_slot = queue_item.get('queue_slot') if isinstance(queue_item, dict) else getattr(queue_item, 'queue_slot', 0)
                     if unit_idx is not None:
                          key = f"{unit_idx}_{queue_slot}"
-                         units_data['production_queue'][key] = {
+                         units_dict['production_queue'][key] = {
                              "unit_idx": unit_idx,
                              "queue_slot": queue_slot,
                              "quantity": queue_item.get('quantity') if isinstance(queue_item, dict) else getattr(queue_item, 'quantity', 0),
@@ -215,13 +213,11 @@ class LoginManager:
                          }
             
             # 3. Redis 캐싱 (동기 함수를 스레드 풀에서 비동기로 실행)
-            def cache_to_redis():
-                unit_redis = self.redis_manager.get_unit_manager()
-                return unit_redis.cache_user_units_data(user_no, units_data)
+            unit_redis =  self.redis_manager.get_user_manager()
+            success = await unit_redis.cache_user_units_data(user_no, units_dict)
             
-            success = await loop.run_in_executor(self.executor, cache_to_redis)
             
-            total_count = len(units_data['inventory']) + len(units_data['production_queue'])
+            total_count = len(units_dict['inventory']) + len(units_dict['production_queue'])
             return {"success": success, "count": total_count}
             
         except Exception as e:
@@ -260,12 +256,8 @@ class LoginManager:
                      }
 
             # 2. Redis 캐싱 (동기 함수를 스레드 풀에서 비동기로 실행)
-            def cache_to_redis():
-                research_redis = self.redis_manager.get_research_manager()
-                return research_redis.cache_user_research_data(user_no, research_dict)
-            
-            success = await loop.run_in_executor(self.executor, cache_to_redis)
-            
+            research_redis =  self.redis_manager.get_research_manager()
+            success = await research_redis.cache_research_data(user_no,research_dict)
             return {"success": success, "count": len(research_dict)}
             
         except Exception as e:
@@ -290,7 +282,7 @@ class LoginManager:
                 return {"success": False, "count": 0, "error": resources_result.get('message', 'DB Load Failed')}
             
             # ... 자원 데이터 포맷팅 로직 (CPU 바운드) ...
-            resource_data = {}
+            resource_dict = {}
             resources = resources_result.get('data')
 
             if isinstance(resources, list):
@@ -298,32 +290,29 @@ class LoginManager:
                 for resource in resources:
                     resource_type = resource.get('resource_type') if isinstance(resource, dict) else getattr(resource, 'resource_type', None)
                     if resource_type is not None:
-                         resource_data[resource_type] = {
+                         resource_dict[resource_type] = {
                              "resource_type": resource_type,
                              "amount": resource.get('amount') if isinstance(resource, dict) else getattr(resource, 'amount', 0),
                              "last_updated": resource.get('last_dt') if isinstance(resource, dict) else (getattr(resource, 'last_dt', None).isoformat() if getattr(resource, 'last_dt', None) else None)
                          }
             elif isinstance(resources, dict):
-                 resource_data = resources # resources_result['data'] 자체가 Dict일 경우
+                 resource_dict = resources # resources_result['data'] 자체가 Dict일 경우
             else:
                  # DB ORM 객체일 경우 처리 로직 (resources_result['data']가 단일 객체일 때)
                  for attr in ['gold', 'wood', 'stone', 'food']:
                      if hasattr(resources, attr):
-                         resource_data[attr] = {
+                         resource_dict[attr] = {
                              "resource_type": attr,
                              "amount": getattr(resources, attr),
                              "last_updated": getattr(resources, 'last_dt', None).isoformat() if hasattr(resources, 'last_dt') and getattr(resources, 'last_dt') else None
                          }
             
             # 2. Redis 캐싱 (동기 함수를 스레드 풀에서 비동기로 실행)
-            def cache_to_redis():
-                cache_manager = self.redis_manager.get_cache_manager()
-                resource_cache_key = f"user_resources:{user_no}"
-                return cache_manager.set_data(resource_cache_key, resource_data, expire_time=1800)
             
-            success = await loop.run_in_executor(self.executor, cache_to_redis)
+            resource_manager = self.redis_manager.get_resource_manager()
+            success = await resource_manager.cache_resource_data(user_no,resource_dict)
             
-            return {"success": success, "count": len(resource_data)}
+            return {"success": success, "count": len(resource_dict)}
             
         except Exception as e:
             self.logger.error(f"Error caching resources for user {user_no}: {e}")

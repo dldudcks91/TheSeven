@@ -12,6 +12,7 @@ from .unit_redis_manager import UnitRedisManager
 from .research_redis_manager import ResearchRedisManager
 
 from .buff_redis_manager import BuffRedisManager
+from .resource_redis_manager import ResourceRedisManager
 from .RedisManager import RedisManager
 
 
