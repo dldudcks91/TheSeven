@@ -37,25 +37,6 @@ class BuildingDBManager:
             "last_dt": model_instance.last_dt.isoformat() if model_instance.last_dt else None,
         }
     
-    def create_building(self, **kwargs) -> Dict[str, Any]:
-        """건물 생성 - commit하지 않음"""
-        try:
-            new_building = models.Building(**kwargs)
-            self.db.add(new_building)
-            self.db.flush()  # commit 대신 flush
-            
-            return self._format_response(
-                True,
-                "Building created successfully",
-                self._serialize_model(new_building)
-            )
-        except SQLAlchemyError as e:
-            self.logger.error(f"Database error creating building: {e}")
-            return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error creating building: {e}")
-            return self._format_response(False, f"Error creating building: {str(e)}")
-    
     def get_user_buildings(self, user_no: int, status: Optional[int] = None) -> Dict[str, Any]:
         """사용자의 모든 건물 조회"""
         try:
@@ -80,7 +61,7 @@ class BuildingDBManager:
             self.logger.error(f"Error getting user buildings: {e}")
             return self._format_response(False, f"Error getting buildings: {str(e)}")
     
-    def get_building_by_idx(self, user_no: int, building_idx: int) -> Dict[str, Any]:
+    def get_user_building(self, user_no: int, building_idx: int) -> Dict[str, Any]:
         """특정 건물 조회 - user_no로 권한 확인"""
         try:
             building = self.db.query(models.Building).filter(
@@ -102,6 +83,28 @@ class BuildingDBManager:
         except Exception as e:
             self.logger.error(f"Error getting building: {e}")
             return self._format_response(False, f"Error getting building: {str(e)}")
+    
+    def create_building(self, **kwargs) -> Dict[str, Any]:
+        """건물 생성 - commit하지 않음"""
+        try:
+            new_building = models.Building(**kwargs)
+            self.db.add(new_building)
+            self.db.flush()  # commit 대신 flush
+            
+            return self._format_response(
+                True,
+                "Building created successfully",
+                self._serialize_model(new_building)
+            )
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error creating building: {e}")
+            return self._format_response(False, f"Database error: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Error creating building: {e}")
+            return self._format_response(False, f"Error creating building: {str(e)}")
+    
+    
+
     
     def update_building_status(self, user_no: int, building_idx: int, **update_fields) -> Dict[str, Any]:
         """건물 상태 업데이트 - user_no로 권한 확인"""

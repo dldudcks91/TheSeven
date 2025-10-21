@@ -63,42 +63,6 @@ class BuildingManager:
             }
         return None
     
-    async def get_user_buildings(self):
-        """사용자 건물 데이터를 캐시 우선으로 조회"""
-        if self._cached_buildings is not None:
-            return self._cached_buildings
-        
-        user_no = self.user_no
-        
-        try:
-            # 1. Redis 캐시에서 먼저 조회
-            building_redis = self.redis_manager.get_building_manager()
-            self._cached_buildings = await building_redis.get_cached_buildings(user_no)
-            self.logger.debug(self._cached_buildings)
-            if self._cached_buildings:
-                self.logger.debug(f"Cache hit: Retrieved {self._cached_buildings} buildings for user {user_no}")
-                return self._cached_buildings
-            
-            # 2. 캐시 미스: DB에서 조회
-            buildings_data = self._load_buildings_from_db(user_no)
-            
-            if buildings_data['success'] and buildings_data['data']:
-                # 3. Redis에 캐싱
-                cache_success = await building_redis.cache_user_buildings_data(user_no, buildings_data['data'])
-                if cache_success:
-                    self.logger.debug(f"Successfully cached {buildings_data['data']} buildings for user {user_no}")
-                
-                self._cached_buildings = buildings_data['data']
-            else:
-                self._cached_buildings = {}
-                
-        except Exception as e:
-            self.logger.error(f"Error getting user buildings for user {user_no}: {e}")
-            self._cached_buildings = {}
-        
-        
-        return self._cached_buildings
-    
     def _format_building_for_cache(self, building_data):
         """캐시용 건물 데이터 포맷팅"""
         try:
@@ -128,7 +92,47 @@ class BuildingManager:
             self.logger.error(f"Error formatting building data for cache: {e}")
             return {}
     
-    def _load_buildings_from_db(self, user_no):
+    
+    
+    async def get_user_buildings(self):
+        """사용자 건물 데이터를 캐시 우선으로 조회"""
+        if self._cached_buildings is not None:
+            return self._cached_buildings
+        
+        user_no = self.user_no
+        
+        try:
+            # 1. Redis 캐시에서 먼저 조회
+            building_redis = self.redis_manager.get_building_manager()
+            self._cached_buildings = await building_redis.get_cached_buildings(user_no)
+            self.logger.debug(self._cached_buildings)
+            if self._cached_buildings:
+                self.logger.debug(f"Cache hit: Retrieved {self._cached_buildings} buildings for user {user_no}")
+                return self._cached_buildings
+            
+            # 2. 캐시 미스: DB에서 조회
+            buildings_data = self.get_db_buildings(user_no)
+            
+            if buildings_data['success'] and buildings_data['data']:
+                # 3. Redis에 캐싱
+                cache_success = await building_redis.cache_user_buildings_data(user_no, buildings_data['data'])
+                if cache_success:
+                    self.logger.debug(f"Successfully cached {buildings_data['data']} buildings for user {user_no}")
+                
+                self._cached_buildings = buildings_data['data']
+            else:
+                self._cached_buildings = {}
+                
+        except Exception as e:
+            self.logger.error(f"Error getting user buildings for user {user_no}: {e}")
+            self._cached_buildings = {}
+        
+        
+        return self._cached_buildings
+    
+    
+    
+    def get_db_buildings(self, user_no):
         """DB에서 건물 데이터만 순수하게 조회"""
         try:
             building_db = self.db_manager.get_building_manager()
@@ -174,7 +178,48 @@ class BuildingManager:
             self.logger.error(f"Error invalidating cache for user {user_no}: {e}")
             return False
     
-    async def  building_info(self):
+    
+    async def register_building_tasks(self, user_no: int = None):
+        """
+        진행 중인 건물 작업을 완료 큐에 등록
+        
+        Args:
+            user_no: 사용자 번호, None인 경우 인스턴스의 user_no 사용
+        """
+        if user_no is None:
+            user_no = self.user_no
+            
+        if not user_no:
+            self.logger.error("Cannot register building tasks: user_no is not set")
+            return False
+            
+        try:
+            building_redis = self.redis_manager.get_building_manager()
+            building_db = self.db_manager.get_building_manager()
+            
+            building_active_data = building_db.get_active_buildings()['data']
+            # BuildingRedisManager의 register 메서드 호출
+            # (DB에서 진행 중인 건물 조회 + Redis 큐에 등록)
+            for data in building_active_data:
+                user_no = data['user_no']
+                building_idx = data['building_idx']
+                end_time = data['end_time']
+            await building_redis.add_building_to_queue(user_no,building_idx, end_time)  # executor 불필요 (이미 비동기)
+            
+            self.logger.debug(f"Registered building tasks for user {user_no}")
+            return True
+            
+        except AttributeError as e:
+            self.logger.warning(f"Building task registration not available: {e}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error registering building tasks for user {user_no}: {e}")
+            return False
+    
+    
+    #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
+    
+    async def building_info(self):
         """건물 정보를 조회합니다 - 캐시 우선 접근"""
         try:
             buildings_data = await self.get_user_buildings()
@@ -192,10 +237,8 @@ class BuildingManager:
                 "message": f"Failed to retrieve building info: {str(e)}",
                 "data": {}
             }
-    
-    
 
-    def building_create(self):
+    async def building_create(self):
         """새 건물을 생성하고 즉시 완성하여 DB에 저장합니다."""
         user_no = self.user_no
         
@@ -208,7 +251,7 @@ class BuildingManager:
             building_idx = self.data.get('building_idx')
             
             # 중복 체크 (캐시된 데이터에서)
-            buildings_data = self.get_user_buildings()
+            buildings_data = await self.get_user_buildings()
             existing_building = buildings_data.get(str(building_idx))
             if existing_building:
                 return {"success": False, "message": "Building already exists", "data": {}}
@@ -259,7 +302,7 @@ class BuildingManager:
             
             # Redis 캐시에 새 건물 추가
             building_redis = self.redis_manager.get_building_manager()
-            cache_updated = building_redis.update_cached_building(user_no, building_idx, new_building_data)
+            cache_updated = await building_redis.update_cached_building(user_no, building_idx, new_building_data)
             
             # 메모리 캐시에도 추가
             if self._cached_buildings is not None:
@@ -280,7 +323,7 @@ class BuildingManager:
                 "data": {}
             }
     
-    def building_levelup(self):
+    async def building_levelup(self):
         """건물 레벨을 업그레이드합니다 - 전체 트랜잭션 처리"""
         user_no = self.user_no
         
@@ -293,7 +336,7 @@ class BuildingManager:
             building_idx = self.data.get('building_idx')
             
             # 1. 캐시된 데이터에서 건물 조회
-            buildings_data = self.get_user_buildings()
+            buildings_data = await self.get_user_buildings()
             building = buildings_data.get(str(building_idx))
             
             # 건물 존재 및 상태 확인
@@ -366,11 +409,14 @@ class BuildingManager:
             }
             
             # Redis 캐시 업데이트
-            building_redis.update_cached_building(user_no, building_idx, updated_building)
+            await building_redis.update_cached_building(user_no, building_idx, updated_building)
             
             # 메모리 캐시 업데이트
             if self._cached_buildings and str(building_idx) in self._cached_buildings:
                 self._cached_buildings[str(building_idx)] = updated_building
+            
+            # Redis 완료 큐에 작업 등록
+            await building_redis.add_building_to_queue(user_no, building_idx, completion_time)
             
             self.logger.info(f"Building {building_idx} upgrade started for user {user_no}: {building['building_lv']} -> {target_level}, completing in {upgrade_time}s")
             
@@ -395,7 +441,7 @@ class BuildingManager:
                 "data": {}
             }
     
-    def building_cancel(self):
+    async def building_cancel(self):
         """건물 건설/업그레이드를 취소합니다."""
         user_no = self.user_no
         
@@ -407,7 +453,7 @@ class BuildingManager:
             building_idx = self.data.get('building_idx')
             
             # 캐시된 데이터에서 건물 조회
-            buildings_data = self.get_user_buildings()
+            buildings_data = await self.get_user_buildings()
             building = buildings_data.get(str(building_idx))
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
@@ -417,7 +463,7 @@ class BuildingManager:
             
             # Redis 큐에서 제거
             building_redis = self.redis_manager.get_building_manager()
-            queue_removed = building_redis.remove_building_from_queue(user_no, building_idx)
+            queue_removed = await building_redis.remove_building_from_queue(user_no, building_idx)
             
             if not queue_removed:
                 self.logger.warning(f"Failed to remove building {building_idx} from completion queue for user {user_no}")
@@ -466,7 +512,7 @@ class BuildingManager:
                 "data": {}
             }
     
-    def building_speedup(self):
+    async def building_speedup(self):
         """건물 건설/업그레이드를 즉시 완료합니다."""
         user_no = self.user_no
         
@@ -478,7 +524,7 @@ class BuildingManager:
             building_idx = self.data.get('building_idx')
             
             # 캐시된 데이터에서 건물 조회
-            buildings_data = self.get_user_buildings()
+            buildings_data = await self.get_user_buildings()
             building = buildings_data.get(str(building_idx))
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
@@ -488,19 +534,19 @@ class BuildingManager:
             
             # Redis에서 완료 시간 조회 및 업데이트
             building_redis = self.redis_manager.get_building_manager()
-            completion_time = building_redis.get_building_completion_time(user_no, building_idx)
+            completion_time = await building_redis.get_building_completion_time(user_no, building_idx)
             if not completion_time:
                 return {"success": False, "message": "Building completion time not found", "data": {}}
             
             # 즉시 완료를 위해 현재 시간으로 업데이트
             current_time = datetime.utcnow()
-            update_success = building_redis.update_building_completion_time(user_no, building_idx, current_time)
+            update_success = await building_redis.update_building_completion_time(user_no, building_idx, current_time)
             
             if not update_success:
                 return {"success": False, "message": "Failed to update completion time", "data": {}}
             
             # 캐시에서 해당 건물 업데이트 (선택적)
-            self._update_cached_building(user_no, building_idx, {
+            await self._update_cached_building(user_no, building_idx, {
                 **building,
                 'end_time': current_time.isoformat(),
                 'updated_at': current_time.isoformat()
@@ -520,11 +566,11 @@ class BuildingManager:
                 "data": {}
             }
     
-    def _update_cached_building(self, user_no: int, building_idx: int, updated_data: dict):
+    async def _update_cached_building(self, user_no: int, building_idx: int, updated_data: dict):
         """캐시된 건물 데이터 업데이트"""
         try:
             building_redis = self.redis_manager.get_building_manager()
-            cache_updated = building_redis.update_cached_building(user_no, building_idx, updated_data)
+            cache_updated = await building_redis.update_cached_building(user_no, building_idx, updated_data)
             
             # 메모리 캐시도 업데이트
             if self._cached_buildings and str(building_idx) in self._cached_buildings:
