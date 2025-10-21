@@ -131,7 +131,7 @@ class LoginManager:
         
         # Building
         if 'building' in managers:
-            tasks.append(managers['building'].get_user_buildings())
+            tasks.append(managers['building'].building_info())
             task_names.append('buildings')
         
         # Unit

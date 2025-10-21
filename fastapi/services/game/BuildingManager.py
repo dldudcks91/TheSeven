@@ -197,14 +197,15 @@ class BuildingManager:
             building_redis = self.redis_manager.get_building_manager()
             building_db = self.db_manager.get_building_manager()
             
-            building_active_data = building_db.get_active_buildings()['data']
+            building_active_data = building_db.get_active_buildings(user_no)['data']
             # BuildingRedisManager의 register 메서드 호출
             # (DB에서 진행 중인 건물 조회 + Redis 큐에 등록)
             for data in building_active_data:
                 user_no = data['user_no']
                 building_idx = data['building_idx']
-                end_time = data['end_time']
-            await building_redis.add_building_to_queue(user_no,building_idx, end_time)  # executor 불필요 (이미 비동기)
+                end_time = datetime.fromisoformat(data['end_time'])
+                
+                await building_redis.add_building_to_queue(user_no,building_idx, end_time)  # executor 불필요 (이미 비동기)
             
             self.logger.debug(f"Registered building tasks for user {user_no}")
             return True
@@ -220,23 +221,37 @@ class BuildingManager:
     #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
     
     async def building_info(self):
-        """건물 정보를 조회합니다 - 캐시 우선 접근"""
+        """건물 정보 조회 - Redis 캐시 우선, 완료 체크는 캐시에서"""
         try:
+            # 1. 캐시된 데이터 가져오기
             buildings_data = await self.get_user_buildings()
             
-            return  {
+            # 2. 캐시된 데이터에서만 완료 여부 체크
+            current_time = datetime.utcnow()
+            needs_update = []
+            
+            for building_idx, building in buildings_data.items():
+                if building['status'] in [1, 2] and building.get('end_time'):
+                    end_time = datetime.fromisoformat(building['end_time'])
+                    if end_time <= current_time:
+                        needs_update.append(building_idx)
+            
+            # 3. 완료된 건물이 있을 때만 DB 업데이트
+            if needs_update:
+                await self._process_completed_buildings_batch(needs_update)
+                # 캐시 무효화하고 다시 로드
+                self.invalidate_user_building_cache(self.user_no)
+                buildings_data = await self.get_user_buildings()
+            
+            return {
                 "success": True,
-                "message": f"Retrieved {buildings_data} buildings",
+                "message": f"Retrieved {len(buildings_data)} buildings",
                 "data": buildings_data
             }
             
         except Exception as e:
-            self.logger.error(f"Error getting building info for user {self.user_no}: {e}")
-            return  {
-                "success": False,
-                "message": f"Failed to retrieve building info: {str(e)}",
-                "data": {}
-            }
+            self.logger.error(f"Error getting building info: {e}")
+            return {"success": False, "message": str(e), "data": {}}
 
     async def building_create(self):
         """새 건물을 생성하고 즉시 완성하여 DB에 저장합니다."""
