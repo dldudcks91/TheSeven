@@ -179,43 +179,7 @@ class BuildingManager:
             return False
     
     
-    async def register_building_tasks(self, user_no: int = None):
-        """
-        진행 중인 건물 작업을 완료 큐에 등록
-        
-        Args:
-            user_no: 사용자 번호, None인 경우 인스턴스의 user_no 사용
-        """
-        if user_no is None:
-            user_no = self.user_no
-            
-        if not user_no:
-            self.logger.error("Cannot register building tasks: user_no is not set")
-            return False
-            
-        try:
-            building_redis = self.redis_manager.get_building_manager()
-            building_db = self.db_manager.get_building_manager()
-            
-            building_active_data = building_db.get_active_buildings(user_no)['data']
-            # BuildingRedisManager의 register 메서드 호출
-            # (DB에서 진행 중인 건물 조회 + Redis 큐에 등록)
-            for data in building_active_data:
-                user_no = data['user_no']
-                building_idx = data['building_idx']
-                end_time = datetime.fromisoformat(data['end_time'])
-                
-                await building_redis.add_building_to_queue(user_no,building_idx, end_time)  # executor 불필요 (이미 비동기)
-            
-            self.logger.debug(f"Registered building tasks for user {user_no}")
-            return True
-            
-        except AttributeError as e:
-            self.logger.warning(f"Building task registration not available: {e}")
-            return False
-        except Exception as e:
-            self.logger.error(f"Error registering building tasks for user {user_no}: {e}")
-            return False
+   
     
     
     #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
@@ -526,6 +490,49 @@ class BuildingManager:
                 "message": f"Building cancellation failed: {str(e)}",
                 "data": {}
             }
+    
+    def building_finish(user_id: int, db: Session = Depends(get_db)):
+        # 1. 유저의 건물 정보 가져오기
+        buildings = get_user_buildings(user_id, db)
+        
+        current_time = datetime.now()
+        completed_buildings = []
+        
+        for building in buildings:
+            # 2. 현재시간과 캐시에 end_time 비교 (building 객체 형식 확인)
+            if building.status in ["constructing", "upgrading"]:
+                if building.end_time <= current_time:
+                    # 3. 건물 생성 또는 업그레이드 완료
+                    db_building = db.query(models.Building).filter(models.Building.id == building.id).first()
+                    old_status = db_building.status
+                    
+                    # 상태 업데이트
+                    db_building.status = "completed"
+                    
+                    # 업그레이드인 경우 레벨 증가
+                    if old_status == "upgrading":
+                        db_building.level += 1
+                    
+                    # 4. DB 업데이트
+                    db.commit()
+                    db.refresh(db_building)
+                    
+                    # 4. 캐시 업데이트 (주어진 코드의 캐싱 패턴과 일치)
+                    redis_client.hset(f"user:{user_id}:buildings", str(db_building.id), json.dumps({
+                        "id": db_building.id,
+                        "user_id": db_building.user_id,
+                        "building_type_id": db_building.building_type_id,
+                        "level": db_building.level,
+                        "x": db_building.x,
+                        "y": db_building.y,
+                        "status": db_building.status,
+                        "start_time": db_building.start_time.isoformat(),
+                        "end_time": db_building.end_time.isoformat()
+                    }))
+                    
+                    completed_buildings.append(db_building)
+        
+        return completed_buildings
     
     async def building_speedup(self):
         """건물 건설/업그레이드를 즉시 완료합니다."""
