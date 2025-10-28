@@ -174,8 +174,7 @@ class LoginManager:
         tasks = []
         
         # 빌딩 매니저의 register_building_tasks 호출
-        if 'building' in managers:
-            tasks.append(managers['building'].register_building_tasks(user_no))
+        
         
         # Unit, Research, Buff 작업 등록
         tasks.extend([

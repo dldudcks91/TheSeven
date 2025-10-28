@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 import models, schemas
-from services.system import GameDataManager
+from services.system.GameDataManager import GameDataManager
 from services.game import ResourceManager, BuffManager
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
@@ -23,6 +23,8 @@ class BuildingManager:
         self.redis_manager = redis_manager
         self._cached_buildings = None
         self.logger = logging.getLogger(self.__class__.__name__)
+        
+        
         
     @property
     def user_no(self):
@@ -185,27 +187,9 @@ class BuildingManager:
     #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
     
     async def building_info(self):
-        """건물 정보 조회 - Redis 캐시 우선, 완료 체크는 캐시에서"""
+        """건물 정보 조회 - 순수하게 데이터만 반환"""
         try:
-            # 1. 캐시된 데이터 가져오기
             buildings_data = await self.get_user_buildings()
-            
-            # 2. 캐시된 데이터에서만 완료 여부 체크
-            current_time = datetime.utcnow()
-            needs_update = []
-            
-            for building_idx, building in buildings_data.items():
-                if building['status'] in [1, 2] and building.get('end_time'):
-                    end_time = datetime.fromisoformat(building['end_time'])
-                    if end_time <= current_time:
-                        needs_update.append(building_idx)
-            
-            # 3. 완료된 건물이 있을 때만 DB 업데이트
-            if needs_update:
-                await self._process_completed_buildings_batch(needs_update)
-                # 캐시 무효화하고 다시 로드
-                self.invalidate_user_building_cache(self.user_no)
-                buildings_data = await self.get_user_buildings()
             
             return {
                 "success": True,
@@ -215,6 +199,40 @@ class BuildingManager:
             
         except Exception as e:
             self.logger.error(f"Error getting building info: {e}")
+            return {"success": False, "message": str(e), "data": {}}
+    
+    async def check_and_complete_buildings(self):
+        """완료 시간이 지난 건물들을 찾아서 일괄 완료 처리"""
+        try:
+            buildings_data = await self.get_user_buildings()
+            current_time = datetime.utcnow()
+            needs_update = []
+            
+            for building_idx, building in buildings_data.items():
+                if building['status'] in [1, 2] and building.get('end_time'):
+                    end_time = datetime.fromisoformat(building['end_time'])
+                    if end_time <= current_time:
+                        needs_update.append(building_idx)
+            
+            if needs_update:
+                result = await self._process_completed_buildings_batch(needs_update)
+                # 캐시 무효화하고 다시 로드
+                self.invalidate_user_building_cache(self.user_no)
+                
+                return {
+                    "success": True,
+                    "message": f"Completed {len(needs_update)} buildings",
+                    "data": {"completed_buildings": needs_update}
+                }
+            
+            return {
+                "success": True,
+                "message": "No buildings to complete",
+                "data": {}
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error checking and completing buildings: {e}")
             return {"success": False, "message": str(e), "data": {}}
 
     async def building_create(self):
@@ -283,10 +301,8 @@ class BuildingManager:
             building_redis = self.redis_manager.get_building_manager()
             cache_updated = await building_redis.update_cached_building(user_no, building_idx, new_building_data)
             
-            # 메모리 캐시에도 추가
-            if self._cached_buildings is not None:
-                self._cached_buildings[str(building_idx)] = new_building_data
-                self.logger.debug(f"Added building {building_idx} to memory cache for user {user_no}")
+    
+            self.logger.debug(f"Added building {building_idx} to memory cache for user {user_no}")
             
             return { 
                 "success": True,
@@ -390,13 +406,6 @@ class BuildingManager:
             # Redis 캐시 업데이트
             await building_redis.update_cached_building(user_no, building_idx, updated_building)
             
-            # 메모리 캐시 업데이트
-            if self._cached_buildings and str(building_idx) in self._cached_buildings:
-                self._cached_buildings[str(building_idx)] = updated_building
-            
-            # Redis 완료 큐에 작업 등록
-            await building_redis.add_building_to_queue(user_no, building_idx, completion_time)
-            
             self.logger.info(f"Building {building_idx} upgrade started for user {user_no}: {building['building_lv']} -> {target_level}, completing in {upgrade_time}s")
             
             return {
@@ -419,6 +428,204 @@ class BuildingManager:
                 "message": f"Building upgrade failed: {str(e)}",
                 "data": {}
             }
+        
+    async def building_finish(self):
+        """특정 건물의 업그레이드를 완료 처리"""
+        
+        user_no = self.user_no
+        building_idx = self.data.get('building_idx')
+        if not building_idx:
+            return {
+                "success": False,
+                "message": "building_idx is required",
+                "data": {}
+            }
+        
+        
+        
+        try:
+            # 캐시된 데이터에서 건물 조회
+            buildings_data = await self.get_user_buildings()
+            building = buildings_data.get(str(building_idx))
+            
+            if not building:
+                return {"success": False, "message": "Building not found", "data": {}}
+            
+            if building['status'] != 2:
+                return {"success": False, "message": "Building is not under upgrade", "data": {}}
+            
+            # 완료 시간 확인
+            completion_time_str = building.get('end_time')
+            if not completion_time_str:
+                return {"success": False, "message": "Completion time data missing", "data": {}}
+            
+            completion_time = datetime.fromisoformat(completion_time_str)
+            if datetime.utcnow() < completion_time:
+                return {"success": False, "message": "Upgrade time has not been reached yet", "data": {}}
+            
+            # === 전체 트랜잭션 시작 ===
+            try:
+                building_db_manager = self.db_manager.get_building_manager()
+                target_level = building.get('target_level', building['building_lv'] + 1)
+                
+                # DB 업데이트
+                update_result = building_db_manager.update_building_status(
+                    user_no=user_no,
+                    building_idx=building_idx,
+                    new_level=target_level,
+                    status=0,
+                    last_dt=datetime.utcnow()
+                )
+                
+                if not update_result['success']:
+                    self.db_manager.rollback()
+                    return update_result
+                
+                # commit
+                self.db_manager.commit()
+                self.logger.info(f"Building {building_idx} upgrade completed for user {user_no} at level {target_level}")
+                
+            except Exception as transaction_error:
+                self.db_manager.rollback()
+                self.logger.error(f"Building finish transaction failed: {transaction_error}")
+                return {
+                    "success": False,
+                    "message": f"Building finish failed: {str(transaction_error)}",
+                    "data": {}
+                }
+            # === 전체 트랜잭션 끝 ===
+            
+            # 캐시 업데이트
+            building_redis = self.redis_manager.get_building_manager()
+            updated_building = {
+                **building,
+                'status': 0,
+                'building_lv': target_level,
+                'start_time': None,
+                'end_time': None,
+                'last_dt': datetime.utcnow().isoformat(),
+                'target_level': None
+            }
+            await building_redis.update_cached_building(user_no, building_idx, updated_building)
+            
+            return {
+                "success": True,
+                "message": f"Building {building_idx} successfully upgraded to level {target_level}",
+                "data": {
+                    "building_idx": building_idx,
+                    "new_level": target_level,
+                    "status": 0
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error finishing building {building_idx} for user {user_no}: {e}")
+            return {
+                "success": False,
+                "message": f"Building finish failed: {str(e)}",
+                "data": {}
+            }
+    
+    async def finish_all_completed_buildings(self):
+        """완료 시간이 지난 모든 건물을 일괄 완료 처리"""
+        user_no = self.user_no
+        
+        try:
+            # 캐시된 데이터에서 완료된 건물 찾기
+            buildings_data = await self.get_user_buildings()
+            now = datetime.utcnow()
+            buildings_to_process = []
+            
+            for idx, building in buildings_data.items():
+                if building['status'] == 2:
+                    completion_time_str = building.get('end_time')
+                    if not completion_time_str:
+                        continue
+                    
+                    completion_time = datetime.fromisoformat(completion_time_str)
+                    if now >= completion_time:
+                        buildings_to_process.append({
+                            'building_idx': int(idx),
+                            'building': building
+                        })
+            
+            if not buildings_to_process:
+                return {
+                    "success": True,
+                    "message": "No buildings ready for completion",
+                    "data": {"buildings": []}
+                }
+            
+            # === 전체 트랜잭션 시작 ===
+            processed_buildings = []
+            try:
+                building_db_manager = self.db_manager.get_building_manager()
+                building_redis = self.redis_manager.get_building_manager()
+                
+                for item in buildings_to_process:
+                    b_idx = item['building_idx']
+                    building = item['building']
+                    target_level = building.get('target_level', building['building_lv'] + 1)
+                    
+                    # DB 업데이트
+                    update_result = building_db_manager.update_building_status(
+                        user_no=user_no,
+                        building_idx=b_idx,
+                        new_level=target_level,
+                        status=0,
+                        last_dt=datetime.utcnow()
+                    )
+                    
+                    if not update_result['success']:
+                        self.logger.error(f"Failed to update building {b_idx}: {update_result['message']}")
+                        continue
+                    
+                    processed_buildings.append({
+                        'building_idx': b_idx,
+                        'new_level': target_level
+                    })
+                    
+                    # 캐시 업데이트
+                    updated_building = {
+                        **building,
+                        'status': 0,
+                        'building_lv': target_level,
+                        'start_time': None,
+                        'end_time': None,
+                        'last_dt': datetime.utcnow().isoformat(),
+                        'target_level': None
+                    }
+                    await building_redis.update_cached_building(user_no, b_idx, updated_building)
+                    
+                    self.logger.info(f"Building {b_idx} upgrade finished at level {target_level}")
+                
+                # commit
+                self.db_manager.commit()
+                self.logger.info(f"Batch building upgrade completed for user {user_no}, buildings: {[b['building_idx'] for b in processed_buildings]}")
+                
+            except Exception as transaction_error:
+                self.db_manager.rollback()
+                self.logger.error(f"Batch building finish transaction failed: {transaction_error}")
+                return {
+                    "success": False,
+                    "message": f"Batch building finish failed: {str(transaction_error)}",
+                    "data": {}
+                }
+            # === 전체 트랜잭션 끝 ===
+            
+            return {
+                "success": True,
+                "message": f"Successfully upgraded {len(processed_buildings)} buildings",
+                "data": {"buildings": processed_buildings}
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error finishing all buildings for user {user_no}: {e}")
+            return {
+                "success": False,
+                "message": f"Batch building finish failed: {str(e)}",
+                "data": {}
+            }
     
     async def building_cancel(self):
         """건물 건설/업그레이드를 취소합니다."""
@@ -434,48 +641,61 @@ class BuildingManager:
             # 캐시된 데이터에서 건물 조회
             buildings_data = await self.get_user_buildings()
             building = buildings_data.get(str(building_idx))
+            
             if not building:
                 return {"success": False, "message": "Building not found", "data": {}}
             
             if building['status'] not in [1, 2]:
                 return {"success": False, "message": "Building is not under construction or upgrade", "data": {}}
             
-            # Redis 큐에서 제거
-            building_redis = self.redis_manager.get_building_manager()
-            queue_removed = await building_redis.remove_building_from_queue(user_no, building_idx)
-            
-            if not queue_removed:
-                self.logger.warning(f"Failed to remove building {building_idx} from completion queue for user {user_no}")
-            
-            building_db = self.db_manager.get_building_manager()
-            building_id = building.get('id') or building.get('building_idx')
-            
-            # 취소 처리
-            if building['status'] == 1:
-                # 건설 취소 - 건물 삭제
-                delete_result = building_db.delete(building_id)
-                if delete_result['success']:
-                    message = "Building construction cancelled and removed"
-                    building_data = {}
-                else:
-                    return delete_result
-            elif building['status'] == 2:
-                # 업그레이드 취소 - 상태만 원복
-                update_result = building_db.update(
-                    building_id,
+            # === 전체 트랜잭션 시작 ===
+            try:
+                # 1. 건물 상태를 대기(0)로 변경 (commit 안함)
+                building_db_manager = self.db_manager.get_building_manager()
+                update_result = building_db_manager.update_building_status(
+                    user_no=user_no,
+                    building_idx=building_idx,
                     status=0,
                     start_time=None,
                     end_time=None,
                     last_dt=datetime.utcnow()
                 )
-                if update_result['success']:
-                    message = "Building upgrade cancelled"
-                    building_data = update_result['data']
-                else:
+                
+                if not update_result['success']:
+                    self.db_manager.rollback()
                     return update_result
+                
+                # 2. 자원 반환 처리가 필요하면 여기서 (선택사항)
+                # resource_manager = ResourceManager(self.db_manager)
+                # refund_result = resource_manager.refund_resources(user_no, costs)
+                
+                # 3. 모든 작업 성공 - 전체 commit
+                self.db_manager.commit()
+                message = f"Building {building_idx} cancellation committed for user {user_no}"
+                self.logger.info(message)
+                
+            except Exception as transaction_error:
+                # 전체 트랜잭션 롤백
+                self.db_manager.rollback()
+                self.logger.error(f"Building cancellation transaction failed: {transaction_error}")
+                return {
+                    "success": False,
+                    "message": f"Building cancellation failed: {str(transaction_error)}",
+                    "data": {}
+                }
+            # === 전체 트랜잭션 끝 ===
             
-            # 캐시 무효화
-            self.invalidate_user_building_cache(user_no)
+            # 캐시 업데이트 (DB 작업 완료 후)
+            building_redis = self.redis_manager.get_building_manager()
+            building_data = {
+                **building,
+                'status': 0,
+                'start_time': None,
+                'end_time': None,
+                'last_dt': datetime.utcnow().isoformat()
+            }
+            
+            await building_redis.update_cached_building(user_no, building_idx, building_data)
             
             return {
                 "success": True,
@@ -491,48 +711,6 @@ class BuildingManager:
                 "data": {}
             }
     
-    def building_finish(user_id: int, db: Session = Depends(get_db)):
-        # 1. 유저의 건물 정보 가져오기
-        buildings = get_user_buildings(user_id, db)
-        
-        current_time = datetime.now()
-        completed_buildings = []
-        
-        for building in buildings:
-            # 2. 현재시간과 캐시에 end_time 비교 (building 객체 형식 확인)
-            if building.status in ["constructing", "upgrading"]:
-                if building.end_time <= current_time:
-                    # 3. 건물 생성 또는 업그레이드 완료
-                    db_building = db.query(models.Building).filter(models.Building.id == building.id).first()
-                    old_status = db_building.status
-                    
-                    # 상태 업데이트
-                    db_building.status = "completed"
-                    
-                    # 업그레이드인 경우 레벨 증가
-                    if old_status == "upgrading":
-                        db_building.level += 1
-                    
-                    # 4. DB 업데이트
-                    db.commit()
-                    db.refresh(db_building)
-                    
-                    # 4. 캐시 업데이트 (주어진 코드의 캐싱 패턴과 일치)
-                    redis_client.hset(f"user:{user_id}:buildings", str(db_building.id), json.dumps({
-                        "id": db_building.id,
-                        "user_id": db_building.user_id,
-                        "building_type_id": db_building.building_type_id,
-                        "level": db_building.level,
-                        "x": db_building.x,
-                        "y": db_building.y,
-                        "status": db_building.status,
-                        "start_time": db_building.start_time.isoformat(),
-                        "end_time": db_building.end_time.isoformat()
-                    }))
-                    
-                    completed_buildings.append(db_building)
-        
-        return completed_buildings
     
     async def building_speedup(self):
         """건물 건설/업그레이드를 즉시 완료합니다."""
@@ -567,7 +745,7 @@ class BuildingManager:
             if not update_success:
                 return {"success": False, "message": "Failed to update completion time", "data": {}}
             
-            # 캐시에서 해당 건물 업데이트 (선택적)
+            # 캐시에서 해당 건물 업데이트
             await self._update_cached_building(user_no, building_idx, {
                 **building,
                 'end_time': current_time.isoformat(),
@@ -593,15 +771,58 @@ class BuildingManager:
         try:
             building_redis = self.redis_manager.get_building_manager()
             cache_updated = await building_redis.update_cached_building(user_no, building_idx, updated_data)
-            
-            # 메모리 캐시도 업데이트
-            if self._cached_buildings and str(building_idx) in self._cached_buildings:
-                self._cached_buildings[str(building_idx)].update(updated_data)
+        
             
             return cache_updated
             
         except Exception as e:
             self.logger.error(f"Error updating cached building {building_idx} for user {user_no}: {e}")
+            return False
+    
+    async def _process_completed_buildings_batch(self, building_indices: list):
+        """완료된 건물들을 일괄 처리하는 내부 헬퍼 함수"""
+        user_no = self.user_no
+        
+        try:
+            building_db_manager = self.db_manager.get_building_manager()
+            building_redis = self.redis_manager.get_building_manager()
+            buildings_data = await self.get_user_buildings()
+            
+            for building_idx in building_indices:
+                building = buildings_data.get(str(building_idx))
+                if not building:
+                    continue
+                
+                target_level = building.get('target_level', building['building_lv'] + 1)
+                
+                # DB 업데이트
+                update_result = building_db_manager.update_building_status(
+                    user_no=user_no,
+                    building_idx=int(building_idx),
+                    new_level=target_level,
+                    status=0,
+                    last_dt=datetime.utcnow()
+                )
+                
+                if update_result['success']:
+                    # 캐시 업데이트
+                    updated_building = {
+                        **building,
+                        'status': 0,
+                        'building_lv': target_level,
+                        'start_time': None,
+                        'end_time': None,
+                        'last_dt': datetime.utcnow().isoformat(),
+                        'target_level': None
+                    }
+                    await building_redis.update_cached_building(user_no, int(building_idx), updated_building)
+            
+            self.db_manager.commit()
+            return True
+            
+        except Exception as e:
+            self.db_manager.rollback()
+            self.logger.error(f"Error processing completed buildings batch: {e}")
             return False
     
     def _handle_resource_transaction(self, user_no, building_idx, target_level):
@@ -627,15 +848,14 @@ class BuildingManager:
             # 자원 매니저 초기화
             resource_manager = ResourceManager(self.db_manager)
             
-            # 자원 체크 (한 번의 DB 조회로 now_resources에 저장)
+            # 자원 체크
             if not resource_manager.check_require_resources(user_no, costs):
                 return None, "Need More Resources"
             
-            # 자원 소모 (이미 로드된 인스턴스 직접 업데이트) - commit 안함!
+            # 자원 소모 (commit 안함)
             if not resource_manager.consume_resources(user_no, costs):
                 return None, "Failed to consume resources"
             
-            # commit하지 않고 반환 - 상위에서 전체 트랜잭션 처리
             return upgrade_time, None
             
         except Exception as e:
@@ -676,6 +896,8 @@ class BuildingManager:
         except Exception as e:
             self.logger.error(f"Error applying building buffs for user {user_no}: {e}")
             return base_time
+    
+    
     
     # === 추가 유틸리티 메서드들 ===
     

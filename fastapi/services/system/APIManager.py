@@ -18,7 +18,9 @@ class APIManager():
         2001: (BuildingManager, BuildingManager.building_info),
         2002: (BuildingManager, BuildingManager.building_create),
         2003: (BuildingManager, BuildingManager.building_levelup),
+        2004: (BuildingManager, BuildingManager.building_finish),
         2005: (BuildingManager, BuildingManager.building_cancel),
+        2006: (BuildingManager, BuildingManager.finish_all_completed_buildings),
         
         # === 연구 API (3xxx) ===
         3001: (ResearchManager, ResearchManager.research_info),
