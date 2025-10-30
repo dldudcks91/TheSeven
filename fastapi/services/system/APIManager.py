@@ -10,7 +10,7 @@ class APIManager():
         # === 시스템 API (1xxx) ===
         # (클래스, 메서드) 형식으로 튜플에 저장
         #1001: (GameDataManager, GameDataManager.get_all_configs),
-        1002: (GameDataManager, GameDataManager.REQUIRE_CONFIGS),
+        1002: (GameDataManager, GameDataManager.get_all_configs),
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         
@@ -50,7 +50,9 @@ class APIManager():
             raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")
         
         if ServiceClass == GameDataManager:
-            return method
+            service_instance = ServiceClass()
+            
+            return method()
         
         
         service_instance = ServiceClass(self.db_manager, self.redis_manager)

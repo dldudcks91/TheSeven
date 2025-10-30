@@ -103,6 +103,84 @@ class BaseRedisCacheManager:
             self.logger.error(f"Error extending TTL for key {key}: {e}")
             return False
     
+    # === 원자적 증감 메서드들 ===
+    
+    async def increment_data(self, key: str, amount: int = 1) -> Optional[int]:
+        """
+        정수 값을 원자적으로 증감합니다 (Redis INCRBY).
+        
+        이 메서드는 ResourceRedisManager의 change_resource_amount에서 사용됩니다.
+        
+        Args:
+            key: Redis 키 (예: "user_resource_amount:1:food")
+            amount: 증감량 (양수: 증가, 음수: 감소)
+            
+        Returns:
+            변경 후 값, 실패 시 None
+            
+        Example:
+            # 자원 800 소모
+            new_amount = await manager.increment_data("user_resource_amount:1:food", -800)
+            
+            # 자원 500 획득
+            new_amount = await manager.increment_data("user_resource_amount:1:wood", 500)
+        """
+        try:
+            new_value = await self.redis_client.incrby(key, amount)
+            self.logger.debug(f"Incremented key {key} by {amount}, new value: {new_value}")
+            return new_value
+            
+        except Exception as e:
+            self.logger.error(f"Error incrementing key {key}: {e}")
+            return None
+    
+    async def decrement_data(self, key: str, amount: int = 1) -> Optional[int]:
+        """
+        정수 값을 원자적으로 감소합니다 (Redis DECRBY).
+        
+        Args:
+            key: Redis 키
+            amount: 감소량 (양수)
+            
+        Returns:
+            변경 후 값, 실패 시 None
+        """
+        try:
+            new_value = await self.redis_client.decrby(key, amount)
+            self.logger.debug(f"Decremented key {key} by {amount}, new value: {new_value}")
+            return new_value
+            
+        except Exception as e:
+            self.logger.error(f"Error decrementing key {key}: {e}")
+            return None
+    
+    async def increment_hash_field(self, hash_key: str, field: str, amount: int = 1) -> Optional[int]:
+        """
+        Hash 필드의 정수 값을 원자적으로 증감합니다 (Redis HINCRBY).
+        
+        Args:
+            hash_key: Redis Hash 키
+            field: Hash 필드명
+            amount: 증감량 (양수: 증가, 음수: 감소)
+            
+        Returns:
+            변경 후 값, 실패 시 None
+            
+        Example:
+            # Hash 구조에서 food 필드를 800 감소
+            new_value = await manager.increment_hash_field(
+                "user:1:resources", "food", -800
+            )
+        """
+        try:
+            new_value = await self.redis_client.hincrby(hash_key, str(field), amount)
+            self.logger.debug(f"Incremented field {field} in hash {hash_key} by {amount}, new value: {new_value}")
+            return new_value
+            
+        except Exception as e:
+            self.logger.error(f"Error incrementing hash field {field} in {hash_key}: {e}")
+            return None
+    
     # === Hash 캐싱 메서드들 ===
     
     async def set_hash_data(self, hash_key: str, data: Dict[str, Any], 

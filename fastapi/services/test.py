@@ -1,6 +1,7 @@
 #%%
 from redis_manager import RedisManager
 import redis
+import json
 #%%
 redis_client = redis.Redis(
     host='localhost',  # Redis 서버 주소
@@ -40,10 +41,38 @@ for key in all_keys:
     # 키의 타입을 확인하여 'list'인 경우만 리스트에 추가합니다.
     key_type = redis_client.type(key)
 
-    if key_type == 'zset':
-        zset_keys.append(key)
+    
+    zset_keys.append([key, key_type])
 print(zset_keys)
+
+
 #%%
+HASH_KEY = zset_keys[2][0]
+try:
+    # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
+    building_data = redis_client.hgetall(HASH_KEY)
+
+    if building_data:
+        print(f"✅ {HASH_KEY} 내용 (HGETALL):")
+        
+        # 딕셔너리 형태로 출력하여 가독성을 높임
+        print(json.dumps(building_data, indent=4))
+        
+        
+        
+    else:
+        print(f"❌ Hash Key '{HASH_KEY}'가 존재하지 않거나 비어 있습니다.")
+
+except Exception as e:
+    print(f"오류 발생: {e}")
+
+
+
+#%%
+
+'''
+Sorted Set
+'''
 if not zset_keys:
     print("Redis에 Sorted Set 타입의 키가 없습니다.")
 else:

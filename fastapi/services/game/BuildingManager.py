@@ -258,7 +258,7 @@ class BuildingManager:
                 current_time = datetime.utcnow()
                 
                 # 1. 자원 체크 및 소모 (commit 안함)
-                base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, 1)
+                base_upgrade_time, error_msg = await self._handle_resource_transaction(user_no, building_idx, 1)
                 if error_msg:
                     self.db_manager.rollback()
                     return {"success": False, "message": error_msg, "data": {}}
@@ -347,7 +347,7 @@ class BuildingManager:
             # === 전체 트랜잭션 시작 ===
             try:
                 # 2. 자원 및 시간 처리 (commit 안함)
-                base_upgrade_time, error_msg = self._handle_resource_transaction(user_no, building_idx, building['building_lv'] + 1)
+                base_upgrade_time, error_msg = await self._handle_resource_transaction(user_no, building_idx, building['building_lv'] + 1)
                 if error_msg:
                     self.db_manager.rollback()
                     return {"success": False, "message": error_msg, "data": {}}
@@ -825,7 +825,7 @@ class BuildingManager:
             self.logger.error(f"Error processing completed buildings batch: {e}")
             return False
     
-    def _handle_resource_transaction(self, user_no, building_idx, target_level):
+    async def _handle_resource_transaction(self, user_no, building_idx, target_level):
         """자원 체크 및 소모 - commit하지 않음"""
         try:
             # 설정 조회
@@ -846,14 +846,14 @@ class BuildingManager:
                 return None, "Invalid building configuration"
             
             # 자원 매니저 초기화
-            resource_manager = ResourceManager(self.db_manager)
+            resource_manager = ResourceManager(self.db_manager, self.redis_manager)
             
             # 자원 체크
-            if not resource_manager.check_require_resources(user_no, costs):
+            if not await resource_manager.check_require_resources(user_no, costs):
                 return None, "Need More Resources"
             
             # 자원 소모 (commit 안함)
-            if not resource_manager.consume_resources(user_no, costs):
+            if not await resource_manager.consume_resources(user_no, costs):
                 return None, "Failed to consume resources"
             
             return upgrade_time, None

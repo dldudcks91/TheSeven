@@ -87,13 +87,13 @@ class LoginManager:
         building_manager.user_no = user_no
         managers['building'] = building_manager
         
-        # # Unit Manager
-        # try:
-        #     unit_manager = UnitManager(self.db_manager, self.redis_manager)
-        #     unit_manager.user_no = user_no
-        #     managers['unit'] = unit_manager
-        # except Exception as e:
-        #     self.logger.warning(f"UnitManager not available: {e}")
+        # Unit Manager
+        try:
+            unit_manager = UnitManager(self.db_manager, self.redis_manager)
+            unit_manager.user_no = user_no
+            managers['unit'] = unit_manager
+        except Exception as e:
+            self.logger.warning(f"UnitManager not available: {e}")
         
         # # Research Manager
         # try:

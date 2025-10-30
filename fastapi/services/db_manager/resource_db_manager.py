@@ -18,7 +18,7 @@ class ResourceDBManager:
     async def get_user_resources(self, user_no: int):
         """사용자 자원 조회 - 객체 반환"""
         try:
-            resources = await self.db.query(models.Resources).filter(
+            resources = self.db.query(models.Resources).filter(
                 models.Resources.user_no == user_no
             ).first()
             return resources

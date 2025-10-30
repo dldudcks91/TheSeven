@@ -527,7 +527,6 @@
     <div class = "game-section"><h3>Unit</h3></div>
     <div class="container">
         <div id="categoryLayout" class="unit-categories">
-            <!-- 보병 -->
             <div class="category-section">
                 <div class="category-header infantry">
                     <div class="category-title">
@@ -550,7 +549,6 @@
                 </table>
             </div>
             
-            <!-- 기병 -->
             <div class="category-section">
                 <div class="category-header cavalry">
                     <div class="category-title">
@@ -573,7 +571,6 @@
                 </table>
             </div>
             
-            <!-- 궁병 -->
             <div class="category-section">
                 <div class="category-header archer">
                     <div class="category-title">
@@ -600,52 +597,37 @@
         <div id="result" class="result-box"></div>
     </div>
 
-    <!-- 훈련 팝업 -->
     <div id="trainingPopup" class="popup-overlay">
         <div class="popup-container">
             
             
-            <!-- 생산 탭 -->
             <div id="trainTab" class="tab-content active">
                 <div id="trainUnits" class="unit-list">
-                    <!-- 생산 가능한 유닛들이 여기에 동적으로 생성됩니다 -->
-                </div>
+                    </div>
             </div>
             
         </div>
     </div>
-    <!-- 유닛 훈련 템플릿 -->
-    
     <template id="unit-training-template">
         <div class="unit-item">
             <div class="unit-training-layout">
-                <!-- Left side: Large unit image -->
                 <img id = "unit-main-image" class="unit-main-image" src="" alt="">
 
-                <!-- Right side: Controls -->
                 <div class="unit-controls">
-                    <!-- Top section: Unit selection (tier units) -->
                     <div class="unit-selection-section">
                         <div class="tier-units">
-                            <!-- 티어 버튼들이 여기에 추가됩니다 -->
-                        </div>
+                            </div>
                     </div>
 
-                    <!-- Bottom section: Training controls -->
                     <div class="training-controls-section">
-                        <!-- Slider and Production button container -->
                         <div class="control-row">
-                            <!-- Slider for quantity control -->
                             <div class="slider-container">
                                 <input type="range" class="quantity-slider" min="1" max="100" value="1">
                                 <span class="quantity-display">1</span>
                             </div>
 
-                            <!-- Production button -->
-                            
-                        </div>
+                            </div>
                         
-                        <!-- Resource costs -->
                         <div class="resource-container">
                             <div class="resource-item">
                                 <div class="resource-icon">🌾</div>
@@ -662,7 +644,6 @@
         </div>
     </template>
 
-    <!-- 티어 버튼 템플릿 -->
     <template id="tier-button-template">
         <img class="tier-unit" src="">
             <div class="tier-label"></div>
@@ -793,7 +774,7 @@
                         <td>
                             <div class="unit-name">
                                 <span class="tier-badge tier-${unit.unit_tier}">T${unit.unit_tier}</span>
-                                ${unit.description}
+                                ${unit.korean_name}
                             </div>
                         </td>
                         <td>
@@ -1038,7 +1019,8 @@
             const template = document.getElementById('unit-training-template');
             const unitDiv = template.content.cloneNode(true);
             const unitImage = unitDiv.querySelector('.unit-main-image');
-            unitImage.src = `static/unit_${filteredUnits[0].unit_idx}.jpg`;
+            unitImage.src = `static/unit_${filteredUnits[0].unit_idx}.png`;
+            unitImage.alt = filteredUnits[0].korean_name;
 
             mainUnitIdx = filteredUnits[0].unit_idx
 
@@ -1049,13 +1031,15 @@
                 const tierClone = tierTemplate.content.cloneNode(true);
                 
                 const tierUnit = tierClone.querySelector('.tier-unit');
-                tierUnit.src = `static/unit_${tier_unit.unit_idx}.jpg`;
-                
+                tierUnit.src = `static/unit_${tier_unit.unit_idx}.png`;
+
+
+
                 // 티어 버튼 클릭 이벤트 추가
                 tierUnit.addEventListener('click', function() {
                     // 왼쪽 큰 이미지 변경
-                    unitImage.src = `static/unit_${tier_unit.unit_idx}.jpg`;
-                    unitImage.alt = tier_unit.name;
+                    unitImage.src = `static/unit_${tier_unit.unit_idx}.png`;
+                    unitImage.alt = tier_unit.korean_name;
                     mainUnitIdx = tier_unit.unit_idx;
                     
                 });

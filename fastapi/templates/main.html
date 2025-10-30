@@ -509,8 +509,10 @@
         // 초기 실행 함수
         window.onload = function() {
             // Promise 캐시 활용 - 게임 설정 자동 로드
+            
             if (!loadConfigPromise) {
                 loadConfigPromise = loadGameConfig();
+                
             }
         };
 
@@ -548,19 +550,26 @@
 
         // 게임 설정 로드
         async function loadGameConfig() {
-            try {
-                gameConfigManager = GameConfigManager.getInstance();
-                gameConfig = await gameConfigManager.loadGameConfig();
+            gameConfigManager = GameConfigManager.getInstance();
+            gameConfig = await gameConfigManager.loadGameConfig();
+            
+            console.log('게임 설정 로드 완료:', gameConfig);
+            showToast('게임 설정이 로드되었습니다', 'success');
+            
+            return gameConfig;
+            // try {
+            //     gameConfigManager = GameConfigManager.getInstance();
+            //     gameConfig = await gameConfigManager.loadGameConfig();
                 
-                console.log('게임 설정 로드 완료:', gameConfig);
-                showToast('게임 설정이 로드되었습니다', 'success');
+            //     console.log('게임 설정 로드 완료:', gameConfig);
+            //     showToast('게임 설정이 로드되었습니다', 'success');
                 
-                return gameConfig;
-            } catch (error) {
-                console.error('게임 설정 로드 실패:', error);
-                showToast('게임 설정 로드 실패: ' + error.message, 'error');
-                return null;
-            }
+            //     return gameConfig;
+            // } catch (error) {
+            //     console.error('게임 설정 로드 실패:', error);
+            //     showToast('게임 설정 로드 실패: ' + error.message, 'error');
+            //     return null;
+            // }
         }
         
         // 전체 데이터 로드 - 이때만 iframe에 플레이어 ID 전송

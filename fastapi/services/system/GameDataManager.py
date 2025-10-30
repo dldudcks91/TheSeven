@@ -27,7 +27,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/building_info.csv')
+        df = pd.read_csv('./meta_data/building_info.csv', encoding= 'cp949')
         building_configs = cls.REQUIRE_CONFIGS['building']
         
         for _, row in df.iterrows():
@@ -49,7 +49,8 @@ class GameDataManager:
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
                 'time': int(row['construct_time']),
                 'required_buildings': requires,  # [(building_idx, level), ...]
-                'description': row['description']
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name']
             }
             
     @classmethod
@@ -74,7 +75,8 @@ class GameDataManager:
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
                 'ability':{'attack':int(row['attack']),'defense': int(row['defense']), 'health': int(row['health']), 'speed': int(row['speed'])},
                 'category': row['category'],
-                'description': row['description']
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name'],
             }
     
     @classmethod
@@ -108,4 +110,14 @@ class GameDataManager:
         next_level = current_level + 1
         return cls._building_configs.get(building_idx, {}).get(next_level)
     
-    
+    @classmethod
+    def get_all_configs(cls):
+        """
+        모든 로드된 게임 설정(REQUIRE_CONFIGS)을 API 응답 형식으로 반환
+        API Code: 1002 (GAME_CONFIG_ALL)에 대응
+        """
+        return {
+            "success": True,
+            "message": "Loaded REQUIRE_CONFIGS",
+            "data": cls.REQUIRE_CONFIGS
+        }

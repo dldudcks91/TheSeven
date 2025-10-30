@@ -23,7 +23,7 @@
             margin: 0;
         }
         strong {
-        margin-right: 10px; /* 원하는 간격(10px)을 지정합니다. */
+        margin-right: 10px;
         }
         .building-table {
             width: 100%;
@@ -137,31 +137,32 @@
     </div>
 
     <script>
-        const buildings = [
-            { idx: 201, english_name: 'town_hall', korean_name: '시청' },
-            { idx: 301, english_name: 'academy', korean_name: '아카데미' },
-            { idx: 401, english_name: 'farm', korean_name: '농장' },
-            { idx: 501, english_name: 'barracks', korean_name: '병영' },
-        ];
-        
-        const maxLevel = 10;
+        // ⭐ 다국어 설정을 위한 상수: 'korean_name' 또는 'english_name' 등으로 변경 가능
+        const CURRENT_LANGUAGE_FIELD = 'korean_name'; // 👈 [변경/추가] 언어 설정 상수
 
+        // 하드코딩된 건물 목록 대신 이름 매핑을 사용합니다.
+        const buildingNameMap = {
+            201: { english_name: 'town_hall', korean_name: '시청' },
+            301: { english_name: 'academy', korean_name: '아카데미' },
+            401: { english_name: 'barracks', korean_name: '병영' },
+            501: { english_name: 'farm', korean_name: '농장' },
+            502: { english_name: 'LumberMill', korean_name: '제재소' }, // korean_name 수정
+            503: { english_name: 'Quarry', korean_name: '채석장' }, // korean_name 수정
+        };
+        
+        let allBuildingsList = []; // config 데이터를 기반으로 생성될 최종 건물 목록
         let userBuildingData = {};
-        let displayTimer = null; // 화면 업데이트용 타이머 (1초마다, 서버 요청 없음)
+        let displayTimer = null;
         let userId = null;
         let buildingCostData = {};
+        
+        let completedBuildingChecks = new Set();
         
         window.onload = function() {
             window.parent.postMessage({
                 type: 'request_config',
                 configType: 'building'
             }, '*');
-            
-            setTimeout(() => {
-                if (userId && buildingCostData) {
-                    loadBuildings();
-                }
-            }, 100);
         };
         
         window.addEventListener('message', function(event) {
@@ -170,27 +171,45 @@
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
-                    loadBuildings();
+                    
+                    // config가 로드되었는지 확인하고 로드
+                    if (Object.keys(buildingCostData).length > 0) {
+                        loadBuildings();
+                    }
                 }
             }
             if (event.data && event.data.type === 'response_config') {
                 const buildingConfig = event.data.payload;
                 buildingCostData = buildingConfig;
                 console.log('Building data received:', buildingCostData);
+                
+                // config 데이터 키를 기반으로 건물 목록 동적 생성
+                allBuildingsList = Object.keys(buildingCostData).map(idxStr => {
+                    const idx = parseInt(idxStr);
+                    const names = buildingNameMap[idx] || { english_name: `unknown_${idx}`, korean_name: `[${idx}] 이름 없음` };
+                    return {
+                        idx: idx,
+                        english_name: names.english_name,
+                        korean_name: names.korean_name,
+                        // ⭐ [변경] 상수 적용: 현재 선택된 언어 필드를 display_name으로 저장
+                        display_name: names[CURRENT_LANGUAGE_FIELD] || names.korean_name
+                    };
+                }).sort((a, b) => a.idx - b.idx);
+                
+                // config가 로드된 후 userId가 있으면 건물 정보 로드 시작
+                if (userId) {
+                    loadBuildings();
+                }
             }
         });
 
-        // 서버 UTC 시간을 올바르게 파싱하는 함수
         function parseServerUTCTime(serverTimeString) {
-            // 서버에서 받은 UTC 시간 문자열을 Date 객체로 변환
             let utcString = serverTimeString;
             
-            // MySQL DATETIME 형태면 ISO 형태로 변환
             if (utcString.includes(' ') && !utcString.includes('T')) {
                 utcString = utcString.replace(' ', 'T');
             }
             
-            // Z가 없으면 추가하여 UTC임을 명시
             if (!utcString.endsWith('Z') && utcString.includes('T')) {
                 utcString += 'Z';
             }
@@ -198,10 +217,9 @@
             return new Date(utcString);
         }
 
-        // UTC 시간 차이 계산 함수
         function calculateUTCTimeDiff(serverUTCTime) {
             const endTime = parseServerUTCTime(serverUTCTime);
-            const now = new Date(); // 현재 UTC 시간
+            const now = new Date();
             
             const diffMs = endTime - now;
             const diffSeconds = Math.max(0, Math.ceil(diffMs / 1000));
@@ -213,7 +231,6 @@
                 seconds: diffSeconds % 60,
                 isCompleted: diffMs <= 0,
                 
-                // 포맷팅
                 format: () => {
                     if (diffMs <= 0) return "완료";
                     const mins = Math.floor(diffSeconds / 60);
@@ -222,6 +239,20 @@
                 }
             };
         }
+        
+        // 비용 포맷팅 헬퍼 함수 추가 (유닛과 동일한 이모지 사용)
+        function formatCosts(costs) {
+            if (!costs) return 'N/A';
+            
+            const parts = [];
+            if (costs.food > 0) parts.push(`🌾${costs.food}`);
+            if (costs.wood > 0) parts.push(`🪵${costs.wood}`);
+            if (costs.stone > 0) parts.push(`🗿${costs.stone}`);
+            if (costs.gold > 0) parts.push(`💰${costs.gold}`);
+            
+            return parts.join(' / ');
+        }
+
 
         function generateBuildingTable() {
             const tbody = document.getElementById('buildingTableBody');
@@ -231,25 +262,38 @@
             }
             tbody.innerHTML = '';
             
-            buildings.forEach(building => {
+            // allBuildingsList를 사용하여 동적으로 테이블 생성
+            allBuildingsList.forEach(building => {
                 const data = userBuildingData[building.idx] || { building_lv: 0, status: 0 };
                 
-                const buildingCost = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['cost']?.['food_cost'] || 0;
-                const buildingTime = buildingCostData?.[building.idx]?.[data.building_lv + 1]?.['time'] || 0;
+                // 다음 레벨의 비용과 시간 정보 가져오기
+                const nextLevelConfig = buildingCostData?.[building.idx]?.[data.building_lv + 1];
+                
+                let costDisplay = '최고 레벨';
+                let timeDisplay = '';
+                let actionButton = '최고 레벨';
+                let hasNextLevel = !!nextLevelConfig;
+
+                if (hasNextLevel) {
+                    costDisplay = formatCosts(nextLevelConfig.cost);
+                    timeDisplay = `${nextLevelConfig.time}초`;
+                    
+                    actionButton = data.building_lv === 0 ? 
+                        `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
+                        `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`;
+                }
+
                 
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td style="font-size: 9px;">${building.korean_name}</td>
+                    <td style="font-size: 9px;">${building.display_name || building.korean_name}</td>
                     <td>Lv.${data.building_lv}</td>
                     <td>${getStatusText(data.status)}</td>
-                    <td><span class="cost" id="cost-${building.idx}-${data.building_lv}">${buildingCost}</span></td>
-                    <td><span class="cost" id="time-${building.idx}-${data.building_lv}">${buildingTime}초</span></td>
+                    <td>${costDisplay}</td>
+                    <td>${timeDisplay}</td>
                     <td>
                         <div class="action-buttons">
-                            ${data.building_lv === 0 ? 
-                                `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
-                                `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`
-                            }
+                            ${actionButton}
                         </div>
                     </td>
                 `;
@@ -257,7 +301,6 @@
                 tbody.appendChild(row);
             });
             
-            // 테이블 생성 후 화면 업데이트 타이머 시작
             startDisplayTimer();
         }
         
@@ -270,16 +313,68 @@
             }
         }
         
-        // 화면 업데이트용 타이머 (서버 요청 없음, UI만 업데이트)
         function startDisplayTimer() {
             if (displayTimer) clearInterval(displayTimer);
             
             displayTimer = setInterval(() => {
-                updateDisplayOnly(); // 서버 요청 없이 화면만 업데이트
+                updateDisplayOnly();
             }, 1000);
         }
         
-        // 서버 요청 없이 화면만 업데이트 (UTC 기준으로 통일)
+        async function completeBuilding(buildingIdx) {
+            const building = allBuildingsList.find(b => b.idx === buildingIdx);
+            // ⭐ [변경] display_name 사용
+            const buildingName = building ? (building.display_name || building.korean_name) : buildingIdx; 
+            
+            const checkKey = `${buildingIdx}_${Date.now()}`;
+            if (completedBuildingChecks.has(buildingIdx)) {
+                console.log(`⏭️ ${buildingName} 이미 완료 처리 중...`);
+                return;
+            }
+            
+            completedBuildingChecks.add(buildingIdx);
+            
+            try {
+                console.log(`✅ ${buildingName} 건설/업그레이드 완료! API 2004 호출 시작`);
+                showResult(`${buildingName} 완료 처리 중...`);
+                
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 2004,
+                        data: {
+                            building_idx: buildingIdx
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                console.log(`🎉 ${buildingName} 완료 API 결과:`, result);
+                
+                if (result.success) {
+                    if (result.data) {
+                        userBuildingData[buildingIdx] = result.data;
+                    }
+                    
+                    await loadBuildings();
+                    showResult(`${buildingName} 완료! 레벨업 성공`);
+                    
+                    setTimeout(() => {
+                        completedBuildingChecks.delete(buildingIdx);
+                    }, 2000);
+                } else {
+                    showResult(`${buildingName} 완료 처리 실패: ${result.message || '알 수 없는 오류'}`);
+                    completedBuildingChecks.delete(buildingIdx);
+                }
+            } catch (error) {
+                console.error(`❌ ${buildingName} 완료 API 에러:`, error);
+                showResult(`${buildingName} 완료 처리 에러: ${error.message}`);
+                completedBuildingChecks.delete(buildingIdx);
+            }
+        }
+        
         function updateDisplayOnly() {
             const timerDisplay = document.getElementById('timerDisplay');
             const timerItems = document.getElementById('timerItems');
@@ -289,11 +384,11 @@
             let hasActiveBuildings = false;
             timerItems.innerHTML = '';
             
-            buildings.forEach(building => {
+            allBuildingsList.forEach(building => {
                 const data = userBuildingData[building.idx];
                 
-                // 디버깅을 위한 로깅
-                console.log(`${building.korean_name} 타이머 체크:`, {
+                // ⭐ [변경] display_name 사용
+                console.log(`${building.display_name || building.korean_name} 타이머 체크:`, {
                     data: data,
                     status: data?.status,
                     end_time: data?.end_time,
@@ -307,18 +402,20 @@
                 
                 hasActiveBuildings = true;
                 
-                // UTC 계산 방식 사용
                 const timeDiff = calculateUTCTimeDiff(data.end_time);
                 
                 const timerItem = document.createElement('span');
                 timerItem.className = 'timer-item';
                 
+                // ⭐ [변경] display_name 사용
                 if (!timeDiff.isCompleted) {
-                    timerItem.textContent = `${building.korean_name}: ${timeDiff.format()}`;
+                    timerItem.textContent = `${building.display_name || building.korean_name}: ${timeDiff.format()}`;
                     timerItem.classList.add('running');
                 } else {
-                    timerItem.textContent = `${building.korean_name}: 완료됨`;
+                    timerItem.textContent = `${building.display_name || building.korean_name}: 완료됨`;
                     timerItem.classList.add('completed');
+                    
+                    completeBuilding(building.idx);
                 }
                 
                 timerItems.appendChild(timerItem);
@@ -326,10 +423,8 @@
             
             console.log(`타이머 업데이트: 활성 건물 ${hasActiveBuildings ? '있음' : '없음'}`);
             
-            // 진행중인 작업이 있을 때만 타이머 영역 표시
             timerDisplay.style.display = hasActiveBuildings ? 'flex' : 'none';
             
-            // 진행중인 건물이 없으면 화면 업데이트 타이머도 중단
             if (!hasActiveBuildings && displayTimer) {
                 clearInterval(displayTimer);
                 displayTimer = null;
@@ -343,7 +438,15 @@
                 return;
             }
             
+            if (allBuildingsList.length === 0) {
+                showResult('건물 설정 데이터가 로드되지 않았습니다.');
+                return;
+            }
+            
+            const previousData = { ...userBuildingData };
             userBuildingData = {};
+            completedBuildingChecks.clear();
+            
             if (displayTimer) {
                 clearInterval(displayTimer);
                 displayTimer = null;
@@ -365,7 +468,7 @@
                 console.log('🏗️ 건물 데이터 로드:', result.data);
                 
                 if (result.success && result.data) {
-                    for (const building of buildings) {
+                    for (const building of allBuildingsList) {
                         if (result.data[building.idx]) {
                             userBuildingData[building.idx] = result.data[building.idx];
                         } else {
@@ -373,16 +476,14 @@
                         }
                     }
                 } else {
-                    // 실패한 경우 기본값 설정
-                    for (const building of buildings) {
-                        userBuildingData[building.idx] = { building_lv: 0, status: 0 };
+                    for (const building of allBuildingsList) {
+                        userBuildingData[building.idx] = previousData[building.idx] || { building_lv: 0, status: 0 };
                     }
                 }
             } catch (error) {
                 console.log(`정보 로드 에러:`, error);
-                // 에러 시 기본값 설정
-                for (const building of buildings) {
-                    userBuildingData[building.idx] = { building_lv: 0, status: 0 };
+                for (const building of allBuildingsList) {
+                    userBuildingData[building.idx] = previousData[building.idx] || { building_lv: 0, status: 0 };
                 }
             }
             
@@ -396,8 +497,9 @@
                 return;
             }
             
-            const building = buildings.find(b => b.idx === buildingIdx);
-            const buildingName = building ? building.korean_name : buildingIdx;
+            const building = allBuildingsList.find(b => b.idx === buildingIdx);
+            // ⭐ [변경] display_name 사용
+            const buildingName = building ? (building.display_name || building.korean_name) : buildingIdx;
             
             try {
                 showResult(`${buildingName} 요청 중...`);
@@ -421,13 +523,14 @@
                     if (result.data) {
                         userBuildingData[buildingIdx] = result.data;
                         console.log(`${buildingName} 업데이트된 데이터:`, result.data);
-                        generateBuildingTable(); // 새로운 상태로 테이블 업데이트
-                        
-                        // 업그레이드/건설 시작 후 즉시 타이머 표시 시작
-                        if ((apiCode === 2002 || apiCode === 2003) && result.data.status !== 0) {
-                            startDisplayTimer();
-                        }
                     }
+                    
+                    await loadBuildings();
+                    
+                    if ((apiCode === 2002 || apiCode === 2003) && result.data && result.data.status !== 0) {
+                        startDisplayTimer();
+                    }
+                    
                     showResult(`${buildingName} 성공: ${result.message || '완료'}`);
                 } else {
                     showResult(`${buildingName} 실패: ${result.message || '알 수 없는 오류'}`);
@@ -445,7 +548,6 @@
             console.log(`📢 ${message}`);
         }
         
-        // 페이지 가시성 변화 감지 - 탭 복귀시 화면 업데이트 재시작
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden) {
                 console.log('👀 페이지 활성화 - 화면 업데이트 재시작');

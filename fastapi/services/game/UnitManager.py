@@ -4,7 +4,9 @@ import models, schemas
 from services.system import GameDataManager
 from services.game import ResourceManager, BuffManager
 from services.redis_manager import RedisManager
+from services.db_manager import DBManager
 from datetime import datetime, timedelta
+import logging
 
 '''
 task_type 값
@@ -26,11 +28,13 @@ class UnitManager():
     TASK_TRAIN = 0
     TASK_UPGRADE = 1
     
-    def __init__(self, db: Session, redis_manager: RedisManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self._user_no: int = None
         self._data: dict = None
-        self.db = db
+        self.db_manager = db_manager
         self.redis_manager = redis_manager
+        self._cached_units = None
+        self.logger = logging.getLogger(self.__class__.__name__)
         
     @property
     def user_no(self):
@@ -43,6 +47,7 @@ class UnitManager():
         if not isinstance(no, int):
             raise ValueError("user_no는 정수여야 합니다.")
         self._user_no = no
+        self._cached_units = None
 
     @property
     def data(self):
@@ -75,71 +80,173 @@ class UnitManager():
         
         return None
     
-    def _format_unit_data(self, unit):
-        """유닛 데이터를 응답 형태로 포맷팅"""
+    def _format_unit_for_cache(self, unit_data):
+        """캐시용 유닛 데이터 포맷팅"""
+        try:
+            if isinstance(unit_data, dict):
+                return {
+                    "id": unit_data.get('id'),
+                    "user_no": unit_data.get('user_no'),
+                    "unit_idx": unit_data.get('unit_idx'),
+                    "total": unit_data.get('total'),
+                    "ready": unit_data.get('ready'),
+                    "field": unit_data.get('field'),
+                    "injured": unit_data.get('injured'),
+                    "wounded": unit_data.get('wounded'),
+                    "healing": unit_data.get('healing'),
+                    "death": unit_data.get('death'),
+                    "training": unit_data.get('training'),
+                    "upgrading": unit_data.get('upgrading'),
+                    "cached_at": datetime.utcnow().isoformat()
+                }
+            else:
+                return {
+                    "id": unit_data.id,
+                    "user_no": unit_data.user_no,
+                    "unit_idx": unit_data.unit_idx,
+                    "total": unit_data.total,
+                    "ready": unit_data.ready,
+                    "field": unit_data.field,
+                    "injured": unit_data.injured,
+                    "wounded": unit_data.wounded,
+                    "healing": unit_data.healing,
+                    "death": unit_data.death,
+                    "training": unit_data.training,
+                    "upgrading": unit_data.upgrading,
+                    "cached_at": datetime.utcnow().isoformat()
+                }
+        except Exception as e:
+            self.logger.error(f"Error formatting unit data for cache: {e}")
+            return {}
+    
+    async def get_user_units(self):
+        """사용자 유닛 데이터를 캐시 우선으로 조회"""
+        if self._cached_units is not None:
+            return self._cached_units
+        
+        user_no = self.user_no
+        
+        try:
+            # 1. Redis 캐시에서 먼저 조회
+            unit_redis = self.redis_manager.get_unit_manager()
+            self._cached_units = await unit_redis.get_cached_units(user_no)
+            self.logger.debug(self._cached_units)
+            if self._cached_units:
+                self.logger.debug(f"Cache hit: Retrieved {self._cached_units} units for user {user_no}")
+                return self._cached_units
+            
+            # 2. 캐시 미스: DB에서 조회
+            units_data = self.get_db_units(user_no)
+            
+            if units_data['success'] and units_data['data']:
+                # 3. Redis에 캐싱
+                cache_success = await unit_redis.cache_user_units_data(user_no, units_data['data'])
+                if cache_success:
+                    self.logger.debug(f"Successfully cached {units_data['data']} units for user {user_no}")
+                
+                self._cached_units = units_data['data']
+            else:
+                self._cached_units = {}
+                
+        except Exception as e:
+            self.logger.error(f"Error getting user units for user {user_no}: {e}")
+            self._cached_units = {}
+        
+        return self._cached_units
+    
+    def get_db_units(self, user_no):
+        """DB에서 유닛 데이터만 순수하게 조회"""
+        try:
+            unit_db = self.db_manager.get_unit_manager()
+            units_result = unit_db.get_user_units(user_no)
+            
+            if not units_result['success']:
+                return units_result
+            
+            # 데이터 포맷팅
+            formatted_units = {}
+            for unit in units_result['data']:
+                unit_idx = unit['unit_idx']
+                formatted_units[str(unit_idx)] = self._format_unit_for_cache(unit)
+            
+            return {
+                "success": True,
+                "message": f"Loaded {len(formatted_units)} units from database",
+                "data": formatted_units
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error loading units from DB for user {user_no}: {e}")
+            return {
+                "success": False,
+                "message": f"Database error: {str(e)}",
+                "data": {}
+            }
+    
+    def invalidate_user_unit_cache(self, user_no: int):
+        """사용자 유닛 캐시 무효화"""
+        try:
+            unit_redis = self.redis_manager.get_unit_manager()
+            cache_invalidated = unit_redis.invalidate_unit_cache(user_no)
+            
+            # 메모리 캐시도 무효화
+            if self._user_no == user_no:
+                self._cached_units = None
+            
+            self.logger.debug(f"Cache invalidated for user {user_no}: {cache_invalidated}")
+            return cache_invalidated
+            
+        except Exception as e:
+            self.logger.error(f"Error invalidating cache for user {user_no}: {e}")
+            return False
+    
+    async def _format_unit_data(self, unit_idx):
+        """유닛 데이터를 응답 형태로 포맷팅 (캐시에서 조회)"""
+        units_data = await self.get_user_units()
+        unit = units_data.get(str(unit_idx))
+        
+        if not unit:
+            return None
+        
         # Redis에서 실제 완료 시간을 조회 (서버에서 관리하는 시간)
         redis_completion_time = None
-        task = self._get_current_task(unit.user_no, unit.unit_idx)
-        
-        if task:  # 진행중인 작업이 있는 경우
-            try:
-                unit_redis = self.redis_manager.get_unit_manager()
-                redis_completion_time = unit_redis.get_unit_completion_time(
-                    unit.user_no, unit.unit_idx
-                )
-            except Exception as redis_error:
-                print(f"Redis error: {redis_error}")
+        try:
+            unit_redis = self.redis_manager.get_unit_manager()
+            redis_completion_time = await unit_redis.get_unit_completion_time(
+                self.user_no, unit_idx
+            )
+        except Exception as redis_error:
+            self.logger.error(f"Redis error: {redis_error}")
         
         return {
-            "id": unit.id,
-            "user_no": unit.user_no,
-            "unit_idx": unit.unit_idx,
-            "total": unit.total,
-            "ready": unit.ready,
-            "field": unit.field,
-            "injured": unit.injured,
-            "wounded": unit.wounded,
-            "healing": unit.healing,
-            "death": unit.death,
-            "training": unit.training,
-            "upgrading": unit.upgrading,
+            **unit,
             "task_completion_time": redis_completion_time.isoformat() if redis_completion_time else None
         }
     
     def _get_unit(self, user_no, unit_idx):
         """유닛 조회"""
-        return self.db.query(models.Unit).filter(
-            models.Unit.user_no == user_no,
-            models.Unit.unit_idx == unit_idx
-        ).first()
+        unit_db = self.db_manager.get_unit_manager()
+        return unit_db.get_unit(user_no, unit_idx)
     
     def _get_all_user_units(self, user_no):
         """사용자의 모든 유닛 조회"""
-        return self.db.query(models.Unit).filter(
-            models.Unit.user_no == user_no
-        ).all()
+        unit_db = self.db_manager.get_unit_manager()
+        return unit_db.get_all_user_units(user_no)
     
     def _get_current_task(self, user_no, unit_idx):
         """현재 진행중인 작업 반환"""
-        return self.db.query(models.UnitTasks).filter(
-            models.UnitTasks.user_no == user_no,
-            models.UnitTasks.unit_idx == unit_idx,
-            models.UnitTasks.status == self.TASK_PROCESSING
-        ).first()
+        unit_db = self.db_manager.get_unit_manager()
+        return unit_db.get_current_task(user_no, unit_idx)
     
     def _has_ongoing_task(self, user_no, unit_idxs):
         """해당 유닛 타입에 진행중인 작업이 있는지 확인"""
         if not isinstance(unit_idxs, list):
             unit_idxs = [unit_idxs]
-            
-        task = self.db.query(models.UnitTasks).filter(
-            models.UnitTasks.user_no == user_no,
-            models.UnitTasks.unit_idx.in_(unit_idxs),
-            models.UnitTasks.status == self.TASK_PROCESSING
-        ).first()
-        return task is not None
+        
+        unit_db = self.db_manager.get_unit_manager()
+        return unit_db.has_ongoing_task(user_no, unit_idxs)
     
-    def _handle_resource_transaction(self, user_no, unit_idx, quantity=1):
+    async def _handle_resource_transaction(self, user_no, unit_idx, quantity=1):
         """자원 체크 및 소모를 한번에 처리"""
         try:
             required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][unit_idx]
@@ -151,11 +258,11 @@ class UnitManager():
             for resource, cost in costs.items():
                 total_costs[resource] = cost * quantity
             
-            resource_manager = ResourceManager(self.db)
-            if not resource_manager.check_require_resources(user_no, total_costs):
+            resource_manager = ResourceManager(self.db_manager, self.redis_manager)
+            if not await resource_manager.check_require_resources(user_no, total_costs):
                 return None, "Need More Resources"
             
-            resource_manager.consume_resources(user_no, total_costs)
+            await resource_manager.consume_resources(user_no, total_costs)
             return base_time, None
             
         except Exception as e:
@@ -164,7 +271,7 @@ class UnitManager():
     def _apply_unit_buffs(self, user_no, base_time, task_type):
         """유닛 훈련/업그레이드 시간 버프 적용"""
         try:
-            buff_manager = BuffManager(self.db)
+            buff_manager = BuffManager(self.db_manager, self.redis_manager)
             
             # 작업 타입에 따른 버프 조회
             if task_type == self.TASK_TRAIN:
@@ -186,40 +293,49 @@ class UnitManager():
             return max(1, int(reduced_time))  # 최소 1초
             
         except Exception as e:
-            print(f"Error applying unit buffs: {e}")
+            self.logger.error(f"Error applying unit buffs: {e}")
             return base_time
     
-    def _update_unit_counts(self, unit):
-        """유닛 총합 개수 업데이트"""
-        calculated_total = (unit.ready + unit.field + unit.injured + 
-                           unit.wounded + unit.healing + unit.death + 
-                           unit.training + unit.upgrading)
-        if unit.total != calculated_total:
-            unit.total = calculated_total
+    async def _update_cached_unit(self, user_no: int, unit_idx: int, updated_data: dict):
+        """캐시된 유닛 데이터 업데이트"""
+        try:
+            unit_redis = self.redis_manager.get_unit_manager()
+            cache_updated = await unit_redis.update_cached_unit(user_no, unit_idx, updated_data)
+            
+            return cache_updated
+            
+        except Exception as e:
+            self.logger.error(f"Error updating cached unit {unit_idx} for user {user_no}: {e}")
+            return False
     
-    def unit_info(self):
+    async def unit_info(self):
         """
         유닛 정보를 조회합니다.
         """
         try:
-            user_no = self.user_no
+            units_data = await self.get_user_units()
             
-            user_units = self._get_all_user_units(user_no)
-            units_data = {}
-            
-            for unit in user_units:
-                units_data[unit.unit_idx] = self._format_unit_data(unit)
+            # 각 유닛에 task_completion_time 추가
+            enriched_units = {}
+            for unit_idx, unit in units_data.items():
+                formatted = await self._format_unit_data(int(unit_idx))
+                if formatted:
+                    enriched_units[unit_idx] = formatted
             
             return {
                 "success": True,
-                "message": f"Retrieved {len(units_data)} unit types",
-                "data": units_data
+                "message": f"Retrieved {len(enriched_units)} units",
+                "data": enriched_units
             }
-            
         except Exception as e:
-            return {"success": False, "message": f"Error retrieving units info: {str(e)}", "data": {}}
+            self.logger.error(f"Error getting unit info: {e}")
+            return {
+                "success": False,
+                "message": f"Error retrieving unit info: {str(e)}",
+                "data": {}
+            }
     
-    def unit_train(self):
+    async def unit_train(self):
         """
         유닛을 훈련합니다.
         """
@@ -232,47 +348,21 @@ class UnitManager():
                 return validation_error
             
             unit_idx = self.data.get('unit_idx')
+            quantity = int(self.data.get('quantity', 1))
             
-            try:
-                quantity = int(self.data.get('quantity', 0))
-            except:
-                return {"success": False, "message": "Quantity must be Integer", "data": {}}
-                
             if quantity <= 0:
                 return {"success": False, "message": "Quantity must be greater than 0", "data": {}}
             
-            # 유닛 설정 확인
-            unit_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
-            if unit_idx not in unit_config:
-                return {"success": False, "message": "Invalid unit type", "data": {}}
+            # 진행중인 작업이 있는지 확인
+            if self._has_ongoing_task(user_no, unit_idx):
+                return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
             
-            # 같은 카테고리의 유닛들이 작업중인지 확인
-            unit_category = unit_config[unit_idx]['category']
-            unit_idxs = [key for key, value in unit_config.items() if value['category'] == unit_category]
-            
-            if self._has_ongoing_task(user_no, unit_idxs):
-                return {"success": False, "message": "Another task is already in progress for this unit category", "data": {}}
-            
-            # 유닛 조회 또는 생성
             unit = self._get_unit(user_no, unit_idx)
             if not unit:
-                unit = models.Unit(
-                    user_no=user_no,
-                    unit_idx=unit_idx,
-                    total=0, ready=0, field=0, injured=0, wounded=0, 
-                    healing=0, death=0, training=0, upgrading=0
-                )
-                self.db.add(unit)
-                self.db.flush()
-            
-            # 최대 개수 체크
-            config = unit_config[unit_idx]
-            max_count = config.get('max_count', 999)
-            if unit.total + quantity > max_count:
-                return {"success": False, "message": f"Max {max_count} units allowed", "data": {}}
+                return {"success": False, "message": "Unit not found", "data": {}}
             
             # 자원 처리
-            base_time, error_msg = self._handle_resource_transaction(user_no, unit_idx, quantity)
+            base_time, error_msg = await self._handle_resource_transaction(user_no, unit_idx, quantity)
             if error_msg:
                 return {"success": False, "message": error_msg, "data": {}}
             
@@ -283,42 +373,40 @@ class UnitManager():
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=train_time)
             
-            # 작업 생성 (DB에는 end_time 저장하지 않음)
-            task = models.UnitTasks(
-                user_no=user_no,
-                unit_idx=unit_idx,
-                task_type=self.TASK_TRAIN,
-                quantity=quantity,
-                target_unit_idx=None,
-                status=self.TASK_PROCESSING,
-                start_time=start_time,
-                end_time=None,  # DB에는 저장하지 않음
-                created_at=start_time
-            )
+            # DB 업데이트
+            unit_db = self.db_manager.get_unit_manager()
+            update_result = unit_db.start_unit_train(user_no, unit_idx, quantity, start_time)
             
-            self.db.add(task)
-            unit.training += quantity
-            self._update_unit_counts(unit)
+            if not update_result['success']:
+                self.db_manager.rollback()
+                return {"success": False, "message": "Failed to start training", "data": {}}
             
-            self.db.commit()
-            self.db.refresh(unit)
+            self.db_manager.commit()
             
             # Redis 완료 큐에 추가
             unit_redis = self.redis_manager.get_unit_manager()
-            unit_redis.add_unit(user_no, unit_idx, completion_time)
+            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time)
             
-            unit_name = config.get('name', f'Unit_{unit_idx}')
+            # 캐시 업데이트
+            updated_unit = {
+                **self._format_unit_for_cache(update_result['data']),
+                'training': update_result['data'].training,
+                'total': update_result['data'].total
+            }
+            await self._update_cached_unit(user_no, unit_idx, updated_unit)
+            
             return {
                 "success": True,
-                "message": f"Started training {quantity} {unit_name}. Will complete in {train_time} seconds",
-                "data": self._format_unit_data(unit)
+                "message": f"Started training {quantity} units. Will complete in {train_time} seconds",
+                "data": await self._format_unit_data(unit_idx)
             }
             
         except Exception as e:
-            self.db.rollback()
+            self.db_manager.rollback()
+            self.logger.error(f"Error training unit: {e}")
             return {"success": False, "message": f"Error training unit: {str(e)}", "data": {}}
     
-    def unit_upgrade(self):
+    async def unit_upgrade(self):
         """
         유닛을 업그레이드합니다.
         """
@@ -331,12 +419,8 @@ class UnitManager():
                 return validation_error
             
             unit_idx = self.data.get('unit_idx')
+            quantity = int(self.data.get('quantity', 1))
             target_unit_idx = self.data.get('target_unit_idx')
-            
-            try:
-                quantity = int(self.data.get('quantity', 1))
-            except:
-                return {"success": False, "message": "Quantity must be Integer", "data": {}}
             
             if not target_unit_idx:
                 return {"success": False, "message": "Missing target_unit_idx", "data": {}}
@@ -356,7 +440,7 @@ class UnitManager():
                 return {"success": False, "message": f"Not enough ready units. Available: {unit.ready}", "data": {}}
             
             # 자원 처리 (타겟 유닛 기준)
-            base_time, error_msg = self._handle_resource_transaction(user_no, target_unit_idx, quantity)
+            base_time, error_msg = await self._handle_resource_transaction(user_no, target_unit_idx, quantity)
             if error_msg:
                 return {"success": False, "message": error_msg, "data": {}}
             
@@ -367,41 +451,41 @@ class UnitManager():
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=upgrade_time)
             
-            # 작업 생성 (DB에는 end_time 저장하지 않음)
-            task = models.UnitTasks(
-                user_no=user_no,
-                unit_idx=unit_idx,
-                task_type=self.TASK_UPGRADE,
-                quantity=quantity,
-                target_unit_idx=target_unit_idx,
-                status=self.TASK_PROCESSING,
-                start_time=start_time,
-                end_time=None,  # DB에는 저장하지 않음
-                created_at=start_time
-            )
+            # DB 업데이트
+            unit_db = self.db_manager.get_unit_manager()
+            update_result = unit_db.start_unit_upgrade(user_no, unit_idx, quantity, target_unit_idx, start_time)
             
-            self.db.add(task)
-            unit.ready -= quantity
-            unit.upgrading += quantity
-            self._update_unit_counts(unit)
+            if not update_result['success']:
+                self.db_manager.rollback()
+                return {"success": False, "message": "Failed to start upgrade", "data": {}}
             
-            self.db.commit()
-            self.db.refresh(unit)
+            self.db_manager.commit()
             
             # Redis 완료 큐에 추가
-            self.redis_manager.add_unit_to_queue(user_no, unit_idx, completion_time)
+            unit_redis = self.redis_manager.get_unit_manager()
+            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time)
+            
+            # 캐시 업데이트
+            updated_unit = {
+                **self._format_unit_for_cache(update_result['data']),
+                'ready': update_result['data'].ready,
+                'upgrading': update_result['data'].upgrading,
+                'total': update_result['data'].total
+            }
+            await self._update_cached_unit(user_no, unit_idx, updated_unit)
             
             return {
                 "success": True,
                 "message": f"Started upgrade of {quantity} units to {target_unit_idx}. Will complete in {upgrade_time} seconds",
-                "data": self._format_unit_data(unit)
+                "data": await self._format_unit_data(unit_idx)
             }
             
         except Exception as e:
-            self.db.rollback()
+            self.db_manager.rollback()
+            self.logger.error(f"Error upgrading unit: {e}")
             return {"success": False, "message": f"Error upgrading unit: {str(e)}", "data": {}}
     
-    def unit_cancel(self):
+    async def unit_cancel(self):
         """
         유닛 훈련/업그레이드를 취소합니다.
         """
@@ -425,16 +509,13 @@ class UnitManager():
             
             # Redis 큐에서 제거
             unit_redis = self.redis_manager.get_unit_manager()
-            unit_redis.remove_unit(user_no, unit_idx)
+            await unit_redis.remove_unit(user_no, unit_idx)
             
             # 자원 환불 처리
             try:
                 if task.task_type == self.TASK_UPGRADE:
                     required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][task.target_unit_idx]
-                    unit.ready += task.quantity
-                    unit.upgrading -= task.quantity
                 else:
-                    unit.training -= task.quantity
                     required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][unit_idx]
                 
                 costs = required['cost']
@@ -442,32 +523,40 @@ class UnitManager():
                 for resource, cost in costs.items():
                     refund_costs[resource] = int(cost * task.quantity)
                 
-                resource_manager = ResourceManager(self.db)
-                resource_manager.produce_resources(user_no, refund_costs)
+                resource_manager = ResourceManager(self.db_manager, self.redis_manager)
+                await resource_manager.produce_resources(user_no, refund_costs)
                 
             except Exception as refund_error:
-                print(f"Refund failed: {refund_error}")
+                self.logger.error(f"Refund failed: {refund_error}")
             
-            # 취소된 task 삭제
-            self.db.delete(task)
+            # DB 업데이트
+            unit_db = self.db_manager.get_unit_manager()
+            cancel_result = unit_db.cancel_unit_task(user_no, unit_idx, task)
             
-            self._update_unit_counts(unit)
-            self.db.commit()
-            self.db.refresh(unit)
+            if not cancel_result['success']:
+                self.db_manager.rollback()
+                return {"success": False, "message": "Failed to cancel task", "data": {}}
+            
+            self.db_manager.commit()
+            
+            # 캐시 업데이트
+            updated_unit = self._format_unit_for_cache(cancel_result['data'])
+            await self._update_cached_unit(user_no, unit_idx, updated_unit)
             
             message = "Unit training cancelled" if task.task_type == self.TASK_TRAIN else "Unit upgrade cancelled"
             
             return {
                 "success": True,
                 "message": f"{message}, resources refunded",
-                "data": self._format_unit_data(unit)
+                "data": await self._format_unit_data(unit_idx)
             }
             
         except Exception as e:
-            self.db.rollback()
+            self.db_manager.rollback()
+            self.logger.error(f"Error cancelling unit task: {e}")
             return {"success": False, "message": f"Error cancelling unit task: {str(e)}", "data": {}}
     
-    def unit_speedup(self):
+    async def unit_speedup(self):
         """
         유닛 훈련/업그레이드를 즉시 완료합니다. (아이템 사용)
         """
@@ -491,24 +580,25 @@ class UnitManager():
             
             # Redis에서 완료 시간 조회
             unit_redis = self.redis_manager.get_unit_manager()
-            completion_time = unit_redis.get_unit_completion_time(user_no, unit_idx)
+            completion_time = await unit_redis.get_unit_completion_time(user_no, unit_idx)
             if not completion_time:
                 return {"success": False, "message": "Unit completion time not found", "data": {}}
             
             # 즉시 완료를 위해 현재 시간으로 업데이트
             current_time = datetime.utcnow()
-            unit_redis.update_unit_completion_time(user_no, unit_idx, current_time)
+            await unit_redis.update_unit_completion_time(user_no, unit_idx, current_time)
             
             return {
                 "success": True,
                 "message": "Unit task completion time accelerated. Will complete shortly.",
-                "data": self._format_unit_data(unit)
+                "data": await self._format_unit_data(unit_idx)
             }
             
         except Exception as e:
+            self.logger.error(f"Error speeding up unit task: {e}")
             return {"success": False, "message": f"Error speeding up unit task: {str(e)}", "data": {}}
     
-    def get_completion_status(self):
+    async def get_completion_status(self):
         """
         현재 진행 중인 유닛 작업들의 완료 상태를 조회합니다.
         """
@@ -516,27 +606,25 @@ class UnitManager():
             user_no = self.user_no
             
             # 진행 중인 작업들 조회
-            active_tasks = self.db.query(models.UnitTasks).filter(
-                models.UnitTasks.user_no == user_no,
-                models.UnitTasks.status == self.TASK_PROCESSING
-            ).all()
+            unit_db = self.db_manager.get_unit_manager()
+            active_tasks = unit_db.get_active_tasks(user_no)
             
             completion_info = []
             current_time = datetime.utcnow()
             
             for task in active_tasks:
                 unit_redis = self.redis_manager.get_unit_manager()
-                redis_completion_time = unit_redis.get_unit_completion_time(
-                    user_no, task.unit_idx
+                redis_completion_time = await unit_redis.get_unit_completion_time(
+                    user_no, task['unit_idx']
                 )
                 
                 if redis_completion_time:
                     remaining_seconds = max(0, int((redis_completion_time - current_time).total_seconds()))
                     completion_info.append({
-                        "unit_idx": task.unit_idx,
-                        "task_type": task.task_type,
-                        "quantity": task.quantity,
-                        "target_unit_idx": task.target_unit_idx,
+                        "unit_idx": task['unit_idx'],
+                        "task_type": task['task_type'],
+                        "quantity": task['quantity'],
+                        "target_unit_idx": task['target_unit_idx'],
                         "completion_time": redis_completion_time.isoformat(),
                         "remaining_seconds": remaining_seconds,
                         "is_ready": remaining_seconds == 0
@@ -549,4 +637,5 @@ class UnitManager():
             }
             
         except Exception as e:
+            self.logger.error(f"Error getting completion status: {e}")
             return {"success": False, "message": f"Error getting completion status: {str(e)}", "data": []}
