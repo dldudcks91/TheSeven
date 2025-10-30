@@ -1,7 +1,7 @@
 # UnitManager.py
 from sqlalchemy.orm import Session
 import models, schemas
-from services.system import GameDataManager
+from services.system.GameDataManager import GameDataManager
 from services.game import ResourceManager, BuffManager
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
@@ -238,13 +238,60 @@ class UnitManager():
         unit_db = self.db_manager.get_unit_manager()
         return unit_db.get_current_task(user_no, unit_idx)
     
-    def _has_ongoing_task(self, user_no, unit_idxs):
-        """해당 유닛 타입에 진행중인 작업이 있는지 확인"""
+    async def _ensure_unit_exists(self, user_no: int, unit_idx: int) -> dict:
+        """유닛 데이터 존재 확인 및 생성"""
+        units_data = await self.get_user_units()
+        unit = units_data.get(str(unit_idx))
+        
+        if unit:
+            return unit
+        
+        # 없으면 생성
+        self.logger.info(f"Creating initial unit data for user {user_no}, unit {unit_idx}")
+        
+        unit_db = self.db_manager.get_unit_manager()
+        create_result = unit_db.create_unit(
+            user_no=user_no,
+            unit_idx=unit_idx,
+            total=0,
+            ready=0,
+            field=0,
+            injured=0,
+            wounded=0,
+            healing=0,
+            death=0,
+            training=0,
+            upgrading=0
+        )
+        
+        if not create_result['success']:
+            raise Exception("Failed to create unit")
+        
+        self.db_manager.commit()
+        
+        # 캐시 갱신
+        new_unit = self._format_unit_for_cache(create_result['data'])
+        await self._update_cached_unit(user_no, unit_idx, new_unit)
+        
+        return new_unit
+    
+    async def _has_ongoing_task(self, user_no, unit_idxs):
+        """해당 유닛 타입에 진행중인 작업이 있는지 확인 (Redis 기반)"""
         if not isinstance(unit_idxs, list):
             unit_idxs = [unit_idxs]
         
-        unit_db = self.db_manager.get_unit_manager()
-        return unit_db.has_ongoing_task(user_no, unit_idxs)
+        try:
+            unit_redis = self.redis_manager.get_unit_manager()
+            for unit_idx in unit_idxs:
+                completion_time = await unit_redis.get_unit_completion_time(user_no, unit_idx)
+                if completion_time:
+                    return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error checking ongoing task in Redis: {e}")
+            # Redis 실패시 DB 확인
+            unit_db = self.db_manager.get_unit_manager()
+            return unit_db.has_ongoing_task(user_no, unit_idxs)
     
     async def _handle_resource_transaction(self, user_no, unit_idx, quantity=1):
         """자원 체크 및 소모를 한번에 처리"""
@@ -336,13 +383,10 @@ class UnitManager():
             }
     
     async def unit_train(self):
-        """
-        유닛을 훈련합니다.
-        """
+        """유닛을 훈련합니다."""
         try:
             user_no = self.user_no
             
-            # 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
@@ -353,13 +397,11 @@ class UnitManager():
             if quantity <= 0:
                 return {"success": False, "message": "Quantity must be greater than 0", "data": {}}
             
-            # 진행중인 작업이 있는지 확인
-            if self._has_ongoing_task(user_no, unit_idx):
+            if await self._has_ongoing_task(user_no, unit_idx):
                 return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
             
-            unit = self._get_unit(user_no, unit_idx)
-            if not unit:
-                return {"success": False, "message": "Unit not found", "data": {}}
+            # 유닛 존재 확인 및 생성
+            unit = await self._ensure_unit_exists(user_no, unit_idx)
             
             # 자원 처리
             base_time, error_msg = await self._handle_resource_transaction(user_no, unit_idx, quantity)
@@ -373,25 +415,16 @@ class UnitManager():
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=train_time)
             
-            # DB 업데이트
-            unit_db = self.db_manager.get_unit_manager()
-            update_result = unit_db.start_unit_train(user_no, unit_idx, quantity, start_time)
-            
-            if not update_result['success']:
-                self.db_manager.rollback()
-                return {"success": False, "message": "Failed to start training", "data": {}}
-            
-            self.db_manager.commit()
-            
             # Redis 완료 큐에 추가
             unit_redis = self.redis_manager.get_unit_manager()
-            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time)
+            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time, unit_count=quantity)
             
-            # 캐시 업데이트
+            # Redis 캐시 업데이트
             updated_unit = {
-                **self._format_unit_for_cache(update_result['data']),
-                'training': update_result['data'].training,
-                'total': update_result['data'].total
+                **unit,
+                'training': unit.get('training', 0) + quantity,
+                'total': unit.get('total', 0) + quantity,
+                'cached_at': datetime.utcnow().isoformat()
             }
             await self._update_cached_unit(user_no, unit_idx, updated_unit)
             
@@ -429,15 +462,17 @@ class UnitManager():
                 return {"success": False, "message": "Quantity must be greater than 0", "data": {}}
             
             # 진행중인 작업이 있는지 확인
-            if self._has_ongoing_task(user_no, unit_idx):
+            if await self._has_ongoing_task(user_no, unit_idx):
                 return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
             
-            unit = self._get_unit(user_no, unit_idx)
+            # 캐시에서 유닛 정보 조회
+            units_data = await self.get_user_units()
+            unit = units_data.get(str(unit_idx))
             if not unit:
                 return {"success": False, "message": "Unit not found", "data": {}}
             
-            if unit.ready < quantity:
-                return {"success": False, "message": f"Not enough ready units. Available: {unit.ready}", "data": {}}
+            if unit.get('ready', 0) < quantity:
+                return {"success": False, "message": f"Not enough ready units. Available: {unit.get('ready', 0)}", "data": {}}
             
             # 자원 처리 (타겟 유닛 기준)
             base_time, error_msg = await self._handle_resource_transaction(user_no, target_unit_idx, quantity)
@@ -451,26 +486,16 @@ class UnitManager():
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=upgrade_time)
             
-            # DB 업데이트
-            unit_db = self.db_manager.get_unit_manager()
-            update_result = unit_db.start_unit_upgrade(user_no, unit_idx, quantity, target_unit_idx, start_time)
-            
-            if not update_result['success']:
-                self.db_manager.rollback()
-                return {"success": False, "message": "Failed to start upgrade", "data": {}}
-            
-            self.db_manager.commit()
-            
-            # Redis 완료 큐에 추가
+            # Redis 완료 큐에 추가 (Task 생성)
             unit_redis = self.redis_manager.get_unit_manager()
-            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time)
+            await unit_redis.add_unit_to_queue(user_no, unit_idx, completion_time, unit_count=quantity)
             
-            # 캐시 업데이트
+            # Redis 캐시 업데이트 (ready 감소, upgrading 증가)
             updated_unit = {
-                **self._format_unit_for_cache(update_result['data']),
-                'ready': update_result['data'].ready,
-                'upgrading': update_result['data'].upgrading,
-                'total': update_result['data'].total
+                **unit,
+                'ready': unit.get('ready', 0) - quantity,
+                'upgrading': unit.get('upgrading', 0) + quantity,
+                'cached_at': datetime.utcnow().isoformat()
             }
             await self._update_cached_unit(user_no, unit_idx, updated_unit)
             
@@ -481,7 +506,6 @@ class UnitManager():
             }
             
         except Exception as e:
-            self.db_manager.rollback()
             self.logger.error(f"Error upgrading unit: {e}")
             return {"success": False, "message": f"Error upgrading unit: {str(e)}", "data": {}}
     
@@ -499,10 +523,13 @@ class UnitManager():
             
             unit_idx = self.data.get('unit_idx')
             
-            unit = self._get_unit(user_no, unit_idx)
+            # 캐시에서 유닛 정보 조회
+            units_data = await self.get_user_units()
+            unit = units_data.get(str(unit_idx))
             if not unit:
                 return {"success": False, "message": "Unit not found", "data": {}}
             
+            # DB에서 작업 정보 조회 (task_type, quantity 확인용)
             task = self._get_current_task(user_no, unit_idx)
             if not task:
                 return {"success": False, "message": "No task to cancel", "data": {}}
@@ -529,18 +556,18 @@ class UnitManager():
             except Exception as refund_error:
                 self.logger.error(f"Refund failed: {refund_error}")
             
-            # DB 업데이트
-            unit_db = self.db_manager.get_unit_manager()
-            cancel_result = unit_db.cancel_unit_task(user_no, unit_idx, task)
+            # Redis 캐시 업데이트
+            updated_unit = {**unit}
+            if task.task_type == self.TASK_UPGRADE:
+                # 업그레이드 취소: ready 증가, upgrading 감소
+                updated_unit['ready'] = unit.get('ready', 0) + task.quantity
+                updated_unit['upgrading'] = unit.get('upgrading', 0) - task.quantity
+            else:
+                # 훈련 취소: training 감소, total 감소
+                updated_unit['training'] = unit.get('training', 0) - task.quantity
+                updated_unit['total'] = unit.get('total', 0) - task.quantity
             
-            if not cancel_result['success']:
-                self.db_manager.rollback()
-                return {"success": False, "message": "Failed to cancel task", "data": {}}
-            
-            self.db_manager.commit()
-            
-            # 캐시 업데이트
-            updated_unit = self._format_unit_for_cache(cancel_result['data'])
+            updated_unit['cached_at'] = datetime.utcnow().isoformat()
             await self._update_cached_unit(user_no, unit_idx, updated_unit)
             
             message = "Unit training cancelled" if task.task_type == self.TASK_TRAIN else "Unit upgrade cancelled"
@@ -552,7 +579,6 @@ class UnitManager():
             }
             
         except Exception as e:
-            self.db_manager.rollback()
             self.logger.error(f"Error cancelling unit task: {e}")
             return {"success": False, "message": f"Error cancelling unit task: {str(e)}", "data": {}}
     
@@ -639,3 +665,117 @@ class UnitManager():
         except Exception as e:
             self.logger.error(f"Error getting completion status: {e}")
             return {"success": False, "message": f"Error getting completion status: {str(e)}", "data": []}
+    
+    # ===== ✨ 워커용 메서드 추가 =====
+    
+    async def finish_unit_production(self, user_no: int, unit_idx: int, task_id: str):
+        """
+        유닛 생산 완료 처리 (Worker에서 호출, Redis 캐시만 업데이트)
+        
+        비즈니스 로직:
+        1. Task 검증
+        2. training/upgrading → ready로 이동
+        3. Task 삭제
+        4. DB 동기화 큐 추가
+        """
+        try:
+            unit_redis = self.redis_manager.get_unit_manager()
+            
+            # 1. Redis에서 Task 정보 조회
+            task_data = await unit_redis.get_task_data(task_id)
+            
+            if not task_data:
+                self.logger.warning(f"Task not found: {task_id}")
+                return None
+            
+            # Task 검증
+            if task_data.get('user_no') != user_no:
+                self.logger.warning(f"Task user mismatch: {task_id}")
+                return None
+            
+            if task_data.get('unit_idx') != unit_idx:
+                self.logger.warning(f"Task unit_idx mismatch: {task_id}")
+                return None
+            
+            quantity = int(task_data.get('quantity', 0))
+            task_type = int(task_data.get('task_type', self.TASK_TRAIN))
+            target_unit_idx = task_data.get('target_unit_idx')
+            
+            if quantity <= 0:
+                self.logger.warning(f"Invalid quantity in task: {task_id}")
+                return None
+            
+            # 2. 캐시에서 유닛 정보 조회
+            self._user_no = user_no  # 임시로 설정
+            units_data = await self.get_user_units()
+            unit = units_data.get(str(unit_idx))
+            
+            if not unit:
+                self.logger.warning(f"Unit not found in cache: user_no={user_no}, unit_idx={unit_idx}")
+                return None
+            
+            # 3. 비즈니스 로직에 따라 Redis 캐시 업데이트
+            updated_unit = {**unit}
+            
+            if task_type == self.TASK_TRAIN:
+                # 훈련 완료: training → ready
+                updated_unit['training'] = max(0, unit.get('training', 0) - quantity)
+                updated_unit['ready'] = unit.get('ready', 0) + quantity
+                action = "training"
+                
+            elif task_type == self.TASK_UPGRADE:
+                # 업그레이드 완료: upgrading → ready (타겟 유닛으로)
+                updated_unit['upgrading'] = max(0, unit.get('upgrading', 0) - quantity)
+                updated_unit['total'] = max(0, unit.get('total', 0) - quantity)
+                
+                # 타겟 유닛 증가
+                if target_unit_idx:
+                    target_unit = units_data.get(str(target_unit_idx))
+                    if target_unit:
+                        updated_target = {
+                            **target_unit,
+                            'total': target_unit.get('total', 0) + quantity,
+                            'ready': target_unit.get('ready', 0) + quantity,
+                            'cached_at': datetime.utcnow().isoformat()
+                        }
+                        await self._update_cached_unit(user_no, target_unit_idx, updated_target)
+                
+                action = "upgrade"
+            else:
+                self.logger.warning(f"Unknown task_type: {task_type}")
+                return None
+            
+            updated_unit['cached_at'] = datetime.utcnow().isoformat()
+            
+            # 4. Redis 캐시 업데이트
+            await self._update_cached_unit(user_no, unit_idx, updated_unit)
+            
+            # 5. Task 삭제
+            await unit_redis.remove_task(user_no, task_id)
+            await unit_redis.remove_from_completed_queue(user_no, task_id)
+            
+            # 6. DB 동기화 큐에 추가
+            sync_data = {
+                'type': f'unit_{action}_complete',
+                'unit_idx': unit_idx,
+                'quantity': quantity,
+                'task_type': task_type,
+                'target_unit_idx': target_unit_idx,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            await unit_redis.add_to_sync_queue(user_no, unit_idx, sync_data)
+            
+            self.logger.info(f"Unit {action} completed in cache: user_no={user_no}, "
+                           f"unit_idx={unit_idx}, quantity={quantity}")
+            
+            return {
+                'success': True,
+                'quantity': quantity,
+                'task_id': task_id,
+                'action': action
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in finish_unit_production: {e}")
+            return None

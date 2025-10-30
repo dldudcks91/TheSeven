@@ -1,20 +1,17 @@
 # =================================
-# unit_worker.py (비동기 버전)
+# unit_worker.py (캐시 전용 버전)
 # =================================
 from .base_worker import BaseWorker
-import models
 import asyncio
-from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from sqlalchemy.orm import Session
-from services.redis_manager import RedisManager
-from database import get_db
 
 class UnitProductionWorker(BaseWorker):
-    """유닛 생산 완성 처리 워커 (비동기 버전)"""
+    """유닛 생산 완성 처리 워커 (캐시 전용)"""
     
     async def _process_completed_tasks(self):
+        """완료된 유닛 생산들을 Redis 캐시에서만 처리"""
         try:
             unit_redis = self.redis_manager.get_unit_manager()
             completed_units = await unit_redis.get_completed_units()
@@ -22,73 +19,49 @@ class UnitProductionWorker(BaseWorker):
             if not completed_units:
                 return
             
-            print(f"Processing {len(completed_units)} completed unit productions")
+            print(f"Processing {len(completed_units)} completed unit productions in cache")
             
             for completed_unit in completed_units:
-                db = None
                 try:
-                    db = self.get_db_session()
-                    await self._complete_task(completed_unit, db)
-                    db.commit()
+                    await self._complete_task(completed_unit, None)
                 except Exception as e:
-                    if db:
-                        db.rollback()
-                    print(f"Error completing unit task: {e}")
-                finally:
-                    if db:
-                        db.close()
+                    print(f"Error completing unit task in cache: {e}")
                         
         except Exception as e:
             print(f"Error getting completed unit_training: {e}")
     
     async def _complete_task(self, completed_task: Dict[str, Any], db: Session):
+        """개별 유닛 생산 완성 처리 (Redis 캐시만 업데이트)"""
         user_no = completed_task['user_no']
-        unit_idx = int(completed_task['task_id'])
-        queue_slot = int(completed_task.get('sub_id', 0))  # 생산 큐 슬롯
+        unit_idx = completed_task['unit_idx']
+        task_id = completed_task['task_id']
         
-        lock_key = f"unit_completion_lock:{user_no}:{unit_idx}:{queue_slot}"
-        lock_set = await self.redis_manager.redis_client.set(lock_key, "1", nx=True, ex=30)
+        # 동시성 제어를 위한 락
+        lock_key = f"unit_completion_lock:{user_no}:{task_id}"
+        lock_set = await self.redis_manager.redis_client.set(
+            lock_key, "1", nx=True, ex=30
+        )
         if not lock_set:
             return
         
         try:
-            # 유닛 생산 큐에서 해당 항목 조회
-            unit_queue = db.query(models.UnitProductionQueue).filter(
-                models.UnitProductionQueue.user_no == user_no,
-                models.UnitProductionQueue.unit_idx == unit_idx,
-                models.UnitProductionQueue.queue_slot == queue_slot,
-                models.UnitProductionQueue.status == 1  # 생산 중
-            ).first()
+            # ✅ unit_manager의 비즈니스 로직 호출
+            from managers.unit_manager import UnitManager
             
-            if not unit_queue:
-                unit_redis = self.redis_manager.get_unit_manager()
-                await unit_redis.remove_unit_training(user_no, unit_idx, queue_slot)
-                return
+            unit_manager = UnitManager(self.redis_manager)
             
-            # 사용자 유닛 인벤토리에 추가
-            user_unit = db.query(models.UserUnit).filter(
-                models.UserUnit.user_no == user_no,
-                models.UserUnit.unit_idx == unit_idx
-            ).first()
+            result = await unit_manager.finish_unit_production(
+                user_no=user_no,
+                unit_idx=unit_idx,
+                task_id=task_id
+            )
             
-            if user_unit:
-                user_unit.quantity += unit_queue.quantity
-            else:
-                user_unit = models.UserUnit(
-                    user_no=user_no,
-                    unit_idx=unit_idx,
-                    quantity=unit_queue.quantity
-                )
-                db.add(user_unit)
+            if result:
+                print(f"Unit production completed in cache: "
+                      f"user_no={user_no}, unit_idx={unit_idx}, "
+                      f"quantity={result['quantity']}")
             
-            # 생산 큐에서 제거
-            db.delete(unit_queue)
-            
-            # Redis에서 제거
-            unit_redis = self.redis_manager.get_unit_manager()
-            await unit_redis.remove_unit_training(user_no, unit_idx, queue_slot)
-            
-            print(f"Unit production completed: user_no={user_no}, unit_idx={unit_idx}, quantity={unit_queue.quantity}")
-            
+        except Exception as e:
+            print(f"Error in _complete_task: {e}")
         finally:
             await self.redis_manager.redis_client.delete(lock_key)

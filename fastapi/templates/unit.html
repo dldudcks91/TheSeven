@@ -723,9 +723,10 @@
                 });
                 
                 const result = await response.json();
-                if (result.success && result.data && result.data.units) {
-                    userUnitData = result.data.units;
-                }
+                
+                userUnitData = result.data;
+                
+
                 console.log('loadUnits - userUnitData: ',userUnitData)
                 
                 allUnits.forEach(unit => {
@@ -1090,7 +1091,7 @@
             productionButton.addEventListener('click', function() {
                 const quantity = slider.value;
                 callAPI(4002, mainUnitIdx, quantity)
-                callAPI(4004, mainUnitIdx)
+                //callAPI(4004, mainUnitIdx)
             });
 
 

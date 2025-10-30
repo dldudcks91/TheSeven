@@ -15,6 +15,7 @@ __all__ = [
     'BuildingDBManager',
     'UnitDBManager', 
     'ResearchDBManager',
+    'ResourceDBManager',
     'BuffDBManager',
     'DBManager'
 ]
