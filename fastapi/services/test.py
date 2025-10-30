@@ -35,19 +35,23 @@ Redis 서버에 존재하는 모든 리스트(큐)의 키를 찾고 반환합니
 all_keys = redis_client.scan_iter(match='*')
 
 
-zset_keys = []
+zset_keys = dict()
 for key in all_keys:
     
     # 키의 타입을 확인하여 'list'인 경우만 리스트에 추가합니다.
-    key_type = redis_client.type(key)
-
     
-    zset_keys.append([key, key_type])
+    key_type = redis_client.type(key)
+    if zset_keys.get(key_type) is None:
+        zset_keys[key_type] = []
+    
+    zset_keys[key_type].append(key)
+    
+    
 print(zset_keys)
 
 
 #%%
-HASH_KEY = zset_keys[1][0]
+HASH_KEY = zset_keys['hash'][1]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     building_data = redis_client.hgetall(HASH_KEY)
@@ -73,24 +77,23 @@ except Exception as e:
 '''
 Sorted Set
 '''
-if not zset_keys:
-    print("Redis에 Sorted Set 타입의 키가 없습니다.")
+
+zset_key =  zset_keys['zset'][0]
+
+print(f"\n--- 키: '{zset_key}'의 데이터 ---")
+# ZRANGE로 Sorted Set의 모든 멤버와 점수(score)를 조회
+# start=0, end=-1 은 전체 범위를 의미
+# withscores=True를 사용하면 멤버와 점수를 튜플 형태로 반환
+members_with_scores = redis_client.zrange(zset_key, 0, -1, withscores=True)
+
+if not members_with_scores:
+    print("  이 키에는 데이터가 없습니다.")
 else:
-    for zset_key in zset_keys:
-        print(f"\n--- 키: '{zset_key}'의 데이터 ---")
-        # ZRANGE로 Sorted Set의 모든 멤버와 점수(score)를 조회
-        # start=0, end=-1 은 전체 범위를 의미
-        # withscores=True를 사용하면 멤버와 점수를 튜플 형태로 반환
-        members_with_scores = redis_client.zrange(zset_key, 0, -1, withscores=True)
-        
-        if not members_with_scores:
-            print("  이 키에는 데이터가 없습니다.")
-        else:
-            for member, score in members_with_scores:
-                # 멤버(member)는 일반적으로 JSON 문자열이거나 유니크한 ID입니다.
-                # 필요에 따라 추가적인 디코딩 또는 파싱이 필요할 수 있습니다.
-                # 여기서는 단순히 출력만 합니다.
-                print(f"  - 멤버: {member}, 점수(Score): {score}")
+    for member, score in members_with_scores:
+        # 멤버(member)는 일반적으로 JSON 문자열이거나 유니크한 ID입니다.
+        # 필요에 따라 추가적인 디코딩 또는 파싱이 필요할 수 있습니다.
+        # 여기서는 단순히 출력만 합니다.
+        print(f"  - 멤버: {member}, 점수(Score): {score}")
 
 
             
