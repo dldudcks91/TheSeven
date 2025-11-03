@@ -62,8 +62,13 @@ class BaseRedisTaskManager(ABC):
                 
                 metadata_key = f"{self.queue_key}:metadata:{member_str}"
                 metadata = await self.redis_client.hgetall(metadata_key)
+                
                 if metadata:
-                    metadata = {k.decode('utf-8'): v.decode('utf-8') for k, v in metadata.items()}
+                    metadata = {
+                    k.decode('utf-8') if isinstance(k, bytes) else k:  # 키(k)가 bytes일 때만 디코딩
+                    v.decode('utf-8') if isinstance(v, bytes) else v   # 값(v)이 bytes일 때만 디코딩
+                    for k, v in metadata.items()
+                }
                 
                 task_info = {
                     'task_type': self.task_type.value,

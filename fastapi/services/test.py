@@ -14,7 +14,7 @@ redis_client = redis.Redis(
 redis_manager = RedisManager(redis_client)
 
 
-
+#redis_client.flushall()
 #%%
 
 server_info = redis_client.info()
@@ -51,7 +51,7 @@ print(zset_keys)
 
 
 #%%
-HASH_KEY = zset_keys['hash'][1]
+HASH_KEY = zset_keys['hash'][0]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     building_data = redis_client.hgetall(HASH_KEY)

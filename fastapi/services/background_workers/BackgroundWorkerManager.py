@@ -4,6 +4,7 @@
 import asyncio
 from typing import Dict, Any, Optional
 from services.redis_manager import RedisManager
+from services.db_manager import DBManager
 from .building_worker import BuildingCompletionWorker
 from .unit_worker import UnitProductionWorker
 from .research_worker import ResearchCompletionWorker
@@ -17,7 +18,7 @@ class BackgroundWorkerManager:
         self.worker_tasks = {}
         self.is_initialized = False
     
-    async def initialize(self, redis_manager: RedisManager, config: Optional[Dict[str, int]] = None):
+    async def initialize(self, redis_manager: RedisManager, db_manager: DBManager, config: Optional[Dict[str, int]] = None):
         """워커들 초기화"""
         if self.is_initialized:
             return
@@ -35,22 +36,23 @@ class BackgroundWorkerManager:
         
         # 각 워커 생성
         self.workers = {
-            'building': BuildingCompletionWorker(
-                redis_manager, 
-                default_config['building_check_interval']
-            ),
+            # 'building': BuildingCompletionWorker(
+                
+            #     redis_manager, 
+            #     default_config['building_check_interval']
+            # ),
             'unit': UnitProductionWorker(
-                redis_manager, 
-                default_config['unit_check_interval']
+                db_manager,
+                redis_manager
             ),
-            'research': ResearchCompletionWorker(
-                redis_manager, 
-                default_config['research_check_interval']
-            ),
-            'buff': BuffExpirationWorker(
-                redis_manager, 
-                default_config['buff_check_interval']
-            )
+            # 'research': ResearchCompletionWorker(
+            #     redis_manager, 
+            #     default_config['research_check_interval']
+            # ),
+            # 'buff': BuffExpirationWorker(
+            #     redis_manager, 
+            #     default_config['buff_check_interval']
+            # )
         }
         
         self.is_initialized = True

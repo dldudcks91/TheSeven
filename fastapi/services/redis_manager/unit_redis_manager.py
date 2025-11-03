@@ -32,9 +32,23 @@ class UnitRedisManager:
     
     # === Task Manager 위임 메서드들 ===
     async def add_unit_to_queue(self, user_no: int, unit_idx: int, completion_time: datetime, 
-                                queue_id: Optional[int] = None, unit_count: int = 1) -> bool:
+                                queue_id: Optional[int] = None, unit_count: int = 1, 
+                                task_type: int = 0, target_unit_idx: Optional[int] = None) -> bool:
         """유닛을 완료 큐에 추가"""
-        metadata = {'unit_count': str(unit_count)}
+        # metadata에 조회 시 필요한 모든 데이터를 미리 저장
+        metadata = {
+            'unit_count': str(unit_count),
+            'quantity': str(unit_count),  # _finish_unit_internal에서 사용
+            'task_type': str(task_type),  # 0: 훈련, 1: 업그레이드
+            'user_no': str(user_no),
+            'unit_idx': str(unit_idx),
+            'added_at': datetime.utcnow().isoformat()
+        }
+        
+        # 업그레이드인 경우 타겟 유닛 정보 추가
+        if target_unit_idx is not None:
+            metadata['target_unit_idx'] = str(target_unit_idx)
+        
         if not self.validate_task_data(unit_idx, metadata):
             return False
         return await self.task_manager.add_to_queue(user_no, unit_idx, completion_time, queue_id, metadata)
@@ -297,7 +311,7 @@ class UnitRedisManager:
     
     # ===== ✨ 워커 지원 메서드들 (추가) =====
     
-    async def get_task_data(self, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_data(self, user_no: int, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Task 상세 정보 조회 (워커용)
         
@@ -305,7 +319,8 @@ class UnitRedisManager:
         Task는 unit:task:{task_id} 형태로 저장되어 있습니다.
         """
         try:
-            task_key = f"unit:task:{task_id}"
+            
+            task_key = f"completion_queue:{self.task_type.value}:metadata:{user_no}:{task_id}"
             task_data = await self.redis_client.hgetall(task_key)
             
             if not task_data:
@@ -318,6 +333,10 @@ class UnitRedisManager:
                 value_str = value.decode() if isinstance(value, bytes) else value
                 decoded_data[key_str] = value_str
             
+            print("--------decoded_data----------")
+            print(task_data)
+            print(decoded_data)
+            print("--------decoded end-----------")
             # 타입 변환
             return {
                 'user_no': int(decoded_data.get('user_no', 0)),

@@ -11,6 +11,7 @@ from services.db_manager import DBManager
 from services.redis_manager import RedisManager
 from services.background_workers import BackgroundWorkerManager
 
+from database import SessionLocal
 import redis.asyncio as aioredis
 from redis.asyncio import ConnectionPool
 import json
@@ -41,7 +42,7 @@ app.include_router(pages.router)
 @app.on_event("startup")
 async def startup_event():
     """서버 시작시 게임 데이터 및 커넥션 풀 초기화"""
-    global redis_client, redis_pool, redis_manager, websocket_manager, worker_manager
+    global redis_client, redis_pool, redis_manager, websocket_manager, worker_manager, db_manager
     
     try:
         print("🚀 Starting Game Server...")
@@ -76,14 +77,21 @@ async def startup_event():
         redis_manager = RedisManager(redis_client)
         print("✅ Redis managers initialized")
         
+        
+        
         # app.state에 저장
         app.state.redis_client = redis_client
         app.state.redis_pool = redis_pool
         app.state.redis_manager = redis_manager
         
+        #db_manager 초기화
+        db_session = SessionLocal()
+        db_manager = DBManager(db_session)
+        app.state.db_manager = db_manager
+        
         # 워커 관리자 초기화 및 시작
         worker_manager = BackgroundWorkerManager()
-        await worker_manager.initialize(redis_manager)
+        await worker_manager.initialize(redis_manager, db_manager)
         await worker_manager.start_all_workers()
         print("✅ BackGround Worker managers initialized")
         
