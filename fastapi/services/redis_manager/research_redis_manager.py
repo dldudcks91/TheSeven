@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from .base_redis_task_manager import BaseRedisTaskManager
-from .task_types import TaskType
+from .redis_types import CacheType, TaskType
 
 class ResearchRedisManager(BaseRedisTaskManager):
     """연구 전용 Redis 관리자 (비동기 버전)"""

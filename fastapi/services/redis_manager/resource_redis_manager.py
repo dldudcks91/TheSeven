@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from .base_redis_cache_manager import BaseRedisCacheManager 
 import json
+from .redis_types import CacheType
 
 
 class ResourceRedisManager:
@@ -11,7 +12,7 @@ class ResourceRedisManager:
     RESOURCE_TYPES = ['food', 'wood', 'stone', 'gold', 'ruby']
     
     def __init__(self, redis_client):
-        self.cache_manager = BaseRedisCacheManager(redis_client)
+        self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.RESOURCES)
         self.cache_expire_time = 3600 * 24 * 7  # 7일
         
     def _get_resources_hash_key(self, user_no: int) -> str:

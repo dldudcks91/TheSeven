@@ -2,18 +2,19 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
 import json
 import logging
-
+from .redis_types import CacheType
 
 class BaseRedisCacheManager:
     """Redis 캐시 관리 기본 클래스 - Hash 및 일반 캐싱 지원 (비동기 버전)"""
     
-    def __init__(self, redis_client, default_expire_time: int = 3600):
+    def __init__(self, redis_client, cache_type: CacheType, default_expire_time: int = 3600):
         """
         Args:
             redis_client: Redis 클라이언트 인스턴스
             default_expire_time: 기본 만료 시간 (초, 기본값: 1시간)
         """
         self.redis_client = redis_client
+        self.cache_type = cache_type.value
         self.default_expire_time = default_expire_time
         self.logger = logging.getLogger(self.__class__.__name__)
     
@@ -71,6 +72,15 @@ class BaseRedisCacheManager:
         except Exception as e:
             self.logger.error(f"Error deleting cache data for key {key}: {e}")
             return False
+    
+    def get_user_data_hash_key(self, user_no: int) -> str:
+        """사용자 건물 Hash 키 생성"""
+        return f"user_data:{user_no}:{self.cache_type}"
+    
+    def get_user_data_meta_key(self, user_no: int) -> str:
+        """사용자 건물 메타데이터 키 생성"""
+        return f"user_data:{user_no}:{self.cache_type}_meta"
+    
     
     async def exists(self, key: str) -> bool:
         """키 존재 여부 확인"""

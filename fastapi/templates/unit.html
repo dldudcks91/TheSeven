@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <title>유닛 관리</title>
     <style>
         body {
@@ -55,6 +56,32 @@
             display: flex;
             align-items: center;
             gap: 5px;
+        }
+
+        .category-timer {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timer-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 10px;
+            color: #f57c00;
+            font-weight: bold;
+        }
+
+        .timer-badge.completed {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            color: #2e7d32;
         }
         
         .train-header-btn {
@@ -211,6 +238,17 @@
             color: #666;
         }
 
+        .unit-graph-section {
+            
+            
+        }
+
+        .unit-stats-chart {
+            width: 200px;
+            height: 180px !important;
+            
+        }
+
         /* 팝업 관련 스타일 */
         .popup-overlay {
             position: fixed;
@@ -229,7 +267,7 @@
             background: white;
             border-radius: 10px;
             
-            width: 550px;
+            width: 750px;
 
             max-width: 90vw;
             max-height: 95vh;
@@ -324,12 +362,7 @@
             color: #333;
         }
 
-        .unit-controls {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-            width: 300px;
-        }
+        
 
         /* 팝업용 css */
         .unit-training-layout {
@@ -351,7 +384,7 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 20px;
         }
 
         .unit-selection-section {
@@ -364,6 +397,13 @@
         .tier-units {
             display: flex;
             justify-content: flex-start;
+            gap: 4px;
+        }
+
+        .tier-unit-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             gap: 4px;
         }
 
@@ -380,14 +420,21 @@
             transition: all 0.2s;
         }
 
-        .tier-unit:hover {
+        .tier-unit-wrapper:hover .tier-unit {
             border-color: #007bff;
             background: #e3f2fd;
         }
 
+        .tier-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+        }
+
         .training-controls-section {
             
-            padding: 25px;
+            padding: 10px;
             
         }
 
@@ -398,13 +445,13 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 20px;
+            
         }
 
         /* 슬라이더 컨테이너 - 크기 고정 */
         .slider-container {
             flex: none;
-            width: 240px;
+            width: 260px;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -412,7 +459,7 @@
 
         /* 슬라이더 스타일 - 크기 고정 */
         .quantity-slider {
-            width: 200px; /* 고정 너비 설정 */
+            width: 150px; /* 고정 너비 설정 */
             height: 6px;
             background: #e9ecef;
             border-radius: 3px;
@@ -519,7 +566,15 @@
             box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
         }
 
-        
+       
+
+        #unitStatsChart {
+            max-height: 200px;
+            width: 100% !important;
+            height: auto !important;
+        }
+
+
     </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -532,7 +587,10 @@
                     <div class="category-title">
                         <span>🛡️ 보병</span>
                     </div>
-                    <button class="train-header-btn" onclick="openTrainingPopup('infantry')">훈련</button>
+                    <div class="category-timer">
+                        <span id="infantryTimer" class="timer-badge" style="display: none;"></span>
+                        <button class="train-header-btn" onclick="openTrainingPopup('infantry')">훈련</button>
+                    </div>
                 </div>
                 
                 <table class="unit-table">
@@ -554,7 +612,10 @@
                     <div class="category-title">
                         <span>🐎 기병</span>
                     </div>
-                    <button class="train-header-btn" onclick="openTrainingPopup('cavalry')">훈련</button>
+                    <div class="category-timer">
+                        <span id="cavalryTimer" class="timer-badge" style="display: none;"></span>
+                        <button class="train-header-btn" onclick="openTrainingPopup('cavalry')">훈련</button>
+                    </div>
                 </div>
                 
                 <table class="unit-table">
@@ -576,7 +637,10 @@
                     <div class="category-title">
                         <span>🏹 궁병</span>
                     </div>
-                    <button class="train-header-btn" onclick="openTrainingPopup('archer')">훈련</button>
+                    <div class="category-timer">
+                        <span id="archerTimer" class="timer-badge" style="display: none;"></span>
+                        <button class="train-header-btn" onclick="openTrainingPopup('archer')">훈련</button>
+                    </div>
                 </div>
                 
                 <table class="unit-table">
@@ -611,43 +675,48 @@
     <template id="unit-training-template">
         <div class="unit-item">
             <div class="unit-training-layout">
-                <img id = "unit-main-image" class="unit-main-image" src="" alt="">
-
+                <img id="unit-main-image" class="unit-main-image" src="" alt="">
+                <!-- 그래프 섹션을 unit-controls 안으로 이동 -->
+                <div class="unit-graph-section">
+                    <canvas class="unit-stats-chart"></canvas>
+                </div>
                 <div class="unit-controls">
                     <div class="unit-selection-section">
                         <div class="tier-units">
-                            </div>
-                    </div>
-
-                    <div class="training-controls-section">
-                        <div class="control-row">
-                            <div class="slider-container">
-                                <input type="range" class="quantity-slider" min="1" max="100" value="1">
-                                <span class="quantity-display">1</span>
-                            </div>
-
-                            </div>
-                        
-                        <div class="resource-container">
-                            <div class="resource-item">
-                                <div class="resource-icon">🌾</div>
-                                <div class="resource-amount"></div>
-                            </div>
-                            
-                            <button class="production-button" >생산</button>
                         </div>
+                    </div>
 
+                    
+                    <div class="resource-container">
+                        <div class="resource-item">
+                            <div class="resource-icon">🌾</div>
+                            <div class="resource-amount"></div>
+                        </div>
+                        
                         
                     </div>
+                    
+                        
+                    <div class="control-row">
+                        <div class="slider-container">
+                            <input type="range" class="quantity-slider" min="1" max="100" value="1">
+                            <span class="quantity-display">1</span>
+                            <button class="production-button">생산</button>
+                        </div>
+                    </div>
+                    
+                        
+                    
                 </div>
             </div>
         </div>
     </template>
 
     <template id="tier-button-template">
-        <img class="tier-unit" src="">
+        <div class="tier-unit-wrapper">
+            <img class="tier-unit" src="">
             <div class="tier-label"></div>
-        </img>
+        </div>
     </template>
     <script>
         let userUnitData = {};
@@ -666,8 +735,9 @@
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
-                    loadUnits();
+                    
                 }
+                loadUnits();
             }
 
             if (event.data && event.data.type === 'response_config') {
@@ -707,7 +777,8 @@
                 return;
             }
             
-            userUnitData = {};
+            // 기존 데이터는 무시하고 새로 시작
+            userUnitData = {}; 
             completedUnits.clear();
             showResult('유닛 정보 로딩 중...');
             
@@ -724,26 +795,28 @@
                 
                 const result = await response.json();
                 
-                userUnitData = result.data;
-                
-
-                console.log('loadUnits - userUnitData: ',userUnitData)
-                
+                // --------------------- 수정한 부분 시작 ---------------------
+                const newFullData = result.data || {};
+                console.log(newFullData)
+                // 1. API에서 받아온 데이터(newFullData)로 userUnitData를 구성합니다.
+                //    API 응답에 누락된 유닛은 기본값(0)으로 채워 넣습니다.
                 allUnits.forEach(unit => {
-                    if (!userUnitData[unit.unit_idx]) {
-                        userUnitData[unit.unit_idx] = {
-                            total: 0, ready: 0, training: 0, upgrading: 0, 
-                            field: 0, injured: 0, wounded: 0, healing: 0, death: 0
-                        };
-                    }
+                    userUnitData[unit.unit_idx] = newFullData[unit.unit_idx] || {
+                        total: 0, ready: 0, training: 0, upgrading: 0, 
+                        field: 0, injured: 0, wounded: 0, healing: 0, death: 0
+                    };
                 });
                 
+                // 2. 데이터 비교 없이 바로 테이블을 다시 그립니다.
                 generateCurrentTable();
+                
                 showResult('유닛 정보 로드 완료');
+                // --------------------- 수정한 부분 끝 ---------------------
                 
             } catch (error) {
                 console.log('유닛 정보 로드 실패:', error);
                 
+                // 실패 시 초기값 설정 및 갱신
                 allUnits.forEach(unit => {
                     userUnitData[unit.unit_idx] = {
                         total: 0, ready: 0, training: 0, upgrading: 0, 
@@ -808,27 +881,38 @@
 
         function updateTimers() {
             ['infantry', 'cavalry', 'archer'].forEach(category => {
-                const categoryTimerElement = document.getElementById(`timer-${category}`);
+                const categoryTimerElement = document.getElementById(`${category}Timer`);
                 if (!categoryTimerElement) return;
                 
                 const categoryUnits = units[category] || [];
                 let minRemainingTime = null;
+                let hasTraining = false;
                 
                 categoryUnits.forEach(unit => {
                     const data = userUnitData[unit.unit_idx];
                     if (data && data.current_task && data.current_task.remaining_time > 0) {
+                        hasTraining = true;
                         if (minRemainingTime === null || data.current_task.remaining_time < minRemainingTime) {
                             minRemainingTime = data.current_task.remaining_time;
                         }
                     }
                 });
                 
-                if (minRemainingTime !== null) {
+                if (hasTraining && minRemainingTime !== null) {
                     const minutes = Math.floor(minRemainingTime / 60);
                     const seconds = minRemainingTime % 60;
-                    categoryTimerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    categoryTimerElement.textContent = `⏱️ ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    categoryTimerElement.style.display = 'inline-flex';
+                    
+                    if (minRemainingTime <= 0) {
+                        categoryTimerElement.classList.add('completed');
+                        categoryTimerElement.classList.remove('running');
+                    } else {
+                        categoryTimerElement.classList.add('running');
+                        categoryTimerElement.classList.remove('completed');
+                    }
                 } else {
-                    categoryTimerElement.textContent = '00:00';
+                    categoryTimerElement.style.display = 'none';
                 }
             });
             
@@ -1002,20 +1086,17 @@
        
 
         // This function generates the content for a single unit, mimicking the UI style in the user's image.
+
+        // This function generates the content for a single unit, mimicking the UI style in the user's image.
         function generateTrainContent() {
             const categoryElement = document.getElementById('trainingPopup');
             const category = categoryElement.values || 'None';
 
             const trainUnitsContainer = document.getElementById('trainUnits');
-            // Clear any existing content.
             trainUnitsContainer.innerHTML = '';
             
-            // Filter units based on the selected category.
             const filteredUnits = allUnits.filter(unit => unit.category === category);
             console.log(category, filteredUnits);
-            
-
-            // 유닛 이미지와 이름 설정
 
             const template = document.getElementById('unit-training-template');
             const unitDiv = template.content.cloneNode(true);
@@ -1023,9 +1104,8 @@
             unitImage.src = `static/unit_${filteredUnits[0].unit_idx}.png`;
             unitImage.alt = filteredUnits[0].korean_name;
 
-            mainUnitIdx = filteredUnits[0].unit_idx
+            mainUnitIdx = filteredUnits[0].unit_idx;
 
-            
             const tierUnits = unitDiv.querySelector('.tier-units');
             filteredUnits.forEach((tier_unit, tierIndex) => {
                 const tierTemplate = document.getElementById('tier-button-template');
@@ -1033,43 +1113,40 @@
                 
                 const tierUnit = tierClone.querySelector('.tier-unit');
                 tierUnit.src = `static/unit_${tier_unit.unit_idx}.png`;
+                
+                const tierLabel = tierClone.querySelector('.tier-label');
+                const unitData = userUnitData[tier_unit.unit_idx] || { ready: 0 };
+                tierLabel.textContent = unitData.ready;
 
-
-
-                // 티어 버튼 클릭 이벤트 추가
-                tierUnit.addEventListener('click', function() {
-                    // 왼쪽 큰 이미지 변경
+                const tierUnitWrapper = tierClone.querySelector('.tier-unit-wrapper');
+                tierUnitWrapper.addEventListener('click', function() {
                     unitImage.src = `static/unit_${tier_unit.unit_idx}.png`;
                     unitImage.alt = tier_unit.korean_name;
                     mainUnitIdx = tier_unit.unit_idx;
                     
+                    // DOM에 있는 canvas 찾아서 차트 업데이트
+                    const canvas = document.querySelector('.unit-stats-chart');
+                    if (canvas) {
+                        createUnitStatsChart(canvas, tier_unit);
+                    }
                 });
                 
                 tierUnits.appendChild(tierClone);
             });
-              
-                
 
-            // 슬라이더 이벤트 설정
             const slider = unitDiv.querySelector('.quantity-slider');
             const quantityDisplay = unitDiv.querySelector('.quantity-display');
             const resourceContainer = unitDiv.querySelector('.resource-container');
+
+            const resources = [{value: units[mainUnitIdx]['cost']['food'], emoji: '🌾', name: 'food'}];
             
+            resourceContainer.children[0].querySelector('.resource-amount').textContent = (resources[0].value * 1).toLocaleString();
+            console.log(resources);
 
-            const resources = [{value: units[mainUnitIdx]['cost']['food'], emoji: '🌾', name: 'food'}]
-            
-
-            
-            resourceContainer.children[0].querySelector('.resource-amount').textContent= (resources[0].value * 1).toLocaleString();
-            console.log(resources)
-
-
-            // Update resource costs when slider changes
             slider.addEventListener('input', function() {
                 const value = parseInt(this.value);
                 quantityDisplay.textContent = value;
                 
-                // Update resource costs
                 resources.forEach((res, resIndex) => {
                     if (res.value > 0) {
                         const resourceItems = resourceContainer.children;
@@ -1080,22 +1157,31 @@
                         if (resourceItems[displayIndex]) {
                             const amountElement = resourceItems[displayIndex].querySelector('.resource-amount');
                             amountElement.textContent = (res.value * value).toLocaleString();
-                            
                         }
                     }
                 });
             });
 
-            // 생산 버튼 이벤트
             const productionButton = unitDiv.querySelector('.production-button');
             productionButton.addEventListener('click', function() {
                 const quantity = slider.value;
-                callAPI(4002, mainUnitIdx, quantity)
-                //callAPI(4004, mainUnitIdx)
+                callAPI(4002, mainUnitIdx, quantity);
             });
 
-
             trainUnitsContainer.appendChild(unitDiv);
+            
+            // DOM에 추가된 후 차트 생성
+            setTimeout(() => {
+                const canvas = document.querySelector('.unit-stats-chart');
+                console.log('Canvas found:', canvas);
+                console.log('Canvas width:', canvas?.offsetWidth);
+                console.log('Canvas height:', canvas?.offsetHeight);
+                if (canvas && canvas.offsetWidth > 0 && canvas.offsetHeight > 0) {
+                    createUnitStatsChart(canvas, filteredUnits[0]);
+                } else {
+                    console.error('Canvas size is 0');
+                }
+            }, 100);
         };
 
 
@@ -1146,6 +1232,105 @@
                 clearInterval(timerInterval);
             }
         };
+
+        let statsChart = null;
+
+        function createUnitStatsChart(canvas, unit) {
+            // 기존 차트가 있으면 삭제
+            if (statsChart) {
+                statsChart.destroy();
+            }
+            
+            // 임시 데이터
+            const stats = {
+                attack: Math.floor(Math.random() * 100),
+                defense: Math.floor(Math.random() * 100),
+                speed: Math.floor(Math.random() * 100),
+                health: Math.floor(Math.random() * 100),
+                
+            };
+            
+            console.log('graph-stats:', stats);
+            
+            statsChart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: ['Attack', 'Defense', 'Speed', 'Health'],
+                    datasets: [{
+                        label: unit.korean_name || '유닛 스탯',
+                        data: [stats.attack, stats.defense, stats.speed, stats.health, stats.range],
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(75, 192, 192, 0.7)',
+                            
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    layout: {
+                        padding: {
+                            right: 20
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false,
+                            beginAtZero: true,
+                            max: 100
+                        },
+                        y: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { size: 11, weight: 'bold' },
+                                color: '#333'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            enabled: false
+                        }
+                    },
+                    animation: {
+                        onComplete: function() {
+                            const chartInstance = this;
+                            const ctx = chartInstance.ctx;
+                            ctx.font = 'bold 11px Arial';
+                            ctx.fillStyle = '#333';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'middle';
+
+                            this.data.datasets.forEach((dataset, i) => {
+                                const meta = chartInstance.getDatasetMeta(i);
+                                meta.data.forEach((bar, index) => {
+                                    const data = dataset.data[index];
+                                    ctx.fillText(data, bar.x + 5, bar.y);
+                                });
+                            });
+                        }
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>

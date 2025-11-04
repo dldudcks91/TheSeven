@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
 import redis
-from .task_types import TaskType
+from .redis_types import TaskType
 
 class BaseRedisTaskManager(ABC):
     """Redis 작업 관리의 기본 클래스 (비동기 버전)"""
@@ -33,10 +33,12 @@ class BaseRedisTaskManager(ABC):
         try:
             score = completion_time.timestamp()
             member = self._create_member_key(user_no, task_id, sub_id)
-            
+            print("---------add_to_queue_data--------")
+            print(metadata)
+            print("----------------------------")
             if metadata:
                 metadata_key = f"{self.queue_key}:metadata:{member}"
-                await self.redis_client.hset(metadata_key, mapping=metadata)
+                await self.redis_client.hmset(metadata_key, mapping=metadata)
                 await self.redis_client.expire(metadata_key, 86400)
             
             result = await self.redis_client.zadd(self.queue_key, {member: score})
@@ -46,59 +48,53 @@ class BaseRedisTaskManager(ABC):
             print(f"Error adding {self.task_type.value} to queue: {e}")
             return False
     
-    async def get_completed_tasks(self, current_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """완료된 작업들 조회"""
-        try:
-            if current_time is None:
-                current_time = datetime.utcnow()
+    async def get_completed_tasks(self, current_time: Optional[datetime] = None) -> List[Dict[str, int]]:
+        """
+        완료된 작업 ID만 조회
+        
+        Returns:
+            [
+                {'user_no': 123, 'task_id': 5},
+                {'user_no': 123, 'task_id': 7},
+                {'user_no': 456, 'task_id': 3}
+            ]
+        """
+        if current_time is None:
+            current_time = datetime.utcnow()
+        
+        max_score = current_time.timestamp()
+        completed = await self.redis_client.zrangebyscore(
+            self.queue_key, 0, max_score
+        )
+        
+        result = []
+        for member in completed:
+            member_str = member.decode('utf-8') if isinstance(member, bytes) else member
+            parsed = self._parse_member_key(member_str)
             
-            max_score = current_time.timestamp()
-            completed = await self.redis_client.zrangebyscore(self.queue_key, 0, max_score, withscores=True)
-            
-            result = []
-            for member, score in completed:
-                member_str = member.decode('utf-8') if isinstance(member, bytes) else member
-                parsed = self._parse_member_key(member_str)
-                
-                metadata_key = f"{self.queue_key}:metadata:{member_str}"
-                metadata = await self.redis_client.hgetall(metadata_key)
-                
-                if metadata:
-                    metadata = {
-                    k.decode('utf-8') if isinstance(k, bytes) else k:  # 키(k)가 bytes일 때만 디코딩
-                    v.decode('utf-8') if isinstance(v, bytes) else v   # 값(v)이 bytes일 때만 디코딩
-                    for k, v in metadata.items()
-                }
-                
-                task_info = {
-                    'task_type': self.task_type.value,
-                    'user_no': parsed['user_no'],
-                    'task_id': parsed['task_id'],
-                    'completion_time': datetime.fromtimestamp(score),
-                    'member': member_str,
-                    'metadata': metadata or {}
-                }
-                
-                if 'sub_id' in parsed:
-                    task_info['sub_id'] = parsed['sub_id']
-                
-                result.append(task_info)
-            
-            return result
-        except Exception as e:
-            print(f"Error getting completed {self.task_type.value}: {e}")
-            return []
+            result.append({
+                'task_type':self.task_type.value,
+                'user_no': parsed['user_no'],
+                'task_id': parsed['task_id']
+            })
+        
+        return result
     
     async def remove_from_queue(self, user_no: int, task_id: Union[int, str], sub_id: Optional[Union[int, str]] = None) -> bool:
         """큐에서 작업 제거"""
         try:
             member = self._create_member_key(user_no, task_id, sub_id)
-            result = await self.redis_client.zrem(self.queue_key, member)
+            
             
             metadata_key = f"{self.queue_key}:metadata:{member}"
-            await self.redis_client.delete(metadata_key)
             
-            return result > 0
+            
+            await self.redis_client.delete(metadata_key)
+            await self.redis_client.zrem(self.queue_key, member)
+            
+            
+            print(f"Success Delete {self.queue_key}_queue")
+            return True
         except Exception as e:
             print(f"Error removing {self.task_type.value} from queue: {e}")
             return False

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from .base_redis_task_manager import BaseRedisTaskManager
 from .base_redis_cache_manager import BaseRedisCacheManager
-from .task_types import TaskType
+from .redis_types import CacheType, TaskType
 import json
 
 
@@ -12,10 +12,9 @@ class BuildingRedisManager:
     def __init__(self, redis_client):
         # 두 개의 매니저 컴포넌트 초기화
         self.task_manager = BaseRedisTaskManager(redis_client, TaskType.BUILDING)
-        self.cache_manager = BaseRedisCacheManager(redis_client)
+        self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.BUILDING)
         
         self.cache_expire_time = 3600  # 1시간
-        self.task_type = TaskType.BUILDING
     
     def validate_task_data(self, building_idx: int, metadata: Optional[Dict[str, Any]] = None) -> bool:
         """건물 데이터 유효성 검증"""
@@ -49,13 +48,6 @@ class BuildingRedisManager:
         return await self.task_manager.update_completion_time(user_no, building_idx, datetime.utcnow())
     
     # === Hash 기반 캐싱 관리 메서드들 ===
-    def _get_buildings_hash_key(self, user_no: int) -> str:
-        """사용자 건물 Hash 키 생성"""
-        return f"user_buildings:{user_no}"
-    
-    def _get_buildings_meta_key(self, user_no: int) -> str:
-        """사용자 건물 메타데이터 키 생성"""
-        return f"user_buildings_meta:{user_no}"
     
     async def cache_user_buildings_data(self, user_no: int, buildings_data: Dict[str, Any]) -> bool:
         """Hash 구조로 건물 데이터 캐싱"""
@@ -63,8 +55,8 @@ class BuildingRedisManager:
             return True
         
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
-            meta_key = self._get_buildings_meta_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            meta_key = self.cache_manager.get_user_data_meta_key(user_no)
             
             # 메타데이터 준비
             meta_data = {
@@ -95,7 +87,7 @@ class BuildingRedisManager:
     async def get_cached_building(self, user_no: int, building_idx: int) -> Optional[Dict[str, Any]]:
         """특정 건물 하나만 캐시에서 조회"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             building_data = await self.cache_manager.get_hash_field(hash_key, str(building_idx))
             
             if building_data:
@@ -112,7 +104,7 @@ class BuildingRedisManager:
     async def get_cached_buildings(self, user_no: int) -> Optional[Dict[str, Any]]:
         """모든 건물을 캐시에서 조회"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             buildings = await self.cache_manager.get_hash_data(hash_key)
             
             if buildings:
@@ -129,7 +121,7 @@ class BuildingRedisManager:
     async def update_cached_building(self, user_no: int, building_idx: int, building_data: Dict[str, Any]) -> bool:
         """특정 건물 캐시 업데이트"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             
             # Cache Manager를 통해 Hash 필드 업데이트
             success = await self.cache_manager.set_hash_field(
@@ -151,7 +143,7 @@ class BuildingRedisManager:
     async def remove_cached_building(self, user_no: int, building_idx: int) -> bool:
         """특정 건물을 캐시에서 제거"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             success = await self.cache_manager.delete_hash_field(hash_key, str(building_idx))
             
             if success:
@@ -166,7 +158,7 @@ class BuildingRedisManager:
     async def invalidate_building_cache(self, user_no: int) -> bool:
         """사용자 건물 캐시 전체 무효화"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             meta_key = self._get_buildings_meta_key(user_no)
             
             # 두 키 모두 삭제
@@ -186,7 +178,7 @@ class BuildingRedisManager:
     async def get_cache_info(self, user_no: int) -> Dict[str, Any]:
         """캐시 정보 조회 (디버깅/모니터링용)"""
         try:
-            hash_key = self._get_buildings_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             meta_key = self._get_buildings_meta_key(user_no)
             
             # Cache Manager를 통해 정보 조회
@@ -229,6 +221,8 @@ class BuildingRedisManager:
         except Exception as e:
             print(f"Error updating building times from Redis: {e}")
             return cached_buildings
+    
+    
     
     # === 컴포넌트 접근 메서드들 (필요시 직접 접근) ===
     def get_task_manager(self) -> BaseRedisTaskManager:

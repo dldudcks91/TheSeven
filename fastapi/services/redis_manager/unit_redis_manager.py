@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from .base_redis_task_manager import BaseRedisTaskManager
 from .base_redis_cache_manager import BaseRedisCacheManager
-from .task_types import TaskType
+from .redis_types import CacheType, TaskType
 import json
 
 
@@ -12,46 +12,49 @@ class UnitRedisManager:
     def __init__(self, redis_client):
         # 두 개의 매니저 컴포넌트 초기화
         self.task_manager = BaseRedisTaskManager(redis_client, TaskType.UNIT_TRAINING)
-        self.cache_manager = BaseRedisCacheManager(redis_client)
+        self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.UNIT)
         self.redis_client = redis_client  # 직접 접근용
         
         self.cache_expire_time = 3600  # 1시간
-        self.task_type = TaskType.UNIT_TRAINING
+        
     
     def validate_task_data(self, unit_idx: int, metadata: Optional[Dict[str, Any]] = None) -> bool:
         """유닛 데이터 유효성 검증"""
         if not isinstance(unit_idx, int) or unit_idx <= 0:
             return False
-        if metadata and 'unit_count' in metadata:
+        if metadata and 'quantity' in metadata:
             try:
-                count = int(metadata['unit_count'])
+                count = int(metadata['quantity'])
                 return count > 0
             except (ValueError, TypeError):
                 return False
         return True
     
     # === Task Manager 위임 메서드들 ===
-    async def add_unit_to_queue(self, user_no: int, unit_idx: int, completion_time: datetime, 
-                                queue_id: Optional[int] = None, unit_count: int = 1, 
+    async def add_unit_to_queue(self, user_no: int, unit_type: int, unit_idx: int, completion_time: datetime, 
+                                sub_id: Optional[int] = None, quantity: int = 1, 
                                 task_type: int = 0, target_unit_idx: Optional[int] = None) -> bool:
         """유닛을 완료 큐에 추가"""
         # metadata에 조회 시 필요한 모든 데이터를 미리 저장
         metadata = {
-            'unit_count': str(unit_count),
-            'quantity': str(unit_count),  # _finish_unit_internal에서 사용
-            'task_type': str(task_type),  # 0: 훈련, 1: 업그레이드
+            # 모든 숫자를 str로 명시적 변환하여 저장 함수에 전달 (Redis Hash 값은 str이 일반적이므로)
             'user_no': str(user_no),
+            'unit_type': str(unit_type),
             'unit_idx': str(unit_idx),
-            'added_at': datetime.utcnow().isoformat()
+            'task_type': str(task_type),
+            'quantity': str(quantity),
+            
+            
+            # 시간을 타임스탬프 (float)로 변환하거나, 문자열로 유지
+            'added_at': datetime.utcnow().timestamp() # (더 좋음)
         }
         
-        # 업그레이드인 경우 타겟 유닛 정보 추가
+        # (선택적) 타겟 유닛도 문자열로 변환
         if target_unit_idx is not None:
             metadata['target_unit_idx'] = str(target_unit_idx)
         
-        if not self.validate_task_data(unit_idx, metadata):
-            return False
-        return await self.task_manager.add_to_queue(user_no, unit_idx, completion_time, queue_id, metadata)
+        
+        return await self.task_manager.add_to_queue(user_no = user_no, task_id = unit_type, completion_time = completion_time, sub_id = None, metadata = metadata)
     
     async def remove_unit(self, user_no: int, unit_idx: int, queue_id: Optional[int] = None) -> bool:
         """유닛을 완료 큐에서 제거"""
@@ -66,7 +69,7 @@ class UnitRedisManager:
         """유닛 완료 시간 업데이트"""
         return await self.task_manager.update_completion_time(user_no, unit_idx, new_completion_time, queue_id)
     
-    async def get_completed_units(self, current_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    async def get_completed_tasks(self, current_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """완료된 유닛들 조회"""
         return await self.task_manager.get_completed_tasks(current_time)
     
@@ -75,27 +78,19 @@ class UnitRedisManager:
         return await self.task_manager.update_completion_time(user_no, unit_idx, datetime.utcnow(), queue_id)
     
     # === Hash 기반 캐싱 관리 메서드들 ===
-    def _get_units_hash_key(self, user_no: int) -> str:
-        """사용자 유닛 Hash 키 생성"""
-        return f"user_units:{user_no}"
-    
-    def _get_units_meta_key(self, user_no: int) -> str:
-        """사용자 유닛 메타데이터 키 생성"""
-        return f"user_units_meta:{user_no}"
-    
     async def cache_user_units_data(self, user_no: int, units_data: Dict[str, Any]) -> bool:
         """Hash 구조로 유닛 데이터 캐싱"""
         if not units_data:
             return True
         
         try:
-            hash_key = self._get_units_hash_key(user_no)
-            meta_key = self._get_units_meta_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            meta_key = self.cache_manager.get_user_data_meta_key(user_no)
             
             # 메타데이터 준비
             meta_data = {
                 'cached_at': datetime.utcnow().isoformat(),
-                'unit_count': len(units_data),
+                'quantity': len(units_data),
                 'user_no': user_no
             }
             
@@ -121,7 +116,7 @@ class UnitRedisManager:
     async def get_cached_unit(self, user_no: int, unit_idx: int) -> Optional[Dict[str, Any]]:
         """특정 유닛 하나만 캐시에서 조회"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             unit_data = await self.cache_manager.get_hash_field(hash_key, str(unit_idx))
             
             if unit_data:
@@ -138,7 +133,7 @@ class UnitRedisManager:
     async def get_cached_units(self, user_no: int) -> Optional[Dict[str, Any]]:
         """모든 유닛을 캐시에서 조회"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             units = await self.cache_manager.get_hash_data(hash_key)
             
             if units:
@@ -155,7 +150,7 @@ class UnitRedisManager:
     async def update_cached_unit(self, user_no: int, unit_idx: int, unit_data: Dict[str, Any]) -> bool:
         """특정 유닛 캐시 업데이트"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             
             # Cache Manager를 통해 Hash 필드 업데이트
             success = await self.cache_manager.set_hash_field(
@@ -177,7 +172,7 @@ class UnitRedisManager:
     async def remove_cached_unit(self, user_no: int, unit_idx: int) -> bool:
         """특정 유닛을 캐시에서 제거"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             success = await self.cache_manager.delete_hash_field(hash_key, str(unit_idx))
             
             if success:
@@ -192,7 +187,7 @@ class UnitRedisManager:
     async def invalidate_unit_cache(self, user_no: int) -> bool:
         """사용자 유닛 캐시 전체 무효화"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             meta_key = self._get_units_meta_key(user_no)
             
             # 두 키 모두 삭제
@@ -212,20 +207,20 @@ class UnitRedisManager:
     async def get_cache_info(self, user_no: int) -> Dict[str, Any]:
         """캐시 정보 조회 (디버깅/모니터링용)"""
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             meta_key = self._get_units_meta_key(user_no)
             
             # Cache Manager를 통해 정보 조회
-            unit_count = await self.cache_manager.get_hash_length(hash_key)
+            quantity = await self.cache_manager.get_hash_length(hash_key)
             ttl = await self.cache_manager.get_ttl(hash_key)
             meta_data = await self.cache_manager.get_data(meta_key) or {}
             
             return {
                 "user_no": user_no,
-                "unit_count": unit_count,
+                "quantity": quantity,
                 "ttl_seconds": ttl,
                 "meta_data": meta_data,
-                "cache_exists": unit_count > 0
+                "cache_exists": quantity > 0
             }
             
         except Exception as e:
@@ -297,9 +292,9 @@ class UnitRedisManager:
     
     # === 기존 호환성을 위한 별칭 메서드들 ===
     async def add_unit_training(self, user_no: int, unit_type: int, completion_time: datetime,
-                         queue_id: Optional[int] = None, unit_count: int = 1) -> bool:
+                         queue_id: Optional[int] = None, quantity: int = 1) -> bool:
         """유닛 훈련을 큐에 추가 (하위 호환성)"""
-        return await self.add_unit_to_queue(user_no, unit_type, completion_time, queue_id, unit_count)
+        return await self.add_unit_to_queue(user_no, unit_type, completion_time, queue_id, quantity)
     
     async def remove_unit_training(self, user_no: int, unit_type: int, queue_id: Optional[int] = None) -> bool:
         """유닛 훈련을 큐에서 제거 (하위 호환성)"""
@@ -311,7 +306,7 @@ class UnitRedisManager:
     
     # ===== ✨ 워커 지원 메서드들 (추가) =====
     
-    async def get_task_data(self, user_no: int, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_metadata(self, user_no: int, task_id: str) -> Optional[Dict[str, Any]]:
         """
         Task 상세 정보 조회 (워커용)
         
@@ -320,11 +315,13 @@ class UnitRedisManager:
         """
         try:
             
-            task_key = f"completion_queue:{self.task_type.value}:metadata:{user_no}:{task_id}"
+            task_key = f"{self.task_manager.queue_key}:metadata:{user_no}:{task_id}"
+            
             task_data = await self.redis_client.hgetall(task_key)
             
             if not task_data:
                 return None
+            
             
             # bytes를 디코드하여 반환
             decoded_data = {}
@@ -333,10 +330,6 @@ class UnitRedisManager:
                 value_str = value.decode() if isinstance(value, bytes) else value
                 decoded_data[key_str] = value_str
             
-            print("--------decoded_data----------")
-            print(task_data)
-            print(decoded_data)
-            print("--------decoded end-----------")
             # 타입 변환
             return {
                 'user_no': int(decoded_data.get('user_no', 0)),
@@ -346,54 +339,25 @@ class UnitRedisManager:
                 'target_unit_idx': int(decoded_data.get('target_unit_idx', 0)) if decoded_data.get('target_unit_idx') else None,
                 'start_time': decoded_data.get('start_time', ''),
                 'end_time': decoded_data.get('end_time', ''),
-                'status': decoded_data.get('status', 'in_progress')
+                
             }
             
         except Exception as e:
             print(f"Error getting task data for {task_id}: {e}")
             return None
     
-    async def remove_task(self, user_no: int, task_id: str):
+    async def remove_from_queue(self, user_no: int, task_id: int, sub_id: int = None):
         """
         Task 삭제 (워커용)
         
         Redis에서 Task 정보를 삭제합니다.
         """
-        try:
-            # Task 상세 정보 삭제
-            task_key = f"unit:task:{task_id}"
-            await self.redis_client.delete(task_key)
-            
-            # 유저별 Task 목록에서 제거 (Sorted Set)
-            user_tasks_key = f"unit:tasks:{user_no}"
-            await self.redis_client.zrem(user_tasks_key, task_id)
-            
-            # 글로벌 Task 목록에서 제거
-            await self.redis_client.zrem("unit:all_tasks", task_id)
-            
-            print(f"Removed task {task_id} for user {user_no}")
-            
-        except Exception as e:
-            print(f"Error removing task {task_id}: {e}")
-    
-    async def remove_from_completed_queue(self, user_no: int, task_id: str):
-        """
-        완료 큐에서 제거 (워커용)
         
-        완료된 Task를 완료 큐에서 제거합니다.
-        """
-        try:
-            # 글로벌 완료 큐에서 제거
-            await self.redis_client.zrem("unit:all_tasks", task_id)
+        await self.task_manager.remove_from_queue(user_no, task_id, sub_id)
             
-            # 유저별 큐에서도 제거
-            user_tasks_key = f"unit:tasks:{user_no}"
-            await self.redis_client.zrem(user_tasks_key, task_id)
             
-            print(f"Removed from completed queue: task {task_id}")
-            
-        except Exception as e:
-            print(f"Error removing from completed queue: {e}")
+    
+   
     
     async def add_to_sync_queue(self, user_no: int, unit_idx: int, sync_data: Dict[str, Any]):
         """
@@ -500,7 +464,7 @@ class UnitRedisManager:
         예: training, upgrading, ready, total 등
         """
         try:
-            hash_key = self._get_units_hash_key(user_no)
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             field_key = f"{unit_idx}.{field}"  # "5.ready" 형태
             
             # Hash 내부의 특정 필드 증가
