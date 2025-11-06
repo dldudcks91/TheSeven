@@ -14,7 +14,7 @@ redis_client = redis.Redis(
 redis_manager = RedisManager(redis_client)
 
 
-#redis_client.flushall()
+redis_client.flushall()
 #%%
 
 server_info = redis_client.info()
@@ -48,7 +48,7 @@ for key in all_keys:
     
 print(zset_keys)
 #%%
-HASH_KEY = zset_keys['string'][1]
+HASH_KEY = zset_keys['string'][3]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     
@@ -69,7 +69,7 @@ except Exception as e:
     print(f"오류 발생: {e}")
 
 #%%
-HASH_KEY = zset_keys['hash'][0]
+HASH_KEY = zset_keys['hash'][2]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     building_data = redis_client.hgetall(HASH_KEY)

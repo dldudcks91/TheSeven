@@ -13,6 +13,7 @@ class APIManager():
         1002: (GameDataManager, GameDataManager.get_all_configs),
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
+        1012: (BuffManager, BuffManager.buff_info),
         
         # === 건물 API (2xxx) ===
         2001: (BuildingManager, BuildingManager.building_info),
@@ -33,6 +34,8 @@ class APIManager():
         4002: (UnitManager, UnitManager.unit_train),
         4003: (UnitManager, UnitManager.unit_upgrade),
         #4004: (UnitManager, UnitManager.unit_finish),
+        
+        
     }
     
     def __init__(self, db_manager, redis_manager):

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
-from services.game import BuildingManager, UnitManager, ResearchManager, ResourceManager
+from services.game import BuildingManager, UnitManager, ResearchManager, ResourceManager, BuffManager
 
 
 class LoginManager:
@@ -70,97 +70,80 @@ class LoginManager:
             self.logger.error(f"Login error for user {user_no}: {e}", exc_info=True)
             return {"success": False, "message": f"Login failed: {str(e)}"}
     
+    def _create_manager_instance(self, user_no: int, manager_class, key: str, managers: Dict):
+        try:
+            manager = manager_class(self.db_manager, self.redis_manager)
+            manager.user_no = user_no
+            managers[key] = manager
+        except Exception as e:
+            self.logger.warning(f"{manager_class.__name__} not available: {e}")
+    
+    # [2] _create_managers 함수 변경
     def _create_managers(self, user_no: int) -> Dict[str, Any]:
-        """
-        모든 Game Manager 생성
-        
-        Args:
-            user_no: 사용자 번호
-            
-        Returns:
-            Manager 딕셔너리
-        """
         managers = {}
         
-        # Building Manager
-        building_manager = BuildingManager(self.db_manager, self.redis_manager)
-        building_manager.user_no = user_no
-        managers['building'] = building_manager
+        MANAGERS_TO_CREATE = {
+            'building': BuildingManager,
+            'unit': UnitManager,
+            'research': ResearchManager,
+            'resource': ResourceManager,
+            'buff': BuffManager, # Buff Manager 추가
+        }
         
-        # Unit Manager
-        try:
-            unit_manager = UnitManager(self.db_manager, self.redis_manager)
-            unit_manager.user_no = user_no
-            managers['unit'] = unit_manager
-        except Exception as e:
-            self.logger.warning(f"UnitManager not available: {e}")
-        
-        # # Research Manager
-        # try:
-        #     research_manager = ResearchManager(self.db_manager, self.redis_manager)
-        #     research_manager.user_no = user_no
-        #     managers['research'] = research_manager
-        # except Exception as e:
-        #     self.logger.warning(f"ResearchManager not available: {e}")
-        
-        # # Resource Manager
-        # try:
-        #     resource_manager = ResourceManager(self.db_manager, self.redis_manager)
-        #     resource_manager.user_no = user_no
-        #     managers['resource'] = resource_manager
-        # except Exception as e:
-        #     self.logger.warning(f"ResourceManager not available: {e}")
+        for key, manager_class in MANAGERS_TO_CREATE.items():
+            self._create_manager_instance(user_no, manager_class, key, managers)
         
         return managers
     
     async def _load_all_data(self, managers: Dict[str, Any]) -> Dict[str, Any]:
         """
-        모든 게임 데이터 로드 (병렬)
-        
-        각 Manager의 get 메서드 호출
-        → 각 Manager가 알아서 캐싱 처리 (메모리 → Redis → DB)
-        
-        Args:
-            managers: Manager 딕셔너리
-            
-        Returns:
-            로드된 데이터 딕셔너리
+        모든 게임 데이터 로드 (동시 실행)
         """
+        
+        # 1. 개선된 LOAD_CONFIG 정의
+        LOAD_CONFIG = {
+            'building': [('building_info', 'buildings')],
+            'unit': [('unit_info', 'units')], 
+            'research': [('research_info', 'research')], 
+            #'resource': [('resource_info', 'resources')],
+            #'buff': [('buff_info', 'buffs')],
+        }
+        
         tasks = []
         task_names = []
         
-        # Building
-        if 'building' in managers:
-            tasks.append(managers['building'].building_info())
-            task_names.append('buildings')
-        
-        # Unit
-        if 'unit' in managers:
-            tasks.append(managers['unit'].get_user_units())
-            task_names.append('units')
-        
-        # Research
-        if 'research' in managers:
-            tasks.append(managers['research'].get_user_research())
-            task_names.append('research')
-        
-        # Resource
-        if 'resource' in managers:
-            tasks.append(managers['resource'].get_user_resources())
-            task_names.append('resources')
-        
-        # 병렬 실행
+        # 2. 매니저별 작업 목록 순회
+        # tasks_to_run: [('buff_info', 'buffs'), ('buff_reward_info', 'buff_rewards')]
+        for manager_key, tasks_to_run in LOAD_CONFIG.items():
+            manager = managers.get(manager_key)
+            
+            if manager:
+                # 3. 매니저의 개별 작업 순회
+                for method_name, result_name in tasks_to_run:
+                    try:
+                        # getattr을 사용하여 메서드를 동적으로 찾고 호출
+                        load_method = getattr(manager, method_name)
+                        tasks.append(load_method())
+                        task_names.append(result_name) 
+                    except AttributeError:
+                        # 해당 메서드가 없는 경우 경고 로깅
+                        self.logger.error(f"Manager {manager_key} is missing expected method: {method_name}")
+            
+        # 4. 병렬 실행
+        # asyncio.gather는 tasks에 담긴 7개의 코루틴(5개 매니저 + buff 2개)을 동시에 실행합니다.
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 결과 정리
+        # 5. 결과 정리
         data = {}
         for name, result in zip(task_names, results):
             if isinstance(result, Exception):
                 self.logger.error(f"Error loading {name}: {result}")
+                # 오류가 발생한 경우, 해당 키의 값은 빈 딕셔너리로 설정
                 data[name] = {}
             else:
+                # 최종 결과 딕셔너리에 깔끔한 키 이름 사용
                 data[name] = result if result else {}
-        
+                
         return data
     
     async def _register_all_active_tasks(self, user_no: int, managers: Dict[str, Any]):

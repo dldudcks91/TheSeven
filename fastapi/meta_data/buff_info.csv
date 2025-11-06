@@ -1,2 +1,22 @@
-buff_idx,category,calculate_type,buff_time,buff_effect,description
-101,1,1,0,-0.05,building speed
+buff_idx,buff_type,effect_time,effect_type,target_type,target_id,stat_type,value,value_type,english_name,korean_name
+101,research,0,buff,resource,all,get,1,percentage,a,자원획득량+
+102,research,0,buff,resource,all,get,1,percentage,a,자원획득량+
+103,research,0,buff,resource,all,get,1,percentage,b,자원획득량+
+104,research,0,buff,resource,all,use,-1,percentage,b,자원사용량-
+105,research,0,buff,resource,all,use,-1,percentage,c,자원사용량-
+106,research,0,buff,building,all,time,-1,percentage,c,건물시간-
+107,research,0,buff,building,all,time,-1,percentage,d,건물시간-
+108,research,0,buff,research,all,time,-1,percentage,d,연구시간-
+109,research,0,buff,research,all,time,-1,percentage,e,연구시간-
+201,research,0,buff,unit,all,speed,1,percentage,e,병사속도+
+202,research,0,buff,unit,all,speed,2,percentage,f,병사속도+
+203,research,0,buff,unit,all,speed,2,percentage,f,병사속도+
+204,research,0,buff,unit,infantry,attack,1,percentage,g,보병공격력+
+205,research,0,buff,unit,infantry,attack,2,percentage,g,보병공격력+
+206,research,0,buff,unit,cavarly,attack,1,percentage,h,기병공격력+
+207,research,0,buff,unit,cavarly,attack,2,percentage,h,기병공격력+
+208,research,0,buff,unit,archer,attack,1,percentage,j,궁병공격력+
+209,research,0,buff,unit,archer,attack,2,percentage,j,궁병공격력+
+210,research,0,unlock,unit,infantry,-,-,-,k,보병 2티어
+211,research,0,unlock,unit,cavarly,-,-,-,l,기병 2티어
+212,research,0,unlock,unit,archer,-,-,-,k,궁병 2티어

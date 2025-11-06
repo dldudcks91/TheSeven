@@ -17,6 +17,7 @@ class GameDataManager:
             
         print("Loading game data from CSV...")
         cls._load_building_data()
+        cls._load_research_data()
         cls._load_unit_data()
         cls._load_buff_data()
         cls._loaded = True
@@ -52,7 +53,41 @@ class GameDataManager:
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']
             }
+    
+    @classmethod
+    def _load_research_data(cls):
+        
+        
+        # CSV 파일 읽기 (한번만!)
+        df = pd.read_csv('./meta_data/research_info.csv', encoding= 'cp949')
+        research_configs = cls.REQUIRE_CONFIGS['research']
+        
+        for _, row in df.iterrows():
             
+            research_idx = row['research_idx']
+            research_lv = row['research_lv']
+            
+            if research_idx not in research_configs:
+                research_configs[research_idx] = {}
+                
+            requires = []
+            require_str = str(row.get('required_researchs', '')).strip()
+            if require_str and require_str != 'nan':
+                    for req in require_str.split(','):
+                        if ':' in req:
+                            idx, lv = req.strip().split(':')
+                            requires.append((int(idx), int(lv)))
+                            
+            research_configs[research_idx][research_lv] = {
+                'buff_idx': row['buff_idx'],
+                'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
+                'time': int(row['research_time']),
+                'required_researchs': requires,  # [(building_idx, level), ...]
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name']
+            }
+    
+    
     @classmethod
     def _load_unit_data(cls):
         
@@ -96,11 +131,15 @@ class GameDataManager:
             
             buff_configs[buff_idx] = {
                 'buff_idx': buff_idx,
-                'category': row['category'],
-                'calculate_type': row['calculate_type'],
-                'buff_effect': int(row['buff_effect']),
-                'time': int(row['buff_time']),
-                'description': row['description']
+                'buff_type': row['buff_type'],
+                'effect_type': row['effect_type'],
+                'target_type': row['target_type'],
+                'target_id': row['target_id'],
+                'stat_type': row['stat_type'],
+                'value': row['value'],
+                'value_type': row['value_type'],
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name']
             }
     
     
