@@ -103,6 +103,7 @@ class ResearchManager:
         return None
     
     def _format_research_for_cache(self, research_data):
+        
         """캐시용 연구 데이터 포맷팅"""
         try:
             if isinstance(research_data, dict):
@@ -148,25 +149,57 @@ class ResearchManager:
                 return cached_data
             
             # DB에서 조회
-            research_db = self.db_manager.get_research_manager()
-            researches = research_db.get_user_researches(self.user_no)
             
-            researches_dict = {}
-            for research in researches:
-                formatted = self._format_research_for_cache(research)
-                researches_dict[str(research.research_idx)] = formatted
+            
+                
+            
+            researches_data =  self.get_db_researches(self.user_no)
+            
+            
             
             # Redis에 캐싱
-            if researches_dict:
-                await research_redis.cache_user_researches_data(self.user_no, researches_dict)
+            if researches_data['success'] and researches_data['data']:
+                cache_success = await research_redis.cache_user_researches_data(self.user_no, researches_data['data'])
+                if cache_success:
+                    self.logger.debug(f"Successfully cached {researches_data['data']} researches for user {self.user_no}")
+                self._cached_researches = researches_data['data']
+            else:
+                self._cached_researches = {}
             
-            self._cached_researches = researches_dict
-            return researches_dict
             
         except Exception as e:
             self.logger.error(f"Error getting user researches: {e}")
             return {}
-    
+        return self._cached_researches
+        
+    def get_db_researches(self, user_no):
+        """DB에서 연구 데이터만 순수하게 조회"""
+        try:
+            research_db = self.db_manager.get_research_manager()
+            researches_result = research_db.get_user_researches(user_no)
+            
+            if not researches_result['success']:
+                return researches_result
+            
+            # 데이터 포맷팅
+            formatted_researches = {}
+            for research in researches_result['data']:
+                research_idx = research['research_idx']
+                formatted_researches[str(research_idx)] = self._format_research_for_cache(research)
+            
+            return {
+                "success": True,
+                "message": f"Loaded {len(formatted_researches)} researches from database",
+                "data": formatted_researches
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error loading researches from DB for user {user_no}: {e}")
+            return {
+                "success": False,
+                "message": f"Database error: {str(e)}",
+                "data": {}
+            }
     async def _invalidate_cache(self, user_no: int = None):
         """캐시 무효화"""
         try:
