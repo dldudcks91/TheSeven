@@ -19,6 +19,10 @@ async def get_resource(request: Request):
 async def get_building(request: Request):
     return templates.TemplateResponse("building.html", {"request": request})
 
+@router.get("/research.html")
+async def get_research(request: Request):
+    return templates.TemplateResponse("research.html", {"request": request})
+
 @router.get("/unit.html")
 async def get_unit(request: Request):
     return templates.TemplateResponse("unit.html", {"request": request})

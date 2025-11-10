@@ -27,6 +27,7 @@ class GameConfigManager {
             
             if (result.success) {
                 this.config = result.data;
+                console.log("게임 설정 데이터 로드 성공:", result.data)
                 return this.config;
             } else {
                 throw new Error(result.message);

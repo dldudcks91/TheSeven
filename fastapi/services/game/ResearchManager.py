@@ -242,17 +242,8 @@ class ResearchManager:
             **research,
             "task_completion_time": redis_completion_time.isoformat() if redis_completion_time else None
         }
-    
-    def _get_research(self, user_no, research_idx):
-        """연구 조회"""
-        research_db = self.db_manager.get_research_manager()
-        return research_db.get_research(user_no, research_idx)
-    
-    def _get_all_user_researches(self, user_no):
-        """사용자의 모든 연구 조회"""
-        research_db = self.db_manager.get_research_manager()
-        return research_db.get_all_user_researches(user_no)
-    
+
+
     def _get_current_research(self, user_no):
         """현재 진행중인 연구 반환"""
         research_db = self.db_manager.get_research_manager()

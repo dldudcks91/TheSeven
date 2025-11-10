@@ -403,16 +403,18 @@
                     <iframe 
                         id="buildingFrame" 
                         src="building.html" 
-                        style="width: 100%; height: calc(100% - 40px); border: none;">
+                        style="width: 100%; height: calc(100% - 0px); border: none;">
                     </iframe>
                 </div>
                 
                 <!-- 연구 관리 (오른쪽 상단) -->
                 <div class="game-section">
-                    <h3>연구 관리 <button class="refresh-btn" onclick="loadResearch()">새로고침</button></h3>
-                    <div id="researchList" class="research-list">
-                        <div>데이터를 로드해주세요</div>
-                    </div>
+                    
+                    <iframe 
+                        id="researchFrame" 
+                        src="research.html" 
+                        style="width: 100%; height: calc(100% - 0px); border: none;">
+                    </iframe>
                 </div>
                 
                 <!-- 유닛 관리 (왼쪽 중간) -->
@@ -521,6 +523,7 @@
             if (event.data && event.data.type === 'request_config') {
                 const requestedType = event.data.configType;
                 
+                
                 // gameConfig가 없으면 로드 (Promise 재사용)
                 if (!gameConfig) {
                     if (!loadConfigPromise) {
@@ -537,12 +540,14 @@
                 let dataToSend = null;
                 if (gameConfig && gameConfig[requestedType]) {
                     dataToSend = gameConfig[requestedType];
+                    console.log("postMessage", requestedType, dataToSend)
                 }
                 
                 event.source.postMessage({
                     type: 'response_config',
                     payload: dataToSend
                 }, event.origin);
+                
 
                 
             }
@@ -586,7 +591,7 @@
             
             
             // 모든 iframe에 플레이어 ID 전달
-            const frameIds = ['buildingFrame', 'unitFrame','resourceFrame'];
+            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame'];
             
             frameIds.forEach(frameId => {
                 const frame = document.getElementById(frameId);
@@ -740,37 +745,7 @@
             document.getElementById(`${resourceType}-value`).textContent = newAmount;
         }
         
-        // 연구 데이터 로드
-        async function loadResearch() {
-            const userId = document.getElementById('globalUserId').value;
-            const researchList = document.getElementById('researchList');
-            
-            if (!userId) {
-                researchList.innerHTML = '<div>플레이어 ID를 입력하세요</div>';
-                return;
-            }
-            
-            researchList.innerHTML = '<div>로딩 중...</div>';
-            
-            const researches = [
-                { idx: 'tech_001', name: '농업 기술' },
-                { idx: 'tech_002', name: '건축 기술' },
-                { idx: 'tech_003', name: '군사 기술' }
-            ];
-            
-            let html = '';
-            researches.forEach(research => {
-                html += `
-                    <div class="research-item">
-                        <h4>${research.name}</h4>
-                        <div>상태: 미연구</div>
-                        <button onclick="researchAction(3001, '${research.idx}')">연구 시작</button>
-                    </div>
-                `;
-            });
-            
-            researchList.innerHTML = html;
-        }
+        
         
         // 자원 데이터 로드
         async function loadResources() {
@@ -818,15 +793,7 @@
             }
         }
         
-        // 연구 액션
-        function researchAction(apiCode, researchIdx) {
-            showToast(`연구 시스템은 준비 중입니다. (${researchIdx})`, 'info');
-        }
         
-        // 유닛 액션
-        function unitAction(action, unitName) {
-            showToast(`유닛 시스템은 준비 중입니다. (${action}: ${unitName})`, 'info');
-        }
         
         // 임무 액션
         function loadMissions() {

@@ -105,8 +105,8 @@ class LoginManager:
             'building': [('building_info', 'buildings')],
             'unit': [('unit_info', 'units')], 
             'research': [('research_info', 'research')], 
-            #'resource': [('resource_info', 'resources')],
-            #'buff': [('buff_info', 'buffs')],
+            'resource': [('resource_info', 'resources')],
+            'buff': [('buff_info', 'buffs')],
         }
         
         tasks = []
@@ -163,7 +163,7 @@ class LoginManager:
         tasks.extend([
             self._register_unit_tasks(user_no),
             self._register_research_tasks(user_no),
-            self._register_buff_tasks(user_no)
+            #self._register_buff_tasks(user_no)
         ])
         
         await asyncio.gather(*tasks, return_exceptions=True)
