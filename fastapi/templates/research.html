@@ -623,15 +623,15 @@
         const dummyResearchData = {
         // 1001 계열 (Resource Production)
         '1001': {
-            1: { buff_idx: 101, research_lv: 1, research_time: 20, food: 100, wood: 0, stone: 0, gold: 100, required_researchs: '', english_name: 'Resource Production I', korean_name: '자원획득+' },
-            2: { buff_idx: 102, research_lv: 2, research_time: 40, food: 200, wood: 0, stone: 0, gold: 200, required_researchs: '', english_name: 'Resource Production II', korean_name: '자원획득+' },
-            3: { buff_idx: 103, research_lv: 3, research_time: 60, food: 400, wood: 0, stone: 0, gold: 400, required_researchs: '', english_name: 'Resource Production III', korean_name: '자원획득+' }
+            1: { buff_idx: 101, research_lv: 1, research_time: 20, food: 100, wood: 0, stone: 0, gold: 100, required_researchs: [], english_name: 'Resource Production I', korean_name: '자원획득+' },
+            2: { buff_idx: 102, research_lv: 2, research_time: 40, food: 200, wood: 0, stone: 0, gold: 200, required_researchs: [], english_name: 'Resource Production II', korean_name: '자원획득+' },
+            3: { buff_idx: 103, research_lv: 3, research_time: 60, food: 400, wood: 0, stone: 0, gold: 400, required_researchs: [], english_name: 'Resource Production III', korean_name: '자원획득+' }
         },
         
         // 1011 계열 (Resource Usage)
         '1011': {
-            1: { buff_idx: 104, research_lv: 1, research_time: 20, food: 100, wood: 0, stone: 0, gold: 100, required_researchs: '1001:3', english_name: 'Resource Usage I', korean_name: '자원사용량-' },
-            2: { buff_idx: 105, research_lv: 2, research_time: 40, food: 200, wood: 0, stone: 0, gold: 200, required_researchs: '1001:3', english_name: 'Resource Usage II', korean_name: '자원사용량-' }
+            1: { buff_idx: 104, research_lv: 1, research_time: 20, food: 100, wood: 0, stone: 0, gold: 100, required_researchs: [1001,3], english_name: 'Resource Usage I', korean_name: '자원사용량-' },
+            2: { buff_idx: 105, research_lv: 2, research_time: 40, food: 200, wood: 0, stone: 0, gold: 200, required_researchs: [1001,3], english_name: 'Resource Usage II', korean_name: '자원사용량-' }
         },
         
         // 1012 계열 (Build Time)
@@ -722,7 +722,7 @@
             if (event.data && event.data.type === 'response_config') {
                 const researchConfig = event.data.payload;
                 researchConfigData = researchConfig;
-                console.log('Research data received:', researchConfigData);
+                
                 
                 if (userId) {
                     loadResearch();
@@ -1143,12 +1143,16 @@
                 time.textContent = `⏱️ ${research.research_time}초`;
                 tooltip.appendChild(time);
                 
-                if (research.required_researchs && research.required_researchs.trim() !== '') {
-                    const req = document.createElement('div');
-                    req.className = 'tooltip-requirement';
-                    const parts = research.required_researchs.split(':');
-                    req.textContent = `필요: 연구 ${parts[0]} Lv.${parts[1]}`;
-                    tooltip.appendChild(req);
+                const reqDataList = getRequiredResearch(research.required_researchs);
+                if (reqDataList && reqDataList.length > 0) {
+                    for (const reqData of reqDataList) {
+                        if (reqData && typeof reqData === 'object' && reqData.idx && reqData.lv !== undefined) {
+                            const req = document.createElement('div');
+                            req.className = 'tooltip-requirement';
+                            req.textContent = `필요: 연구 ${reqData.idx} Lv.${reqData.lv}`;
+                            tooltip.appendChild(req);
+                        }
+                    }
                 }
             }
             
@@ -1160,20 +1164,89 @@
             // 실제 구현에서는 더 정교한 로직 필요
         }
         
+        // required_researchs 파싱 함수 (다중 조건 처리)
+        // 반환: [{idx, lv}, {idx, lv}, ...] 형태의 배열
+        function getRequiredResearch(required) {
+            if (!required) return [];
+            
+            const results = [];
+            
+            // 배열인 경우
+            if (Array.isArray(required)) {
+                if (required.length === 0) return [];
+                
+                // [[2011,3], [2012,2]] 형태 - 다중 조건
+                if (Array.isArray(required[0])) {
+                    for (const item of required) {
+                        if (Array.isArray(item) && item.length >= 2) {
+                            results.push({
+                                idx: item[0],
+                                lv: item[1]
+                            });
+                        }
+                    }
+                    return results;
+                }
+                
+                // [2011, 3] 형태 - 단일 조건
+                if (typeof required[0] === 'number' && required.length >= 2) {
+                    return [{
+                        idx: required[0],
+                        lv: required[1]
+                    }];
+                }
+                
+                // ["2011:3"] 형태 - 문자열 배열
+                if (typeof required[0] === 'string') {
+                    return getRequiredResearch(required[0]);
+                }
+            }
+            
+            // 문자열인 경우: "2011:3" 형태
+            if (typeof required === 'string') {
+                const trimmed = required.trim();
+                if (trimmed === '') return [];
+                
+                const parts = trimmed.split(':');
+                if (parts.length >= 2) {
+                    return [{
+                        idx: parseInt(parts[0]),
+                        lv: parseInt(parts[1])
+                    }];
+                }
+            }
+            
+            return [];
+        }
+        
         function checkRequirements(requiredResearchs) {
-            if (!requiredResearchs || requiredResearchs.trim() === '') {
-                return true;
+            console.log("checkRequirements:", requiredResearchs);
+            
+            const reqDataList = getRequiredResearch(requiredResearchs);
+            if (!reqDataList || reqDataList.length === 0) return true;
+            
+            // 모든 조건을 체크 (AND 조건)
+            for (const reqData of reqDataList) {
+                if (typeof reqData !== 'object' || !reqData.idx || reqData.lv === undefined) {
+                    console.error("❌ reqData가 올바른 형태가 아닙니다:", reqData);
+                    return false;
+                }
+                
+                const reqIdx = reqData.idx;
+                const reqLv = reqData.lv;
+                
+                // 하나라도 조건을 만족하지 않으면 false
+                if (!userResearchData[reqIdx] || !userResearchData[reqIdx][reqLv]) {
+                    return false;
+                }
+                
+                if (userResearchData[reqIdx][reqLv].status !== 2) {
+                    return false;
+                }
             }
             
-            const parts = requiredResearchs.split(':');
-            const reqIdx = parseInt(parts[0]);
-            const reqLv = parseInt(parts[1]);
-            
-            if (!userResearchData[reqIdx] || !userResearchData[reqIdx][reqLv]) {
-                return false;
-            }
-            
-            return userResearchData[reqIdx][reqLv].status === 2;
+            // 모든 조건을 만족하면 true
+            return true;
         }
         
         function openModal(researchIdx, researchList, currentLevel, nextLevel, hasInProgress) {
@@ -1217,9 +1290,12 @@
             }
             
             const reqDiv = document.getElementById('modalRequirement');
-            if (research.required_researchs && research.required_researchs.trim() !== '') {
-                const parts = research.required_researchs.split(':');
-                reqDiv.textContent = `⚠️ 필요 조건: 연구 ${parts[0]} Lv.${parts[1]} 완료 필요`;
+            const reqDataList = getRequiredResearch(research.required_researchs);
+            if (reqDataList && reqDataList.length > 0) {
+                const reqTexts = reqDataList.map(reqData => 
+                    `연구 ${reqData.idx} Lv.${reqData.lv}`
+                ).join(', ');
+                reqDiv.textContent = `⚠️ 필요 조건: ${reqTexts} 완료 필요`;
                 reqDiv.style.display = 'block';
             } else {
                 reqDiv.style.display = 'none';
@@ -1360,5 +1436,3 @@
             console.log('🔄 페이지 종료 - 타이머 정리');
         };
     </script>
-        
-       
