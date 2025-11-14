@@ -111,21 +111,25 @@ class ResearchManager:
                     "id": research_data.get('id'),
                     "user_no": research_data.get('user_no'),
                     "research_idx": research_data.get('research_idx'),
+                    "research_lv": research_data.get('research_lv'),
                     "status": research_data.get('status'),
-                    "level": research_data.get('level', 1),
-                    "started_at": research_data.get('started_at'),
-                    "complete_at": research_data.get('complete_at'),
+                    "start_time": research_data.get('start_time'),
+                    "end_time": research_data.get('end_time'),
+                    "last_dt": research_data.get('last_dt'),
                     "cached_at": datetime.utcnow().isoformat()
                 }
+            
             else:
                 return {
                     "id": research_data.id,
                     "user_no": research_data.user_no,
                     "research_idx": research_data.research_idx,
+                    "research_lv": research_data.research_lv or 1,
                     "status": research_data.status,
-                    "level": research_data.level or 1,
-                    "started_at": research_data.started_at.isoformat() if research_data.started_at else None,
-                    "complete_at": research_data.complete_at.isoformat() if research_data.complete_at else None,
+                    
+                    "start_time": research_data.start_time.isoformat() if research_data.start_time else None,
+                    "end_time": research_data.end_time.isoformat() if research_data.end_time else None,
+                    "last_dt": research_data.last_dt.isoformat() if research_data.last_dt else None,
                     "cached_at": datetime.utcnow().isoformat()
                 }
         except Exception as e:
@@ -377,13 +381,15 @@ class ResearchManager:
         """
         try:
             researches_data = await self.get_user_researches()
-            
+            print("researches data:", researches_data)
             # 각 연구에 task_completion_time 추가
             enriched_researches = {}
             for research_idx, research in researches_data.items():
                 formatted = await self._format_research_data(int(research_idx))
                 if formatted:
                     enriched_researches[research_idx] = formatted
+            
+            
             
             return {
                 "success": True,

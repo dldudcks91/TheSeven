@@ -38,13 +38,7 @@ class GameDataManager:
             if building_idx not in building_configs:
                 building_configs[building_idx] = {}
                 
-            requires = []
-            require_str = str(row.get('required_building', '')).strip()
-            if require_str and require_str != 'nan':
-                    for req in require_str.split(','):
-                        if ':' in req:
-                            idx, lv = req.strip().split(':')
-                            requires.append((int(idx), int(lv)))
+            requires = cls._convert_required(row, 'required_buildings')
                             
             building_configs[building_idx][building_lv] = {
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
@@ -70,19 +64,17 @@ class GameDataManager:
             if research_idx not in research_configs:
                 research_configs[research_idx] = {}
                 
-            requires = []
-            require_str = str(row.get('required_researchs', '')).strip()
-            if require_str and require_str != 'nan':
-                    for req in require_str.split(','):
-                        if ':' in req:
-                            idx, lv = req.strip().split(':')
-                            requires.append((int(idx), int(lv)))
+            
+            requires = cls._convert_required(row, 'required_researches')
+            
                             
             research_configs[research_idx][research_lv] = {
                 'buff_idx': row['buff_idx'],
+                
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
+                'research_lv':research_lv,
                 'time': int(row['research_time']),
-                'required_researchs': requires,  # [(building_idx, level), ...]
+                'required_researches': requires,  # [(building_idx, level), ...]
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']
             }
@@ -101,7 +93,8 @@ class GameDataManager:
             unit_idx = row['unit_idx']
             if unit_idx not in unit_configs:
                 unit_configs[unit_idx] = {}
-                
+            
+            requires = cls._convert_required(row, 'required_researches')
             
             unit_configs[unit_idx] = {
                 'unit_idx': unit_idx,
@@ -109,6 +102,7 @@ class GameDataManager:
                 'time': int(row['train_time']),
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
                 'ability':{'attack':int(row['attack']),'defense': int(row['defense']), 'health': int(row['health']), 'speed': int(row['speed'])},
+                'required_researches': requires,
                 'category': row['category'],
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name'],
@@ -142,6 +136,17 @@ class GameDataManager:
                 'korean_name': row['korean_name']
             }
     
+    @classmethod
+    def _convert_required(row, columns):
+        requires = []
+        require_str = str(row.get(columns, '')).strip()
+        if require_str and require_str != 'nan':
+                for req in require_str.split(','):
+                    if ':' in req:
+                        idx, lv = req.strip().split(':')
+                        requires.append((int(idx), int(lv)))
+                        
+        return requires
     
     @classmethod
     def get_upgrade_requirements(cls, building_idx, current_level):

@@ -104,7 +104,7 @@ class LoginManager:
         LOAD_CONFIG = {
             'building': [('building_info', 'buildings')],
             'unit': [('unit_info', 'units')], 
-            'research': [('research_info', 'research')], 
+            'research': [('research_info', 'researches')], 
             'resource': [('resource_info', 'resources')],
             'buff': [('buff_info', 'buffs')],
         }
