@@ -5,7 +5,9 @@ class GameDataManager:
         'building':{},
         'research':{},
         'unit':{},
-        'buff':{}
+        'buff':{},
+        'item':{},
+        'mission':{}
         }
     _loaded = False
     
@@ -137,7 +139,69 @@ class GameDataManager:
             }
     
     @classmethod
-    def _convert_required(row, columns):
+    def _load_item_data(cls):
+        
+        
+        # CSV 파일 읽기 (한번만!)
+        df = pd.read_csv('./meta_data/item_info.csv', encoding= 'cp949')
+        
+        
+        item_configs = cls.REQUIRE_CONFIGS['item']
+        
+        for _, row in df.iterrows():
+            item_idx = row['item_idx']
+            if item_idx not in item_configs:
+                item_configs[item_idx] = {}
+            
+            
+            
+            
+            
+            item_configs[item_idx] = {
+                'item_idx': item_idx,
+                'category': row['category'],
+                'type': row['type'],
+                'target': row['target'],
+                'value': row['value'],
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name']
+            }
+    
+    @classmethod
+    def _load_mission_data(cls):
+        
+        
+        # CSV 파일 읽기 (한번만!)
+        df_mission = pd.read_csv('./meta_data/mission_info.csv', encoding= 'cp949')
+        df_mission_reward = pd.read_csv('./meta_data/mission_reward.csv', encoding= 'cp949')
+        
+        mission_configs = cls.REQUIRE_CONFIGS['mission']
+        
+        for _, row in df_mission.iterrows():
+            mission_idx = row['mission_idx']
+            if mission_idx not in mission_configs:
+                mission_configs[mission_idx] = {}
+            
+            df_mission_reward_range = df_mission_reward[df_mission_reward['mission_idx'] == mission_idx]
+            
+            df_mission_reward_dic = {row['item_idx']: row['value'] for i, row in df_mission_reward_range.iterrows()}
+            
+            mission_configs[mission_idx] = {
+                'mission_idx': mission_idx,
+                'category': row['category'],
+                'target_idx': row['target_idx'],
+                'value': row['value'],
+                'target_id': row['target_id'],
+                'required_missions': row['required_missions'],
+                'reward': df_mission_reward_dic,    
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name']
+            }
+    
+    
+    
+    @classmethod
+    def _convert_required(cls, row, columns):
         requires = []
         require_str = str(row.get(columns, '')).strip()
         if require_str and require_str != 'nan':

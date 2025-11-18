@@ -1,6 +1,6 @@
 # APIManager.py (비동기 버전)
 from services.system import SystemManager, GameDataManager, LoginManager
-from services.game import ResourceManager, BuildingManager, ResearchManager, UnitManager, BuffManager
+from services.game import ResourceManager, BuildingManager, ResearchManager, UnitManager, BuffManager, MissionManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -14,6 +14,7 @@ class APIManager():
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         1012: (BuffManager, BuffManager.buff_info),
+        1013: (MissionManager, MissionManager.mission_info),
         
         # === 건물 API (2xxx) ===
         2001: (BuildingManager, BuildingManager.building_info),
@@ -34,6 +35,8 @@ class APIManager():
         4002: (UnitManager, UnitManager.unit_train),
         4003: (UnitManager, UnitManager.unit_upgrade),
         #4004: (UnitManager, UnitManager.unit_finish),
+        
+        
         
         
     }

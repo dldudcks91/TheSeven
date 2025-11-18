@@ -1,0 +1,11 @@
+mission_idx,category,target_idx,value,required_missions,english_name,korean_name
+101001,building,201,3,,,
+101002,building,201,5,101001,,
+101003,research,1001,1,101002,,
+101004,research,20201,1,101003,,
+101005,unit,401,100,101004,,
+101006,unit,402,100,101005,,
+101007,unit,412,100,101006,,
+101008,unit,422,100,101007,,
+101009,hero,,,101008,,
+101010,hero,,,101009,,
