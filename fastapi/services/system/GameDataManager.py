@@ -22,6 +22,9 @@ class GameDataManager:
         cls._load_research_data()
         cls._load_unit_data()
         cls._load_buff_data()
+        
+        cls._load_item_data()
+        cls._load_mission_data()
         cls._loaded = True
         print("Game data loaded successfully!")
     
@@ -30,7 +33,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/building_info.csv', encoding= 'cp949')
+        df = pd.read_csv('./meta_data/building_info.csv', encoding= 'cp949').fillna("")
         building_configs = cls.REQUIRE_CONFIGS['building']
         
         for _, row in df.iterrows():
@@ -55,7 +58,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/research_info.csv', encoding= 'cp949')
+        df = pd.read_csv('./meta_data/research_info.csv', encoding= 'cp949').fillna("")
         research_configs = cls.REQUIRE_CONFIGS['research']
         
         for _, row in df.iterrows():
@@ -87,7 +90,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/unit_info.csv', encoding= 'cp949')
+        df = pd.read_csv('./meta_data/unit_info.csv', encoding= 'cp949').fillna("")
         
         unit_configs = cls.REQUIRE_CONFIGS['unit']
         
@@ -115,7 +118,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/buff_info.csv', encoding= 'cp949')
+        df = pd.read_csv('./meta_data/buff_info.csv', encoding= 'cp949').fillna("")
         
         buff_configs = cls.REQUIRE_CONFIGS['buff']
         
@@ -130,7 +133,7 @@ class GameDataManager:
                 'buff_type': row['buff_type'],
                 'effect_type': row['effect_type'],
                 'target_type': row['target_type'],
-                'target_id': row['target_id'],
+                'target_sub_type': row['target_sub_type'],
                 'stat_type': row['stat_type'],
                 'value': row['value'],
                 'value_type': row['value_type'],
@@ -143,25 +146,22 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/item_info.csv', encoding= 'cp949')
+        df = pd.read_csv('./meta_data/item_info.csv', encoding= 'cp949').fillna("")
         
         
         item_configs = cls.REQUIRE_CONFIGS['item']
         
         for _, row in df.iterrows():
-            item_idx = row['item_idx']
+            item_idx = int(row['item_idx'])
             if item_idx not in item_configs:
                 item_configs[item_idx] = {}
-            
-            
-            
             
             
             item_configs[item_idx] = {
                 'item_idx': item_idx,
                 'category': row['category'],
-                'type': row['type'],
-                'target': row['target'],
+                'item_type': row['item_type'],
+                'target_type': row['target_type'],
                 'value': row['value'],
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']
@@ -172,26 +172,25 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df_mission = pd.read_csv('./meta_data/mission_info.csv', encoding= 'cp949')
-        df_mission_reward = pd.read_csv('./meta_data/mission_reward.csv', encoding= 'cp949')
+        df_mission = pd.read_csv('./meta_data/mission_info.csv', encoding= 'cp949').fillna("")
+        df_mission_reward = pd.read_csv('./meta_data/mission_reward.csv', encoding= 'cp949').fillna("")
         
         mission_configs = cls.REQUIRE_CONFIGS['mission']
         
         for _, row in df_mission.iterrows():
-            mission_idx = row['mission_idx']
+            mission_idx = int(row['mission_idx'])
             if mission_idx not in mission_configs:
                 mission_configs[mission_idx] = {}
             
             df_mission_reward_range = df_mission_reward[df_mission_reward['mission_idx'] == mission_idx]
             
-            df_mission_reward_dic = {row['item_idx']: row['value'] for i, row in df_mission_reward_range.iterrows()}
+            df_mission_reward_dic = {int(row['item_idx']): int(row['value']) for i, row in df_mission_reward_range.iterrows()}
             
             mission_configs[mission_idx] = {
                 'mission_idx': mission_idx,
                 'category': row['category'],
                 'target_idx': row['target_idx'],
                 'value': row['value'],
-                'target_id': row['target_id'],
                 'required_missions': row['required_missions'],
                 'reward': df_mission_reward_dic,    
                 'english_name': row['english_name'],
@@ -224,6 +223,7 @@ class GameDataManager:
         모든 로드된 게임 설정(REQUIRE_CONFIGS)을 API 응답 형식으로 반환
         API Code: 1002 (GAME_CONFIG_ALL)에 대응
         """
+        print(cls.REQUIRE_CONFIGS)
         return {
             "success": True,
             "message": "Loaded REQUIRE_CONFIGS",

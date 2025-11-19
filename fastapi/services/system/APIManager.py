@@ -1,6 +1,6 @@
 # APIManager.py (비동기 버전)
-from services.system import SystemManager, GameDataManager, LoginManager
-from services.game import ResourceManager, BuildingManager, ResearchManager, UnitManager, BuffManager, MissionManager
+from services.system import SystemManager, GameDataManager, LoginManager, UserInitManager
+from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager 
 from fastapi import HTTPException
 
 class APIManager():
@@ -9,8 +9,9 @@ class APIManager():
     api_map = {
         # === 시스템 API (1xxx) ===
         # (클래스, 메서드) 형식으로 튜플에 저장
-        #1001: (GameDataManager, GameDataManager.get_all_configs),
+        
         1002: (GameDataManager, GameDataManager.get_all_configs),
+        1003: (UserInitManager, UserInitManager.create_new_user),
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         1012: (BuffManager, BuffManager.buff_info),

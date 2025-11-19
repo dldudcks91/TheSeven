@@ -1,4 +1,4 @@
-buff_idx,buff_type,effect_time,effect_type,target_type,target_id,stat_type,value,value_type,english_name,korean_name
+buff_idx,buff_type,effect_time,effect_type,target_type,target_sub_type,stat_type,value,value_type,english_name,korean_name
 101,research,0,buff,resource,all,get,1,percentage,a,ÀÚ¿øÈ¹µæ·®+
 102,research,0,buff,resource,all,get,1,percentage,a,ÀÚ¿øÈ¹µæ·®+
 103,research,0,buff,resource,all,get,1,percentage,b,ÀÚ¿øÈ¹µæ·®+

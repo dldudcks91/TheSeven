@@ -4,12 +4,14 @@ Created on Fri Aug 29 14:07:24 2025
 
 @author: user
 """
+from .APIManager import APIManager
+from .WebsocketManager import WebsocketManager
+
 
 from .LoginManager import LoginManager
 from .SystemManager import SystemManager
 from .GameDataManager import GameDataManager
-from .APIManager import APIManager
-from .WebsocketManager import WebsocketManager
+from .UserInitManager import UserInitManager
 
 __all__ = [
     'LoginManager',
@@ -17,5 +19,5 @@ __all__ = [
     'GameDataManager',
     'APIManager',
     'WebsocketManager', 
-    
+    'UserInitManager'
 ]

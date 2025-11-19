@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 
-from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager
+from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager
 
 
 class DBManager:
@@ -16,7 +16,9 @@ class DBManager:
         self._buff_manager = None
         self._resource_manager = None
         
-    
+        self._item_manager = None
+        self._mission_manager = None
+        self.get_user_init_manager = None
     
     
     def get_building_manager(self) -> BuildingDBManager:
@@ -48,6 +50,20 @@ class DBManager:
         if self._buff_manager is None:
             self._buff_manager = BuffDBManager(self.db_session)
         return self._buff_manager
+    
+    
+    def get_item_manager(self) -> ItemDBManager:
+        """Item DB 관리자 반환 (싱글톤 패턴)"""
+        if self._item_manager is None:
+            self._item_manager = ItemDBManager(self.db_session)
+        return self._item_manager
+    
+    def get_mission_manager(self) -> MissionDBManager:
+        """버프 DB 관리자 반환 (싱글톤 패턴)"""
+        if self._mission_manager is None:
+            self._mission_manager = MissionDBManager(self.db_session)
+        return self._mission_manager
+    
     
     def get_all_table_stats(self) -> Dict[str, Dict[str, Any]]:
         """모든 테이블의 통계 조회 (관리자용)"""

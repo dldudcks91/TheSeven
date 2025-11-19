@@ -7,5 +7,5 @@ mission_idx,category,target_idx,value,required_missions,english_name,korean_name
 101006,unit,402,100,101005,,
 101007,unit,412,100,101006,,
 101008,unit,422,100,101007,,
-101009,hero,,,101008,,
-101010,hero,,,101009,,
+101009,hero,1001,1,101008,,
+101010,hero,1002,1,101009,,

@@ -12,12 +12,11 @@ class ItemManager:
     
     CONFIG_TYPE = 'item'
     
-    def __init__(self, db_manager: DBManager, redis_manager: RedisManager, game_data_manager: GameDataManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self._user_no: int = None 
         self._data: dict = None
         self.db_manager = db_manager
         self.redis_manager = redis_manager
-        self.game_data_manager = game_data_manager
         self._cached_items = None
         self.logger = logging.getLogger(self.__class__.__name__)
         
@@ -314,26 +313,30 @@ class ItemManager:
         try:
             user_no = self.user_no
             
-            # GameData에서 아이템 메타데이터 조회
-            item_config = self.game_data_manager.get_config('item').get(item_idx)
+            # GameDataManager에서 아이템 메타데이터 조회 (BuildingManager 방식)
+            if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
+                self.logger.warning("Item configuration not found")
+                return {"success": False, "message": "Item config not found"}
+            
+            item_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(item_idx)
             
             if not item_config:
                 self.logger.warning(f"Item config not found: {item_idx}")
                 return {"success": False, "message": "Item config not found"}
             
             category = item_config.get('category')
-            item_type = item_config.get('type')
-            target = item_config.get('target')
+            item_type = item_config.get('item_type')
+            target_type = item_config.get('target_type')
             value = item_config.get('value', 0)
             
             # 카테고리별 효과 적용
             if category == 'speedup':
                 # 가속 아이템 - 추후 구현
-                self.logger.info(f"Applied speedup: target={target}, seconds={value * quantity}")
+                self.logger.info(f"Applied speedup: target={target_type}, seconds={value * quantity}")
                 
             elif category == 'resource':
                 # 자원 아이템 - ResourceManager 호출
-                self.logger.info(f"Applied resource: type={target}, amount={value * quantity}")
+                self.logger.info(f"Applied resource: type={target_type}, amount={value * quantity}")
                 
             elif category == 'chest':
                 # 상자 아이템 - 랜덤 보상
@@ -355,8 +358,15 @@ class ItemManager:
             item_idx = self.data.get('item_idx')
             user_no = self.user_no
             
-            # 1. 메타데이터 조회
-            item_config = self.game_data_manager.get_config('item').get(item_idx)
+            # 1. GameDataManager에서 메타데이터 조회 (BuildingManager 방식)
+            if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
+                return {
+                    "success": False,
+                    "message": "Item configuration not found",
+                    "data": {}
+                }
+            
+            item_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(item_idx)
             
             if not item_config:
                 return {
