@@ -1,5 +1,7 @@
 # APIManager.py (비동기 버전)
-from services.system import SystemManager, GameDataManager, LoginManager, UserInitManager
+from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
+#from services.system.GameDataManager import
+#from services.system.UserInitManager import 
 from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager 
 from fastapi import HTTPException
 
