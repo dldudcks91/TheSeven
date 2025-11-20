@@ -10,6 +10,9 @@ from .resource_db_manager import ResourceDBManager
 from .item_db_manager import ItemDBManager
 from .buff_db_manager import BuffDBManager
 from .mission_db_manager import MissionDBManager
+from .user_init_db_manager import UserInitDBManager
+
+
 
 from .DBManager import DBManager
 

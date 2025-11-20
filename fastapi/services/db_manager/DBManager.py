@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 
-from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager
+from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager, UserInitDBManager
 
 
 class DBManager:
@@ -18,7 +18,7 @@ class DBManager:
         
         self._item_manager = None
         self._mission_manager = None
-        self.get_user_init_manager = None
+        self._user_init_manager = None
     
     
     def get_building_manager(self) -> BuildingDBManager:
@@ -63,6 +63,12 @@ class DBManager:
         if self._mission_manager is None:
             self._mission_manager = MissionDBManager(self.db_session)
         return self._mission_manager
+    
+    def get_user_init_manager(self) -> UserInitDBManager:
+        """버프 DB 관리자 반환 (싱글톤 패턴)"""
+        if self._user_init_manager is None:
+            self._user_init_manager = UserInitDBManager(self.db_session)
+        return self._user_init_manager
     
     
     def get_all_table_stats(self) -> Dict[str, Dict[str, Any]]:
