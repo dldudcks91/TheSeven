@@ -8,7 +8,7 @@ import logging
 
 
 class UserInitDBManager:
-    """유저 초기화 전용 DB 관리자 - 순수 데이터 조회/저장만 담당"""
+    """유저 초기화 전용 DB 관리자 - DB Lock 방식으로 ID 생성"""
     
     def __init__(self, db_session: Session):
         self.db = db_session
@@ -22,28 +22,65 @@ class UserInitDBManager:
             "data": data or {}
         }
     
-    def create_stat_nation(self, account_no: int, user_no: int) -> Dict[str, Any]:
+    def generate_next_account_no(self) -> Dict[str, Any]:
         """
-        stat_nation 테이블에 데이터 생성
-        account_no와 user_no는 이미 Redis에서 생성된 값을 받음
+        다음 account_no 생성 (DB에서 직접 조회)
+        SELECT MAX + 1 방식
+        
+        Returns:
+            {"success": bool, "message": str, "data": {"account_no": int}}
+        """
+        try:
+            # DB에서 현재 최대값 조회
+            max_account_no = self.db.query(
+                func.max(models.StatNation.account_no)
+            ).scalar() or 0
+            
+            new_account_no = max_account_no + 1
+            
+            self.logger.debug(f"Generated account_no: {new_account_no}")
+            
+            return self._format_response(
+                True,
+                f"Generated account_no: {new_account_no}",
+                {"account_no": new_account_no}
+            )
+            
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error generating account_no: {e}")
+            return self._format_response(False, f"Database error: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Error generating account_no: {e}")
+            return self._format_response(False, f"Error: {str(e)}")
+    
+    def create_stat_nation(self, account_no: int) -> Dict[str, Any]:
+        """
+        stat_nation 테이블에 데이터 생성 (user_no는 auto increment)
         
         Args:
-            account_no: Redis에서 생성된 계정 번호
-            user_no: Redis에서 생성된 유저 번호
+            account_no: 생성된 계정 번호
+            
+        Returns:
+            {"success": bool, "message": str, "data": {"user_no": int, "account_no": int}}
         """
         try:
             current_time = datetime.utcnow()
             
-            # Redis에서 생성된 ID로 새 레코드 생성
+            # user_no는 auto increment로 자동 생성
             new_stat = models.StatNation(
                 account_no=account_no,
-                user_no=user_no,
                 cr_dt=current_time,
                 last_dt=current_time
             )
             
             self.db.add(new_stat)
-            self.db.flush()  # commit 대신 flush
+            self.db.flush()  # user_no 생성을 위해 flush
+            
+            user_no = new_stat.user_no
+            
+            self.logger.debug(
+                f"Created stat_nation: account_no={account_no}, user_no={user_no}"
+            )
             
             return self._format_response(
                 True,
@@ -76,7 +113,7 @@ class UserInitDBManager:
             )
             
             self.db.add(new_resources)
-            self.db.flush()  # commit 대신 flush
+            self.db.flush()
             
             return self._format_response(
                 True,
@@ -114,7 +151,7 @@ class UserInitDBManager:
             )
             
             self.db.add(new_building)
-            self.db.flush()  # commit 대신 flush
+            self.db.flush()
             
             return self._format_response(
                 True,
@@ -236,7 +273,7 @@ class UserInitDBManager:
     def get_max_ids(self) -> Dict[str, Any]:
         """
         DB에서 현재 최대 account_no와 user_no 조회
-        Redis 초기화시 사용
+        통계용
         """
         try:
             max_account_no = self.db.query(
@@ -290,4 +327,22 @@ class UserInitDBManager:
             return self._format_response(False, f"Database error: {str(e)}")
         except Exception as e:
             self.logger.error(f"Error getting recent users: {e}")
+            return self._format_response(False, f"Error: {str(e)}")
+    
+    def get_total_user_count(self) -> Dict[str, Any]:
+        """전체 유저 수 조회"""
+        try:
+            total_count = self.db.query(func.count(models.StatNation.user_no)).scalar()
+            
+            return self._format_response(
+                True,
+                f"Total users: {total_count}",
+                {"total_count": total_count}
+            )
+            
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error getting user count: {e}")
+            return self._format_response(False, f"Database error: {str(e)}")
+        except Exception as e:
+            self.logger.error(f"Error getting user count: {e}")
             return self._format_response(False, f"Error: {str(e)}")
