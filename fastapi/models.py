@@ -1,9 +1,10 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, TIMESTAMP, text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, TIMESTAMP, text, String
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.ext.declarative import declarative_base
 
 class Base(DeclarativeBase):
     pass
@@ -165,3 +166,16 @@ class Resources(Base):
     ruby: Mapped[Optional[int]] = mapped_column(Integer)
 
     stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='resources')
+
+
+
+
+Base = declarative_base()
+
+class IDCounter(Base):
+    """ID 생성을 위한 Counter 테이블"""
+    __tablename__ = 'id_counter'
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    counter_type: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    current_value: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'0'"))

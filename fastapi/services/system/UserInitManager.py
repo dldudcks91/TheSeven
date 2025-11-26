@@ -9,8 +9,8 @@ from typing import Dict, Any, Optional
 
 class UserInitManager:
     """
-    신규 유저 초기화 Manager - DB Lock 방식
-    Redis 없이 DB만 사용하는 단순한 구조
+    신규 유저 초기화 Manager - account_no와 user_no 모두 Counter로 관리
+    완벽한 동시성 제어
     """
     
     # 초기 설정값
@@ -34,11 +34,11 @@ class UserInitManager:
     
     async def create_new_user(self) -> Dict[str, Any]:
         """
-        신규 유저 생성 - DB Lock 방식
+        신규 유저 생성 - Counter 방식
         
         프로세스:
-        1. account_no 생성 (SELECT MAX + 1)
-        2. stat_nation 생성 (user_no는 auto increment)
+        1. account_no와 user_no를 Counter에서 동시 생성 (FOR UPDATE로 안전)
+        2. stat_nation 생성
         3. 초기 자원 생성
         4. 초기 건물 생성
         5. DB Commit
@@ -54,22 +54,25 @@ class UserInitManager:
             # UserInitDBManager 가져오기
             user_init_db = self.db_manager.get_user_init_manager()
             
-            # 1. account_no 생성 (SELECT MAX + 1)
-            account_result = user_init_db.generate_next_account_no()
-            if not account_result['success']:
-                return account_result
+            # 1. account_no와 user_no 동시 생성 (원자적 연산)
+            ids_result = user_init_db.generate_next_ids()
+            if not ids_result['success']:
+                return ids_result
             
-            account_no = account_result['data']['account_no']
-            self.logger.debug(f"Generated account_no: {account_no}")
+            account_no = ids_result['data']['account_no']
+            user_no = ids_result['data']['user_no']
             
-            # 2. stat_nation 생성 (user_no는 auto increment)
-            stat_result = user_init_db.create_stat_nation(account_no)
+            self.logger.debug(
+                f"Generated IDs - account_no: {account_no}, user_no: {user_no}"
+            )
+            
+            # 2. stat_nation 생성 (Counter에서 받은 ID 사용)
+            stat_result = user_init_db.create_stat_nation(account_no, user_no)
             if not stat_result['success']:
-                self.db_manager.db.rollback()
+                self.db_manager.rollback()
                 return stat_result
             
-            user_no = stat_result['data']['user_no']
-            self.logger.debug(f"Created stat_nation: user_no={user_no}, account_no={account_no}")
+            self.logger.debug(f"Created stat_nation: account_no={account_no}, user_no={user_no}")
             
             # 3. 초기 자원 생성
             resources_result = user_init_db.create_resources(
@@ -78,7 +81,7 @@ class UserInitManager:
             )
             if not resources_result['success']:
                 self.logger.error(f"Failed to create resources: {resources_result['message']}")
-                self.db_manager.db.rollback()
+                self.db_manager.rollback()
                 return resources_result
             
             # 4. 초기 건물 생성
@@ -86,11 +89,11 @@ class UserInitManager:
                 building_result = user_init_db.create_building(user_no, building_config)
                 if not building_result['success']:
                     self.logger.error(f"Failed to create building: {building_result['message']}")
-                    self.db_manager.db.rollback()
+                    self.db_manager.rollback()
                     return building_result
             
             # 5. DB Commit
-            self.db_manager.db.commit()
+            self.db_manager.commit()
             
             self.logger.info(
                 f"New user created successfully: "
@@ -107,7 +110,7 @@ class UserInitManager:
             }
             
         except Exception as e:
-            self.db_manager.db.rollback()
+            self.db_manager.rollback()
             self.logger.error(f"Error creating new user: {e}")
             return {
                 "success": False,
@@ -130,21 +133,20 @@ class UserInitManager:
             created_users = []
             
             for i in range(count):
-                # 1. account_no 생성
-                account_result = user_init_db.generate_next_account_no()
-                if not account_result['success']:
-                    self.db_manager.db.rollback()
-                    return account_result
+                # 1. account_no와 user_no 생성
+                ids_result = user_init_db.generate_next_ids()
+                if not ids_result['success']:
+                    self.db_manager.rollback()
+                    return ids_result
                 
-                account_no = account_result['data']['account_no']
+                account_no = ids_result['data']['account_no']
+                user_no = ids_result['data']['user_no']
                 
                 # 2. stat_nation 생성
-                stat_result = user_init_db.create_stat_nation(account_no)
+                stat_result = user_init_db.create_stat_nation(account_no, user_no)
                 if not stat_result['success']:
-                    self.db_manager.db.rollback()
+                    self.db_manager.rollback()
                     return stat_result
-                
-                user_no = stat_result['data']['user_no']
                 
                 # 3. 자원 생성
                 resources_result = user_init_db.create_resources(
@@ -152,7 +154,7 @@ class UserInitManager:
                     self.INITIAL_CONFIG["resources"]
                 )
                 if not resources_result['success']:
-                    self.db_manager.db.rollback()
+                    self.db_manager.rollback()
                     return resources_result
                 
                 # 4. 건물 생성 (배치)
@@ -161,7 +163,7 @@ class UserInitManager:
                     self.INITIAL_CONFIG["buildings"]
                 )
                 if not building_result['success']:
-                    self.db_manager.db.rollback()
+                    self.db_manager.rollback()
                     return building_result
                 
                 created_users.append({
@@ -174,7 +176,7 @@ class UserInitManager:
                     self.logger.info(f"Progress: {i + 1}/{count} users created")
             
             # DB Commit
-            self.db_manager.db.commit()
+            self.db_manager.commit()
             
             self.logger.info(f"Created {count} users successfully")
             
@@ -185,7 +187,7 @@ class UserInitManager:
             }
             
         except Exception as e:
-            self.db_manager.db.rollback()
+            self.db_manager.rollback()
             self.logger.error(f"Error creating multiple users: {e}")
             return {
                 "success": False,
@@ -272,7 +274,10 @@ class UserInitManager:
         try:
             user_init_db = self.db_manager.get_user_init_manager()
             
-            # 최대 ID 조회
+            # Counter 값 조회
+            counters = user_init_db.get_all_counter_values()
+            
+            # 최대 ID 조회 (DB)
             max_ids = user_init_db.get_max_ids()
             
             # 전체 유저 수
@@ -285,8 +290,9 @@ class UserInitManager:
                 "success": True,
                 "message": "Stats retrieved",
                 "data": {
-                    "max_account_no": max_ids['data']['max_account_no'] if max_ids['success'] else 0,
-                    "max_user_no": max_ids['data']['max_user_no'] if max_ids['success'] else 0,
+                    "counters": counters['data'].get('counters', {}) if counters['success'] else {},
+                    "db_max_account_no": max_ids['data']['max_account_no'] if max_ids['success'] else 0,
+                    "db_max_user_no": max_ids['data']['max_user_no'] if max_ids['success'] else 0,
                     "total_users": total_count['data']['total_count'] if total_count['success'] else 0,
                     "recent_users": recent_users['data'].get('users', []) if recent_users['success'] else []
                 }
