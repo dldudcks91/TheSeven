@@ -467,20 +467,17 @@
                     </div>
                 </div>
                 
-                <!-- 임무/퀘스트 (왼쪽 하단) -->
+                 <!-- 임무/퀘스트 (왼쪽 하단) -->
                 <div class="game-section">
-                    <h3>임무 관리 <button class="refresh-btn" onclick="loadMissions()">새로고침</button></h3>
-                    <div id="missionList" class="unit-list">
-                        <div class="unit-item">
-                            <strong>일일 임무:</strong> 식량 1000개 생산
-                            <button onclick="claimMission('daily_food')">보상 받기</button>
-                        </div>
-                        <div class="unit-item">
-                            <strong>주간 임무:</strong> 건물 3개 업그레이드
-                            <button onclick="claimMission('weekly_build')">진행중</button>
-                        </div>
-                    </div>
+                    
+                    <iframe 
+                        id="missionFrame" 
+                        src="mission.html" 
+                        style="width: 100%; height: calc(100% - 0px); border: none;">
+                    </iframe>
                 </div>
+
+                
                 
                 <!-- 상점/교역 (오른쪽 하단) -->
                 <div class="game-section">
@@ -591,7 +588,7 @@
             
             
             // 모든 iframe에 플레이어 ID 전달
-            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame'];
+            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame'];
             
             frameIds.forEach(frameId => {
                 const frame = document.getElementById(frameId);
@@ -796,13 +793,7 @@
         
         
         // 임무 액션
-        function loadMissions() {
-            showToast('임무 데이터를 새로고침했습니다.', 'success');
-        }
         
-        function claimMission(missionId) {
-            showToast(`임무 보상을 받았습니다: ${missionId}`, 'success');
-        }
         
         // 상점 액션
         function loadShop() {
