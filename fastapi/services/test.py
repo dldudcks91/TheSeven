@@ -14,7 +14,7 @@ redis_client = redis.Redis(
 redis_manager = RedisManager(redis_client)
 
 
-redis_client.flushall()
+#redis_client.flushall()
 #%%
 
 server_info = redis_client.info()

@@ -13,12 +13,12 @@ class MissionManager:
     
     CONFIG_TYPE = 'mission'
     
-    def __init__(self, db_manager: DBManager, redis_manager: RedisManager, game_data_manager: GameDataManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self._user_no: int = None
         self._data: dict = None
         self.db_manager = db_manager
         self.redis_manager = redis_manager
-        self.game_data_manager = game_data_manager
+        
         self._cached_missions = None
         self.logger = logging.getLogger(self.__class__.__name__)
     
@@ -119,7 +119,8 @@ class MissionManager:
         """DB에서 미션 데이터 조회 (Config + 완료 이력)"""
         try:
             # 1. GameData에서 전체 미션 Config 조회
-            all_missions = self.game_data_manager.get_all_missions()
+            
+            all_missions = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
             
             # 2. DB에서 완료된 미션 조회
             mission_db = self.db_manager.get_mission_manager()

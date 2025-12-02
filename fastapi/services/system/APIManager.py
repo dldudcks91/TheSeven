@@ -39,7 +39,9 @@ class APIManager():
         4003: (UnitManager, UnitManager.unit_upgrade),
         #4004: (UnitManager, UnitManager.unit_finish),
         
+        # === 미션 API (5xxx) ===
         
+        5001: (MissionManager, MissionManager.mission_claim),
         
         
     }

@@ -318,12 +318,6 @@
             <h3>📋 미션</h3>
         </div>
         
-        <div class="controls">
-            <input type="number" id="userIdInput" placeholder="플레이어 ID 입력" min="1" value="1">
-            <button onclick="loadMissions()">미션 로드</button>
-            <button onclick="location.reload()">새로고침</button>
-        </div>
-        
         <table class="mission-table">
             <thead>
                 <tr>
@@ -386,7 +380,58 @@
             '111001': { icon: '🎫', name: '소환권' },
             '112001': { icon: '⭐', name: '경험치' }
         };
+        
+        // ========================================
+        // 메시지 리스너 (부모 창과 통신)
+        // ========================================
+        
+        window.addEventListener('message', function(event) {
+            // 유저 ID 설정
+            if (event.data && event.data.type === 'set_player_id') {
+                const newUserId = event.data.userId;
+                
+                if (userId !== newUserId) {
+                    userId = newUserId;
+                    console.log('👤 User ID 설정:', userId);
+                    
+                    // Config가 이미 로드되어 있으면 미션 로드
+                    if (Object.keys(missionConfig).length > 0) {
+                        loadMissions();
+                    }
+                }
+            }
+            
+            // Config 데이터 수신
+            if (event.data && event.data.type === 'response_config') {
+                const configData = event.data.payload;
+                missionConfig = configData;
+                
+                console.log('📦 Mission Config 로드 완료:', missionConfig);
+                
+                // userId가 이미 설정되어 있으면 미션 로드
+                if (userId) {
+                    loadMissions();
+                } else {
+                    // userId 없으면 Config만으로 빈 테이블 렌더링
+                    renderMissions();
+                }
+            }
+        });
+        
+        // 페이지 로드 시 부모 창에 Config 요청
+        window.onload = function() {
+            window.parent.postMessage({
+                type: 'request_config',
+                configType: 'mission'
+            }, '*');
+            
+            console.log('📤 Mission Config 요청 전송');
+        };
 
+        // ========================================
+        // 유틸리티
+        // ========================================
+        
         function showResult(message) {
             const resultBox = document.getElementById('resultBox');
             resultBox.textContent = message;
@@ -395,160 +440,70 @@
                 resultBox.style.display = 'none';
             }, 3000);
         }
+        
+        // ========================================
+        // API 함수
+        // ========================================
 
         async function loadMissions() {
-            const userIdInput = document.getElementById('userIdInput');
-            userId = userIdInput.value;
-            
             if (!userId) {
-                showResult('플레이어 ID를 입력하세요');
+                showResult('플레이어 ID가 설정되지 않았습니다.');
                 return;
             }
 
             try {
                 showResult('미션 데이터 로드 중...');
                 
-                // 가데이터 생성
-                generateMockData();
-                
-                // 실제 API 호출 시 사용
-                /*
                 const response = await fetch('/api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_no: parseInt(userId),
-                        api_code: 5001
+                        api_code: 1013, // 미션 조회 API
+                        data: {}
                     })
                 });
                 
                 const result = await response.json();
+                console.log('🎯 Mission API Response:', result);
                 
                 if (result.success && result.data) {
-                    missionConfig = result.data.mission_config || {};
-                    userMissionProgress = result.data.user_missions || {};
+                    // 유저 진행 상태 저장
+                    userMissionProgress = result.data;
+                    
                     renderMissions();
                     showResult('미션 로드 완료!');
+                } else {
+                    // 실패 시 빈 데이터로 초기화
+                    userMissionProgress = {};
+                    Object.keys(missionConfig).forEach(missionIdx => {
+                        userMissionProgress[missionIdx] = {
+                            current_value: 0,
+                            is_completed: false,
+                            is_claimed: false
+                        };
+                    });
+                    
+                    renderMissions();
+                    showResult('미션 로드 실패: ' + (result.message || '기본값으로 표시'));
                 }
-                */
-                
-                renderMissions();
-                showResult('미션 로드 완료!');
                 
             } catch (error) {
                 console.error('미션 로드 에러:', error);
+                
+                // 에러 시 빈 데이터로 초기화
+                userMissionProgress = {};
+                Object.keys(missionConfig).forEach(missionIdx => {
+                    userMissionProgress[missionIdx] = {
+                        current_value: 0,
+                        is_completed: false,
+                        is_claimed: false
+                    };
+                });
+                
+                renderMissions();
                 showResult('미션 로드 실패: ' + error.message);
             }
-        }
-        
-        function generateMockData() {
-            // Config 데이터
-            missionConfig = {
-                "101001": {
-                    "mission_idx": 101001,
-                    "category": "building",
-                    "target_idx": 201,
-                    "value": 3,
-                    "required_missions": "",
-                    "reward": { "21001": 1000, "22001": 500 },
-                    "korean_name": "시청 3레벨 달성"
-                },
-                "101002": {
-                    "mission_idx": 101002,
-                    "category": "building",
-                    "target_idx": 201,
-                    "value": 5,
-                    "required_missions": "101001",
-                    "reward": { "21001": 2000, "22001": 1000 },
-                    "korean_name": "시청 5레벨 달성"
-                },
-                "101003": {
-                    "mission_idx": 101003,
-                    "category": "research",
-                    "target_idx": 1001,
-                    "value": 1,
-                    "required_missions": "101002",
-                    "reward": { "21002": 1500, "22002": 10 },
-                    "korean_name": "연구 1001 1레벨 달성"
-                },
-                "101004": {
-                    "mission_idx": 101004,
-                    "category": "research",
-                    "target_idx": 20201,
-                    "value": 1,
-                    "required_missions": "101003",
-                    "reward": { "31001": 3 },
-                    "korean_name": "연구 20201 1레벨 달성"
-                },
-                "101005": {
-                    "mission_idx": 101005,
-                    "category": "unit",
-                    "target_idx": 401,
-                    "value": 100,
-                    "required_missions": "101004",
-                    "reward": { "31002": 2 },
-                    "korean_name": "병사 401 100마리 생산"
-                },
-                "101006": {
-                    "mission_idx": 101006,
-                    "category": "unit",
-                    "target_idx": 402,
-                    "value": 100,
-                    "required_missions": "101005",
-                    "reward": { "31003": 1 },
-                    "korean_name": "병사 402 100마리 생산"
-                },
-                "101007": {
-                    "mission_idx": 101007,
-                    "category": "unit",
-                    "target_idx": 412,
-                    "value": 100,
-                    "required_missions": "101006",
-                    "reward": { "111001": 3 },
-                    "korean_name": "병사 412 100마리 생산"
-                },
-                "101008": {
-                    "mission_idx": 101008,
-                    "category": "unit",
-                    "target_idx": 422,
-                    "value": 100,
-                    "required_missions": "101007",
-                    "reward": { "112001": 1000 },
-                    "korean_name": "병사 422 100마리 생산"
-                },
-                "101009": {
-                    "mission_idx": 101009,
-                    "category": "hero",
-                    "target_idx": 1001,
-                    "value": 1,
-                    "required_missions": "101008",
-                    "reward": { "112001": 2000 },
-                    "korean_name": "영웅 1001 획득"
-                },
-                "101010": {
-                    "mission_idx": 101010,
-                    "category": "hero",
-                    "target_idx": 1002,
-                    "value": 1,
-                    "required_missions": "101009",
-                    "reward": { "112001": 5000 },
-                    "korean_name": "영웅 1002 획득"
-                }
-            };
-            
-            // 유저 진행 상태 (가데이터)
-            userMissionProgress = {
-                "101001": { current_value: 3, is_completed: true, is_claimed: true },
-                "101002": { current_value: 5, is_completed: true, is_claimed: false },
-                "101003": { current_value: 0, is_completed: false, is_claimed: false },
-                "101004": { current_value: 0, is_completed: false, is_claimed: false },
-                "101005": { current_value: 45, is_completed: false, is_claimed: false },
-                "101006": { current_value: 0, is_completed: false, is_claimed: false },
-                "101007": { current_value: 0, is_completed: false, is_claimed: false },
-                "101008": { current_value: 0, is_completed: false, is_claimed: false },
-                "101009": { current_value: 0, is_completed: false, is_claimed: false },
-                "101010": { current_value: 0, is_completed: false, is_claimed: false }
-            };
         }
 
         function renderMissions() {
@@ -703,21 +658,19 @@
 
         async function claimReward(missionIdx) {
             if (!userId) {
-                showResult('플레이어 ID를 입력하세요');
+                showResult('플레이어 ID가 설정되지 않았습니다.');
                 return;
             }
             
             try {
                 showResult('보상 수령 중...');
                 
-                // 실제 API 호출
-                /*
                 const response = await fetch('/api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_no: parseInt(userId),
-                        api_code: 5002,
+                        api_code: 5002, // 미션 보상 수령 API
                         data: {
                             mission_idx: missionIdx
                         }
@@ -725,23 +678,19 @@
                 });
                 
                 const result = await response.json();
+                console.log('🎁 Claim reward result:', result);
                 
                 if (result.success) {
-                    userMissionProgress[missionIdx].is_claimed = true;
+                    // 유저 진행 상태 업데이트
+                    if (userMissionProgress[missionIdx]) {
+                        userMissionProgress[missionIdx].is_claimed = true;
+                    }
+                    
                     renderMissions();
                     showResult('보상을 받았습니다! 🎉');
                 } else {
                     showResult('보상 수령 실패: ' + (result.message || '알 수 없는 오류'));
                 }
-                */
-                
-                // 가데이터로 시뮬레이션
-                if (userMissionProgress[missionIdx]) {
-                    userMissionProgress[missionIdx].is_claimed = true;
-                }
-                
-                renderMissions();
-                showResult('보상을 받았습니다! 🎉');
                 
             } catch (error) {
                 console.error('보상 수령 에러:', error);
@@ -749,9 +698,12 @@
             }
         }
 
-        // 페이지 로드 시 자동 로드
-        window.addEventListener('load', function() {
-            loadMissions();
+        // 페이지 활성화 시 데이터 새로고침 (선택적)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && userId) {
+                console.log('👀 페이지 활성화 - 미션 데이터 새로고침');
+                loadMissions();
+            }
         });
     </script>
 </body>
