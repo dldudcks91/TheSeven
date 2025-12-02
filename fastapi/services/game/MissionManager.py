@@ -136,10 +136,10 @@ class MissionManager:
             
             # 3. Config와 완료 이력 조합
             formatted_missions = []
-            for mission in all_missions:
-                mission_idx = mission['mission_idx']
+            for key, value in all_missions.items():
+                mission_idx = key
                 mission_data = {
-                    **mission,
+                    **value,
                     'completed': mission_idx in completed_set,
                     'completed_at': completed_times.get(mission_idx)
                 }

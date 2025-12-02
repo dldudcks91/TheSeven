@@ -48,7 +48,7 @@ for key in all_keys:
     
 print(zset_keys)
 #%%
-HASH_KEY = zset_keys['string'][3]
+HASH_KEY = zset_keys['string'][2]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     
