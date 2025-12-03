@@ -9,7 +9,7 @@ import logging
 
 
 class MissionManager:
-    """미션 관리자 - 컴포넌트 기반 구조"""
+    """미션 관리자 - 최소 데이터 전송"""
     
     CONFIG_TYPE = 'mission'
     
@@ -19,7 +19,7 @@ class MissionManager:
         self.db_manager = db_manager
         self.redis_manager = redis_manager
         
-        self._cached_missions = None
+        self._cached_progress = None
         self.logger = logging.getLogger(self.__class__.__name__)
     
     @property
@@ -31,7 +31,7 @@ class MissionManager:
         if not isinstance(no, int):
             raise ValueError("user_no는 정수여야 합니다.")
         self._user_no = no
-        self._cached_missions = None
+        self._cached_progress = None
     
     @property
     def data(self):
@@ -61,103 +61,154 @@ class MissionManager:
             }
         return None
     
-    def _format_mission_for_cache(self, mission_data):
-        """캐시용 미션 데이터 포맷팅"""
-        try:
-            return {
-                "mission_idx": mission_data.get('mission_idx'),
-                "category": mission_data.get('category'),
-                "target_idx": mission_data.get('target_idx'),
-                "value": mission_data.get('value'),
-                "required_missions": mission_data.get('required_missions', []),
-                "english_name": mission_data.get('english_name'),
-                "korean_name": mission_data.get('korean_name'),
-                "completed": mission_data.get('completed', False),
-                "completed_at": mission_data.get('completed_at'),
-                "cached_at": datetime.utcnow().isoformat()
+    async def get_user_mission_progress(self) -> Dict[int, Dict[str, Any]]:
+        """
+        유저 미션 진행 상태만 조회
+        Config는 프론트엔드가 이미 가지고 있음
+        
+        Returns:
+            {
+                101001: {"current_value": 3, "is_completed": True, "is_claimed": True},
+                101002: {"current_value": 5, "is_completed": True, "is_claimed": False}
             }
-        except Exception as e:
-            self.logger.error(f"Error formatting mission data for cache: {e}")
-            return {}
-    
-    async def get_user_missions(self):
-        """사용자 미션 데이터를 캐시 우선으로 조회"""
-        if self._cached_missions is not None:
-            return self._cached_missions
+        """
+        if self._cached_progress is not None:
+            return self._cached_progress
         
         user_no = self.user_no
         
         try:
             # 1. Redis 캐시에서 먼저 조회
             mission_redis = self.redis_manager.get_mission_manager()
-            self._cached_missions = await mission_redis.get_user_missions(user_no)
+            self._cached_progress = await mission_redis.get_user_progress(user_no)
             
-            if self._cached_missions:
-                self.logger.debug(f"Cache hit: Retrieved {len(self._cached_missions)} missions for user {user_no}")
-                return self._cached_missions
+            if self._cached_progress:
+                self.logger.debug(f"Cache hit: Retrieved progress for {len(self._cached_progress)} missions")
+                return self._cached_progress
             
-            # 2. 캐시 미스: Config + DB 조합
-            missions_data = self.get_db_missions(user_no)
+            # 2. 캐시 미스: DB 조회 + 계산
+            progress = await self._calculate_mission_progress(user_no)
             
-            if missions_data['success'] and missions_data['data']:
-                # 3. Redis에 캐싱
-                cache_success = await mission_redis.cache_user_missions(user_no, missions_data['data'])
-                if cache_success:
-                    self.logger.debug(f"Successfully cached {len(missions_data['data'])} missions for user {user_no}")
-                
-                self._cached_missions = missions_data['data']
-            else:
-                self._cached_missions = []
-                
+            # 3. Redis에 캐싱
+            if progress:
+                await mission_redis.cache_user_progress(user_no, progress)
+            
+            self._cached_progress = progress
+            
         except Exception as e:
-            self.logger.error(f"Error getting user missions for user {user_no}: {e}")
-            self._cached_missions = []
+            self.logger.error(f"Error getting user mission progress for user {user_no}: {e}")
+            self._cached_progress = {}
         
-        return self._cached_missions
+        return self._cached_progress
     
-    def get_db_missions(self, user_no):
-        """DB에서 미션 데이터 조회 (Config + 완료 이력)"""
+    async def _calculate_mission_progress(self, user_no: int) -> Dict[int, Dict[str, Any]]:
+        """
+        미션 진행도 계산
+        - Config에서 모든 미션 목록 가져오기
+        - DB에서 완료 이력 가져오기
+        - 각 미션의 current_value 계산
+        """
         try:
-            # 1. GameData에서 전체 미션 Config 조회
+            # 1. Config에서 전체 미션 목록
+            all_missions_data = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE)
             
-            all_missions = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
+            if not all_missions_data:
+                self.logger.error(f"No mission config found")
+                return {}
             
-            # 2. DB에서 완료된 미션 조회
+            # Dict → List 변환
+            if isinstance(all_missions_data, dict):
+                all_missions = list(all_missions_data.values())
+            elif isinstance(all_missions_data, list):
+                all_missions = all_missions_data
+            else:
+                self.logger.error(f"Invalid mission config type: {type(all_missions_data)}")
+                return {}
+            
+            # 2. DB에서 완료 이력 조회
             mission_db = self.db_manager.get_mission_manager()
             completed_result = mission_db.get_completed_missions(user_no)
             
             completed_set = set()
-            completed_times = {}
-            
             if completed_result['success']:
-                for item in completed_result['data']:
-                    completed_set.add(item['mission_idx'])
-                    completed_times[item['mission_idx']] = item.get('completed_at')
+                completed_set = {item['mission_idx'] for item in completed_result['data']}
             
-            # 3. Config와 완료 이력 조합
-            formatted_missions = []
-            for key, value in all_missions.items():
-                mission_idx = key
-                mission_data = {
-                    **value,
-                    'completed': mission_idx in completed_set,
-                    'completed_at': completed_times.get(mission_idx)
+            # 3. 진행도 계산
+            progress = {}
+            
+            for mission in all_missions:
+                if not isinstance(mission, dict):
+                    continue
+                
+                mission_idx = mission.get('mission_idx')
+                if not mission_idx:
+                    continue
+                
+                category = mission.get('category')
+                target_idx = mission.get('target_idx')
+                target_value = mission.get('value', 0)
+                
+                # 현재 진행도 계산
+                current_value = 0
+                if mission_idx in completed_set:
+                    current_value = target_value  # 완료되면 목표값과 동일
+                else:
+                    # 카테고리별로 현재 값 조회
+                    current_value = await self._get_current_value(
+                        user_no, category, target_idx
+                    )
+                
+                # 진행 상태 저장
+                progress[mission_idx] = {
+                    "current_value": current_value,
+                    "is_completed": mission_idx in completed_set,
+                    "is_claimed": mission_idx in completed_set  # 완료 = 수령으로 간주
                 }
-                formatted_missions.append(self._format_mission_for_cache(mission_data))
             
-            return {
-                "success": True,
-                "message": f"Loaded {len(formatted_missions)} missions",
-                "data": formatted_missions
-            }
+            return progress
             
         except Exception as e:
-            self.logger.error(f"Error loading missions from DB for user {user_no}: {e}")
-            return {
-                "success": False,
-                "message": f"Database error: {str(e)}",
-                "data": []
-            }
+            self.logger.error(f"Error calculating mission progress: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return {}
+    
+    async def _get_current_value(self, user_no: int, category: str, target_idx: int) -> int:
+        """카테고리별 현재 진행도 조회"""
+        try:
+            if category == 'building':
+                building_manager = self._get_building_manager()
+                building_manager.user_no = user_no
+                buildings = await building_manager.get_user_buildings()
+                
+                building = buildings.get(str(target_idx))
+                if building:
+                    return building.get('building_lv', 0)
+                
+            elif category == 'unit':
+                unit_manager = self._get_unit_manager()
+                unit_manager.user_no = user_no
+                units = await unit_manager.get_user_units()
+                
+                unit = units.get(str(target_idx))
+                if unit:
+                    return unit.get('total', 0)
+                
+            elif category == 'research':
+                research_manager = self._get_research_manager()
+                research_manager.user_no = user_no
+                researches = await research_manager.get_user_researches()
+                
+                # 연구는 완료 여부만 체크 (있으면 1, 없으면 0)
+                research = researches.get(str(target_idx))
+                if research and research.get('status') == 0:  # 완료 상태
+                    return 1
+            
+            return 0
+            
+        except Exception as e:
+            self.logger.error(f"Error getting current value: {e}")
+            return 0
     
     async def invalidate_user_mission_cache(self, user_no: int):
         """사용자 미션 캐시 무효화"""
@@ -167,34 +218,46 @@ class MissionManager:
             
             # 메모리 캐시도 무효화
             if self._user_no == user_no:
-                self._cached_missions = None
+                self._cached_progress = None
             
-            self.logger.debug(f"Mission cache invalidated for user {user_no}: {cache_invalidated}")
+            self.logger.debug(f"Mission cache invalidated for user {user_no}")
             return cache_invalidated
             
         except Exception as e:
-            self.logger.error(f"Error invalidating mission cache for user {user_no}: {e}")
+            self.logger.error(f"Error invalidating mission cache: {e}")
             return False
     
     #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
     
     async def mission_info(self):
-        """미션 정보 조회 - 전체 미션 목록"""
+        """
+        미션 정보 조회 - 진행 상태만 반환
+        Config는 프론트엔드가 이미 가지고 있음
+        
+        Response:
+        {
+            "success": True,
+            "data": {
+                101001: {"current_value": 3, "is_completed": True, "is_claimed": True},
+                101002: {"current_value": 5, "is_completed": True, "is_claimed": False}
+            }
+        }
+        """
         try:
-            missions_data = await self.get_user_missions()
+            progress = await self.get_user_mission_progress()
             
             return {
                 "success": True,
-                "message": f"Retrieved {len(missions_data)} missions",
-                "data": missions_data
+                "message": f"Retrieved progress for {len(progress)} missions",
+                "data": progress
             }
             
         except Exception as e:
             self.logger.error(f"Error getting mission info: {e}")
-            return {"success": False, "message": str(e), "data": []}
+            return {"success": False, "message": str(e), "data": {}}
     
-    async def mission_detail(self):
-        """특정 미션 상세 정보 조회"""
+    async def claim_reward(self):
+        """보상 수령"""
         try:
             validation_error = self._validate_input()
             if validation_error:
@@ -203,171 +266,94 @@ class MissionManager:
             mission_idx = self.data.get('mission_idx')
             user_no = self.user_no
             
-            # 1. 미션 목록 조회
-            missions_data = await self.get_user_missions()
+            # 1. 진행 상태 조회
+            progress = await self.get_user_mission_progress()
+            mission_progress = progress.get(mission_idx)
             
-            # 2. 특정 미션 찾기
-            mission = next((m for m in missions_data if m['mission_idx'] == mission_idx), None)
-            
-            if not mission:
+            if not mission_progress:
                 return {
                     "success": False,
                     "message": f"Mission not found: {mission_idx}",
                     "data": {}
                 }
             
-            # 3. 보상 정보 추가
-            rewards = self.game_data_manager.get_mission_rewards(mission_idx)
-            mission['rewards'] = rewards or []
-            
-            return {
-                "success": True,
-                "message": "Mission detail retrieved",
-                "data": mission
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting mission detail: {e}")
-            return {"success": False, "message": str(e), "data": {}}
-    
-    async def mission_available(self):
-        """완료 가능한 미션 목록 조회"""
-        try:
-            user_no = self.user_no
-            
-            # 1. 전체 미션 조회
-            missions_data = await self.get_user_missions()
-            
-            # 2. 미완료 미션만 필터링
-            available_missions = [m for m in missions_data if not m['completed']]
-            
-            return {
-                "success": True,
-                "message": f"Retrieved {len(available_missions)} available missions",
-                "data": available_missions
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting available missions: {e}")
-            return {"success": False, "message": str(e), "data": []}
-    
-    async def mission_completed(self):
-        """완료된 미션 목록 조회"""
-        try:
-            user_no = self.user_no
-            
-            # 1. 전체 미션 조회
-            missions_data = await self.get_user_missions()
-            
-            # 2. 완료 미션만 필터링
-            completed_missions = [m for m in missions_data if m['completed']]
-            
-            return {
-                "success": True,
-                "message": f"Retrieved {len(completed_missions)} completed missions",
-                "data": completed_missions
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting completed missions: {e}")
-            return {"success": False, "message": str(e), "data": []}
-    
-    async def mission_claim(self):
-        """미션 보상 수령 (수동 완료)"""
-        try:
-            validation_error = self._validate_input()
-            if validation_error:
-                return validation_error
-            
-            mission_idx = self.data.get('mission_idx')
-            user_no = self.user_no
-            
-            # 1. 미션 정보 조회
-            missions_data = await self.get_user_missions()
-            mission = next((m for m in missions_data if m['mission_idx'] == mission_idx), None)
-            
-            if not mission:
+            # 2. 완료 여부 확인
+            if not mission_progress['is_completed']:
                 return {
                     "success": False,
-                    "message": "Mission not found",
+                    "message": f"Mission not completed yet: {mission_idx}",
                     "data": {}
                 }
             
-            # 2. 이미 완료된 미션인지 확인
-            if mission['completed']:
+            # 3. 이미 수령했는지 확인
+            if mission_progress['is_claimed']:
                 return {
                     "success": False,
-                    "message": "Mission already completed",
+                    "message": f"Reward already claimed: {mission_idx}",
                     "data": {}
                 }
             
-            # 3. 미션 조건 확인
-            category = mission['category']
-            condition_met = await self._check_mission_condition_by_category(mission, category)
+            # 4. 보상 지급
+            await self._grant_rewards(mission_idx)
             
-            if not condition_met:
-                return {
-                    "success": False,
-                    "message": "Mission condition not met",
-                    "data": {}
-                }
+            # 5. 수령 상태 업데이트
+            mission_redis = self.redis_manager.get_mission_manager()
+            await mission_redis.mark_as_claimed(user_no, mission_idx)
             
-            # 4. 미션 완료 처리
-            await self._complete_mission(mission_idx)
-            
-            # 5. 캐시 무효화
+            # 6. 캐시 무효화
             await self.invalidate_user_mission_cache(user_no)
             
             return {
                 "success": True,
-                "message": "Mission claimed successfully",
-                "data": {
-                    "mission_idx": mission_idx,
-                    "completed_at": datetime.utcnow().isoformat()
-                }
+                "message": f"Reward claimed successfully: {mission_idx}",
+                "data": {}
             }
             
         except Exception as e:
-            self.logger.error(f"Error claiming mission: {e}")
+            self.logger.error(f"Error claiming reward: {e}")
             return {"success": False, "message": str(e), "data": {}}
     
     async def check_building_missions(self):
-        """건물 완성 시 미션 자동 체크"""
+        """건물 레벨업 시 미션 자동 체크"""
         try:
             user_no = self.user_no
             
-            # 1. 활성 미션 조회
-            active_missions = await self._get_active_missions_by_category("building")
+            # 건물 카테고리 미션만 필터링
+            progress = await self.get_user_mission_progress()
+            all_missions = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
             
-            if not active_missions:
-                return {
-                    "success": True,
-                    "message": "No active building missions",
-                    "data": {"checked": 0, "completed": 0}
-                }
+            if isinstance(all_missions, dict):
+                all_missions = list(all_missions.values())
             
-            # 2. 건물 데이터 직접 조회
-            building_manager = self._get_building_manager()
-            building_manager.user_no = user_no
-            buildings = await building_manager.get_user_buildings()
+            # 건물 미션 중 미완료만
+            building_missions = [
+                m for m in all_missions
+                if isinstance(m, dict) 
+                and m.get('category') == 'building'
+                and not progress.get(m.get('mission_idx'), {}).get('is_completed')
+            ]
             
-            # 3. 미션 체크
-            completed_count = await self._check_and_complete_missions(
-                active_missions, 
-                buildings, 
-                "building"
-            )
+            completed_count = 0
             
-            # 4. 캐시 무효화 (미션 상태 변경됨)
+            for mission in building_missions:
+                mission_idx = mission['mission_idx']
+                target_idx = mission['target_idx']
+                target_value = mission['value']
+                
+                # 현재 건물 레벨 확인
+                current_value = await self._get_current_value(user_no, 'building', target_idx)
+                
+                if current_value >= target_value:
+                    await self._complete_mission(mission_idx)
+                    completed_count += 1
+            
             if completed_count > 0:
                 await self.invalidate_user_mission_cache(user_no)
             
-            self.logger.info(f"Building missions checked: user={user_no}, completed={completed_count}")
-            
             return {
                 "success": True,
-                "message": f"Checked {len(active_missions)} missions, {completed_count} completed",
-                "data": {"checked": len(active_missions), "completed": completed_count}
+                "message": f"Checked {len(building_missions)} missions, {completed_count} completed",
+                "data": {"checked": len(building_missions), "completed": completed_count}
             }
             
         except Exception as e:
@@ -379,38 +365,43 @@ class MissionManager:
             }
     
     async def check_unit_missions(self):
-        """유닛 훈련 시 미션 자동 체크"""
+        """유닛 생산 시 미션 자동 체크"""
         try:
             user_no = self.user_no
             
-            active_missions = await self._get_active_missions_by_category("unit")
+            progress = await self.get_user_mission_progress()
+            all_missions = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
             
-            if not active_missions:
-                return {
-                    "success": True,
-                    "message": "No active unit missions",
-                    "data": {"checked": 0, "completed": 0}
-                }
+            if isinstance(all_missions, dict):
+                all_missions = list(all_missions.values())
             
-            unit_manager = self._get_unit_manager()
-            unit_manager.user_no = user_no
-            units = await unit_manager.get_user_units()
+            unit_missions = [
+                m for m in all_missions
+                if isinstance(m, dict)
+                and m.get('category') == 'unit'
+                and not progress.get(m.get('mission_idx'), {}).get('is_completed')
+            ]
             
-            completed_count = await self._check_and_complete_missions(
-                active_missions,
-                units,
-                "unit"
-            )
+            completed_count = 0
+            
+            for mission in unit_missions:
+                mission_idx = mission['mission_idx']
+                target_idx = mission['target_idx']
+                target_value = mission['value']
+                
+                current_value = await self._get_current_value(user_no, 'unit', target_idx)
+                
+                if current_value >= target_value:
+                    await self._complete_mission(mission_idx)
+                    completed_count += 1
             
             if completed_count > 0:
                 await self.invalidate_user_mission_cache(user_no)
             
-            self.logger.info(f"Unit missions checked: user={user_no}, completed={completed_count}")
-            
             return {
                 "success": True,
-                "message": f"Checked {len(active_missions)} missions, {completed_count} completed",
-                "data": {"checked": len(active_missions), "completed": completed_count}
+                "message": f"Checked {len(unit_missions)} missions, {completed_count} completed",
+                "data": {"checked": len(unit_missions), "completed": completed_count}
             }
             
         except Exception as e:
@@ -426,34 +417,38 @@ class MissionManager:
         try:
             user_no = self.user_no
             
-            active_missions = await self._get_active_missions_by_category("research")
+            progress = await self.get_user_mission_progress()
+            all_missions = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
             
-            if not active_missions:
-                return {
-                    "success": True,
-                    "message": "No active research missions",
-                    "data": {"checked": 0, "completed": 0}
-                }
+            if isinstance(all_missions, dict):
+                all_missions = list(all_missions.values())
             
-            research_manager = self._get_research_manager()
-            research_manager.user_no = user_no
-            researches = await research_manager.get_user_researches()
+            research_missions = [
+                m for m in all_missions
+                if isinstance(m, dict)
+                and m.get('category') == 'research'
+                and not progress.get(m.get('mission_idx'), {}).get('is_completed')
+            ]
             
-            completed_count = await self._check_and_complete_missions(
-                active_missions,
-                researches,
-                "research"
-            )
+            completed_count = 0
+            
+            for mission in research_missions:
+                mission_idx = mission['mission_idx']
+                target_idx = mission['target_idx']
+                
+                current_value = await self._get_current_value(user_no, 'research', target_idx)
+                
+                if current_value >= 1:  # 연구는 완료만 체크
+                    await self._complete_mission(mission_idx)
+                    completed_count += 1
             
             if completed_count > 0:
                 await self.invalidate_user_mission_cache(user_no)
             
-            self.logger.info(f"Research missions checked: user={user_no}, completed={completed_count}")
-            
             return {
                 "success": True,
-                "message": f"Checked {len(active_missions)} missions, {completed_count} completed",
-                "data": {"checked": len(active_missions), "completed": completed_count}
+                "message": f"Checked {len(research_missions)} missions, {completed_count} completed",
+                "data": {"checked": len(research_missions), "completed": completed_count}
             }
             
         except Exception as e:
@@ -465,100 +460,6 @@ class MissionManager:
             }
     
     #-------------------- 내부 헬퍼 메서드 ---------------------------------------#
-    
-    async def _get_active_missions_by_category(self, category: str) -> List[Dict[str, Any]]:
-        """카테고리별 활성 미션 조회"""
-        try:
-            missions = await self.get_user_missions()
-            
-            # 카테고리 필터링 + 미완료만
-            active = [
-                m for m in missions 
-                if m['category'] == category and not m['completed']
-            ]
-            
-            return active
-            
-        except Exception as e:
-            self.logger.error(f"Error getting active missions: {e}")
-            return []
-    
-    async def _check_and_complete_missions(
-        self, 
-        missions: List[Dict[str, Any]], 
-        user_data: Dict[str, Any],
-        category: str
-    ) -> int:
-        """미션 조건 체크 및 완료 처리"""
-        completed_count = 0
-        
-        for mission in missions:
-            if self._check_mission_condition(mission, user_data, category):
-                await self._complete_mission(mission['mission_idx'])
-                completed_count += 1
-        
-        return completed_count
-    
-    async def _check_mission_condition_by_category(self, mission: Dict[str, Any], category: str) -> bool:
-        """카테고리별 미션 조건 체크 (수동 완료용)"""
-        try:
-            user_no = self.user_no
-            
-            if category == 'building':
-                building_manager = self._get_building_manager()
-                building_manager.user_no = user_no
-                user_data = await building_manager.get_user_buildings()
-            elif category == 'unit':
-                unit_manager = self._get_unit_manager()
-                unit_manager.user_no = user_no
-                user_data = await unit_manager.get_user_units()
-            elif category == 'research':
-                research_manager = self._get_research_manager()
-                research_manager.user_no = user_no
-                user_data = await research_manager.get_user_researches()
-            else:
-                return False
-            
-            return self._check_mission_condition(mission, user_data, category)
-            
-        except Exception as e:
-            self.logger.error(f"Error checking mission condition by category: {e}")
-            return False
-    
-    def _check_mission_condition(
-        self, 
-        mission: Dict[str, Any], 
-        user_data: Dict[str, Any],
-        category: str
-    ) -> bool:
-        """미션 조건 체크"""
-        try:
-            target_idx = mission['target_idx']
-            value = mission['value']
-            
-            # target_idx가 0이면 개수만 체크
-            if target_idx == 0:
-                return len(user_data) >= value
-            
-            # 특정 항목 체크
-            item = user_data.get(str(target_idx))
-            
-            if not item:
-                return False
-            
-            # 카테고리별 체크
-            if category == 'building':
-                return item.get('building_lv', 0) >= value
-            elif category == 'unit':
-                return item.get('total', 0) >= value
-            elif category == 'research':
-                return True  # 완료 여부만 체크
-            
-            return False
-            
-        except Exception as e:
-            self.logger.error(f"Error checking mission condition: {e}")
-            return False
     
     async def _complete_mission(self, mission_idx: int):
         """미션 완료 처리"""
@@ -585,28 +486,29 @@ class MissionManager:
         try:
             user_no = self.user_no
             
-            # GameData에서 보상 조회
-            rewards = self.game_data_manager.get_mission_rewards(mission_idx)
+            # Config에서 보상 조회
+            all_missions = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
             
-            if not rewards:
+            if isinstance(all_missions, dict):
+                mission = all_missions.get(mission_idx)
+            else:
+                mission = next((m for m in all_missions if m.get('mission_idx') == mission_idx), None)
+            
+            if not mission or not mission.get('reward'):
                 self.logger.warning(f"No rewards found for mission {mission_idx}")
                 return
+            
+            rewards = mission['reward']
             
             # ItemManager를 통해 보상 지급
             item_manager = self._get_item_manager()
             item_manager.user_no = user_no
             
-            for reward in rewards:
-                item_idx = reward['item_idx']
-                value = reward['value']
-                
-                # 아이템 추가
-                item_manager.data = {"item_idx": item_idx, "quantity": value}
+            for item_idx, quantity in rewards.items():
+                item_manager.data = {"item_idx": int(item_idx), "quantity": quantity}
                 await item_manager.add_item()
                 
-                self.logger.info(f"Granted item {item_idx}: {value} to user {user_no}")
-            
-            self.logger.info(f"Rewards granted: user={user_no}, mission_idx={mission_idx}")
+                self.logger.info(f"Granted item {item_idx}: {quantity} to user {user_no}")
             
         except Exception as e:
             self.logger.error(f"Error granting rewards: {e}")
@@ -614,17 +516,13 @@ class MissionManager:
     # ===== Manager 접근 헬퍼 =====
     
     def _get_building_manager(self):
-        """BuildingManager 가져오기"""
         return self.redis_manager.get_building_manager()
     
     def _get_unit_manager(self):
-        """UnitManager 가져오기"""
         return self.redis_manager.get_unit_manager()
     
     def _get_research_manager(self):
-        """ResearchManager 가져오기"""
         return self.redis_manager.get_research_manager()
     
     def _get_item_manager(self):
-        """ItemManager 가져오기"""
         return self.redis_manager.get_item_manager()
