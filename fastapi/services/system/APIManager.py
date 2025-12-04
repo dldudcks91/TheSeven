@@ -41,7 +41,7 @@ class APIManager():
         
         # === 미션 API (5xxx) ===
         
-        5001: (MissionManager, MissionManager.mission_claim),
+        #5001: (MissionManager, MissionManager.mission_claim),
         
         
     }
