@@ -348,6 +348,8 @@
     <div class="tabs">
         <button class="tab-button active" onclick="showTab('api')">API 테스트</button>
         <button class="tab-button" onclick="showTab('game')">게임</button>
+        <button class="tab-button" onclick="showTab('hero')">영웅</button>
+        <button class="tab-button" onclick="showTab('ally')">연맹</button>
     </div>
     
     <!-- 자원 탭 -->
@@ -373,7 +375,7 @@
                     
                     <div class="form-group">
                         <label>플레이어 ID:</label>
-                        <input type="number" id="apiUserId" value="1" readonly />
+                        <input type="number" id="apiUserId" value="1" />
                     </div>
                     <div class="form-group">
                         <label>API 코드:</label>
@@ -429,42 +431,12 @@
                 
                 <!-- 자원 관리 (오른쪽 중간) -->
                 <div class="game-section">
-                    <h3>자원 관리</h3>
-                    <div id="resource-food" class="resource-content active">
-                        <div class="resource-info">식량 관리</div>
-                        <div class="resource-amount" id="food-amount">1000</div>
-                        <div class="resource-buttons">
-                            <button onclick="addResource('food', 100)">+100</button>
-                            <button onclick="addResource('food', -50)">-50</button>
-                        </div>
-                    </div>
                     
-                    <div id="resource-gold" class="resource-content">
-                        <div class="resource-info">골드 관리</div>
-                        <div class="resource-amount" id="gold-amount">500</div>
-                        <div class="resource-buttons">
-                            <button onclick="addResource('gold', 100)">+100</button>
-                            <button onclick="addResource('gold', -50)">-50</button>
-                        </div>
-                    </div>
-                    
-                    <div id="resource-wood" class="resource-content">
-                        <div class="resource-info">목재 관리</div>
-                        <div class="resource-amount" id="wood-amount">800</div>
-                        <div class="resource-buttons">
-                            <button onclick="addResource('wood', 100)">+100</button>
-                            <button onclick="addResource('wood', -50)">-50</button>
-                        </div>
-                    </div>
-                    
-                    <div id="resource-stone" class="resource-content">
-                        <div class="resource-info">석재 관리</div>
-                        <div class="resource-amount" id="stone-amount">300</div>
-                        <div class="resource-buttons">
-                            <button onclick="addResource('stone', 100)">+100</button>
-                            <button onclick="addResource('stone', -50)">-50</button>
-                        </div>
-                    </div>
+                    <iframe 
+                        id="itemFrame" 
+                        src="item.html" 
+                        style="width: 100%; height: calc(100% - 0px); border: none;">
+                    </iframe>
                 </div>
                 
                  <!-- 임무/퀘스트 (왼쪽 하단) -->

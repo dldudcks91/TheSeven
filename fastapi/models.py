@@ -94,6 +94,7 @@ class UserMission(Base):
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     mission_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    claimed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
 class Building(Base):

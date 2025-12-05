@@ -146,7 +146,7 @@ class LoginManager:
             else:
                 # 최종 결과 딕셔너리에 깔끔한 키 이름 사용
                 data[name] = result if result else {}
-                
+        
         return data
     
     async def _register_all_active_tasks(self, user_no: int, managers: Dict[str, Any]):

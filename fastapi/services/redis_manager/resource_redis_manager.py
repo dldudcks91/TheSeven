@@ -17,11 +17,11 @@ class ResourceRedisManager:
         
     def _get_resources_hash_key(self, user_no: int) -> str:
         """사용자 자원 Hash 키 생성 - user_resources:1"""
-        return f"user_resources:{user_no}"
+        return f"user_data:{user_no}:resource"
     
     def _get_resources_meta_key(self, user_no: int) -> str:
         """사용자 자원 메타데이터 키 생성"""
-        return f"user_resources_meta:{user_no}"
+        return f"user_data:{user_no}:resource_meta"
         
     def validate_resource_data(self, resource_type: str) -> bool:
         """자원 타입 유효성 검증"""
@@ -37,7 +37,7 @@ class ResourceRedisManager:
             resources_data: {'food': 1000, 'wood': 500, 'stone': 300}
             
         Redis 구조:
-            HSET user_resources:1 food 1000 wood 500 stone 300
+            HSET user_data:1:resource: food 1000 wood 500 stone 300
         """
         if not resources_data:
             return True

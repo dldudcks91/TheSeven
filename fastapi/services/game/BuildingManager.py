@@ -132,6 +132,32 @@ class BuildingManager:
         
         return self._cached_buildings
     
+    async def get_user_building_by_idx(self,building_idx):
+        """사용자 건물 데이터를 캐시 우선으로 조회"""
+        if self._cached_buildings is not None:
+            return self._cached_buildings
+        
+        user_no = self.user_no
+        
+        try:
+            # 1. Redis 캐시에서 먼저 조회
+            building_redis = self.redis_manager.get_building_manager()
+            _cached_building = await building_redis.get_cached_building(user_no, building_idx)
+            self.logger.debug(self._cached_buildings)
+            if _cached_building:
+                self.logger.debug(f"Cache hit: Retrieved {self._cached_building} buildings for user {user_no}")
+                return _cached_building
+            
+            else:
+                _cached_building = {}
+                
+        except Exception as e:
+            self.logger.error(f"Error getting user buildings for user {user_no}: {e}")
+            _cached_building = {}
+        
+        
+        return _cached_building
+    
     
     
     def get_db_buildings(self, user_no):

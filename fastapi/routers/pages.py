@@ -27,11 +27,16 @@ async def get_building(request: Request):
 async def get_research(request: Request):
     return templates.TemplateResponse("research.html", {"request": request})
 
-@router.get("/hero.html")
-async def get_hero(request: Request):
-    return templates.TemplateResponse("hero.html", {"request": request})
 
 @router.get("/unit.html")
 async def get_unit(request: Request):
     return templates.TemplateResponse("unit.html", {"request": request})
 
+
+@router.get("/item.html")
+async def get_item(request: Request):
+    return templates.TemplateResponse("item.html", {"request": request})
+
+@router.get("/hero.html")
+async def get_hero(request: Request):
+    return templates.TemplateResponse("hero.html", {"request": request})

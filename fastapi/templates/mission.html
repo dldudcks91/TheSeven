@@ -315,7 +315,7 @@
 <body>
     <div class="container">
         <div class="game-section">
-            <h3>📋 미션</h3>
+            <h3>Mission</h3>
         </div>
         
         <table class="mission-table">
@@ -387,18 +387,20 @@
         
         window.addEventListener('message', function(event) {
             // 유저 ID 설정
+            
             if (event.data && event.data.type === 'set_player_id') {
                 const newUserId = event.data.userId;
                 
                 if (userId !== newUserId) {
                     userId = newUserId;
                     console.log('👤 User ID 설정:', userId);
-                    
-                    // Config가 이미 로드되어 있으면 미션 로드
-                    if (Object.keys(missionConfig).length > 0) {
-                        loadMissions();
-                    }
+                }    
+                // Config가 이미 로드되어 있으면 미션 로드
+                if (Object.keys(missionConfig).length > 0) {
+                    loadMissions();
+
                 }
+                
             }
             
             // Config 데이터 수신
@@ -459,7 +461,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_no: parseInt(userId),
-                        api_code: 1013, // 미션 조회 API
+                        api_code: 5001, // 미션 조회 API
                         data: {}
                     })
                 });

@@ -17,7 +17,7 @@ class APIManager():
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         1012: (BuffManager, BuffManager.buff_info),
-        1013: (MissionManager, MissionManager.mission_info),
+        
         
         # === 건물 API (2xxx) ===
         2001: (BuildingManager, BuildingManager.building_info),
@@ -40,8 +40,8 @@ class APIManager():
         #4004: (UnitManager, UnitManager.unit_finish),
         
         # === 미션 API (5xxx) ===
-        
-        #5001: (MissionManager, MissionManager.mission_claim),
+        5001: (MissionManager, MissionManager.mission_info),
+        5002: (MissionManager, MissionManager.mission_claim),
         
         
     }
@@ -54,11 +54,16 @@ class APIManager():
     async def process_request(self, user_no, api_code, data):
         """API 요청 처리 (비동기 버전)"""
         
-        ServiceClass, method = self.api_map.get(api_code)
-        print("preccess request:", user_no, api_code, data)
-        if not method: 
-            
+        
+        api = self.api_map.get(api_code)
+        if api == None:
+            print("process request:", user_no, api_code, data)
             raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")
+        else:
+            ServiceClass, method = api
+        
+            
+            
         
         if ServiceClass == GameDataManager:
             service_instance = ServiceClass()

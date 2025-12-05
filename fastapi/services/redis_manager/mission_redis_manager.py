@@ -59,7 +59,7 @@ class MissionRedisManager:
     
     async def cache_user_progress(self, user_no: int, progress: Dict[int, Dict[str, Any]]):
         """
-        사용자 미션 진행 상태 캐싱
+        사용자 미션 진행 상태 캐싱 (받은 데이터 그대로 저장)
         
         Args:
             progress: {
@@ -102,6 +102,47 @@ class MissionRedisManager:
             
         except Exception as e:
             print(f"[Redis] Error caching progress: {e}")
+            return False
+    
+    async def update_mission_progress(self, user_no: int, mission_idx: int, current_value: int):
+        """
+        미션 진행도만 업데이트 (완료 상태는 변경하지 않음)
+        
+        Args:
+            user_no: 유저 번호
+            mission_idx: 미션 인덱스
+            current_value: 현재 진행값
+        """
+        try:
+            data_key = self._get_data_key(user_no)
+            
+            # 1. 현재 미션 데이터 조회
+            mission_data_bytes = await self.redis_client.hget(data_key, str(mission_idx))
+            
+            if not mission_data_bytes:
+                # 캐시에 없으면 새로 생성
+                mission_data = {
+                    "current_value": current_value,
+                    "is_completed": False,
+                    "is_claimed": False
+                }
+            else:
+                data_str = mission_data_bytes.decode() if isinstance(mission_data_bytes, bytes) else mission_data_bytes
+                mission_data = json.loads(data_str)
+                mission_data["current_value"] = current_value
+            
+            # 2. Hash 업데이트
+            await self.redis_client.hset(
+                data_key,
+                str(mission_idx),
+                json.dumps(mission_data)
+            )
+            
+            print(f"[Redis] Updated progress for mission {mission_idx}: {current_value}")
+            return True
+            
+        except Exception as e:
+            print(f"[Redis] Error updating mission progress: {e}")
             return False
     
     async def complete_mission(self, user_no: int, mission_idx: int):
@@ -251,71 +292,6 @@ class MissionRedisManager:
         except Exception as e:
             print(f"[Redis] Error getting cache meta: {e}")
             return None
-    
-    # ===== DB 동기화 큐 =====
-    
-    async def add_to_sync_queue(self, user_no: int, mission_idx: int):
-        """DB 동기화 큐에 추가"""
-        try:
-            # 동기화 큐는 별도 키 구조 유지 (범용)
-            sync_key = f"mission:sync:{user_no}:{mission_idx}"
-            
-            sync_data = {
-                "user_no": user_no,
-                "mission_idx": mission_idx,
-                "completed_at": datetime.utcnow().isoformat()
-            }
-            
-            await self.redis_client.setex(
-                sync_key,
-                600,  # 10분
-                json.dumps(sync_data)
-            )
-            
-            await self.redis_client.sadd("mission:sync_pending", f"{user_no}:{mission_idx}")
-            
-            print(f"[Redis] Added to sync queue: user={user_no}, mission={mission_idx}")
-            
-        except Exception as e:
-            print(f"[Redis] Error adding to sync queue: {e}")
-    
-    async def get_sync_queue(self):
-        """동기화 대기 항목 조회"""
-        try:
-            pending = await self.redis_client.smembers("mission:sync_pending")
-            
-            queue = []
-            for item in pending:
-                item_str = item.decode() if isinstance(item, bytes) else item
-                parts = item_str.split(':')
-                if len(parts) != 2:
-                    continue
-                
-                user_no, mission_idx = parts
-                sync_key = f"mission:sync:{user_no}:{mission_idx}"
-                sync_data = await self.redis_client.get(sync_key)
-                
-                if sync_data:
-                    data_str = sync_data.decode() if isinstance(sync_data, bytes) else sync_data
-                    queue.append(json.loads(data_str))
-            
-            return queue
-            
-        except Exception as e:
-            print(f"[Redis] Error getting sync queue: {e}")
-            return []
-    
-    async def remove_from_sync_queue(self, user_no: int, mission_idx: int):
-        """동기화 큐에서 제거"""
-        try:
-            sync_key = f"mission:sync:{user_no}:{mission_idx}"
-            await self.redis_client.delete(sync_key)
-            await self.redis_client.srem("mission:sync_pending", f"{user_no}:{mission_idx}")
-            
-            print(f"[Redis] Removed from sync queue: user={user_no}, mission={mission_idx}")
-            
-        except Exception as e:
-            print(f"[Redis] Error removing from sync queue: {e}")
     
     # ===== 배치 업데이트 (성능 최적화) =====
     

@@ -154,12 +154,7 @@ class ResearchManager:
             
             # DB에서 조회
             
-            
-                
-            
             researches_data =  self.get_db_researches(self.user_no)
-            
-            
             
             # Redis에 캐싱
             if researches_data['success'] and researches_data['data']:
