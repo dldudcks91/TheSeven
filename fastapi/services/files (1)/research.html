@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연구 관리</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            padding: 10px;
+            margin: 0;
+        }
+        .game-section h3 {
+            margin: 0 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
+            font-size: 16px;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0;
+        }
+        strong {
+            margin-right: 10px;
+        }
+        
+        /* 레이아웃 */
+        .research-layout {
+            display: flex;
+            gap: 15px;
+            height: 70vh;
+        }
+
+        .tab-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding-right: 10px;
+            border-right: 2px solid #ddd;
+            margin-bottom: 0;
+            min-width: 50px;
+        }
+
+        .tab-button {
+            padding: 8px 15px;
+            border: 1px solid #ddd;
+            border-right: none;
+            background: #f5f5f5;
+            cursor: pointer;
+            text-align: left;
+            border-radius: 4px 0 0 4px;
+        }
+
+        .tab-button.active {
+            background-color: white;
+            font-weight: bold;
+            border-color: #ddd;
+            border-right: none;
+        }
+
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* 연구 트리 */
+        .research-tree {
+            position: relative;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+        }
+        
+        .research-tier {
+            align-items: center;
+            position: relative;
+        }
+        
+        .research-nodes {
+            gap: 40px;
+            flex: 1;
+            align-items: center;
+            justify-content: flex-start;
+            margin-left: 30px;
+        }
+        
+        /* 연구 노드 */
+        .research-node {
+            position: relative;
+            cursor: pointer;
+            z-index: 10;
+            margin-bottom: 5px;
+        }
+        
+        .research-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            border: 3px solid #ddd;
+            background: linear-gradient(135deg, #fff 0%, #f5f5f5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .research-node:hover{
+            z-index:10000;
+
+        }
+        .research-node:hover .research-icon {
+            transform: scale(1.15);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            
+        }
+        
+        .research-icon.completed {
+            border-color: #4caf50;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            box-shadow: 0 0 15px rgba(76, 175, 80, 0.4);
+        }
+        
+        .research-icon.in-progress {
+            border-color: #ff9800;
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            box-shadow: 0 0 15px rgba(255, 152, 0, 0.4);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .research-icon.locked {
+            border-color: #bbb;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .research-icon.available {
+            border-color: #2196F3;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            box-shadow: 0 0 15px rgba(33, 150, 243, 0.4);
+        }
+        
+        /* 레벨 뱃지 */
+        .level-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #2196F3;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .research-icon.completed .level-badge {
+            background: #4caf50;
+        }
+        
+        .research-icon.locked .level-badge {
+            background: #999;
+        }
+        
+        /* 툴팁 */
+        .research-tooltip {
+            position: fixed;
+            top: 20%;
+            transform: translateX(-10%); 
+            background: white;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 200px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 99999;
+        }
+        
+        .research-node:hover .research-tooltip {
+            opacity: 1;
+        }
+        
+        .tooltip-title {
+            font-weight: bold;
+            font-size: 13px;
+            margin-bottom: 6px;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 4px;
+        }
+        
+        .tooltip-level {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 6px;
+        }
+        
+        .tooltip-costs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .tooltip-cost {
+            font-size: 10px;
+            padding: 2px 6px;
+            background: #f5f5f5;
+            border-radius: 3px;
+        }
+        
+        .tooltip-time {
+            font-size: 10px;
+            color: #ff9800;
+            margin-bottom: 4px;
+        }
+        
+        .tooltip-requirement {
+            font-size: 10px;
+            color: #f44336;
+            padding: 3px 6px;
+            background: #ffebee;
+            border-radius: 3px;
+            margin-top: 4px;
+        }
+        
+        /* 모달 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9998;
+            animation: fadeIn 0.2s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .research-modal {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            height: 150px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #eee;
+            flex-shrink: 0;
+        }
+        
+        .modal-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+        
+        .modal-close:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        .modal-content {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 8px;
+        }
+        
+        .modal-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 12px;
+            margin-bottom: 6px;
+        }
+        
+        .modal-info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 3px 0;
+        }
+        
+        .modal-label {
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .modal-value {
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .modal-costs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        
+        .modal-cost-item {
+            padding: 3px 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+            font-size: 11px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        
+        .modal-buttons button {
+            flex: 1;
+            padding: 6px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .modal-buttons button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-start {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-start:hover:not(:disabled) {
+            background: #1976D2;
+        }
+        
+        .btn-complete {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .btn-complete:hover:not(:disabled) {
+            background: #388e3c;
+        }
+        
+        .btn-cancel {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-cancel:hover:not(:disabled) {
+            background: #d32f2f;
+        }
+        
+        .btn-close {
+            background: #9e9e9e;
+            color: white;
+        }
+        
+        .btn-close:hover {
+            background: #757575;
+        }
+        
+        .timer-display {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: #f0f8ff;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .timer-item {
+            display: inline-block;
+            margin-right: 15px;
+            margin-bottom: 5px;
+            padding: 3px 6px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        
+        .timer-item.completed {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .timer-item.running {
+            background: #fff3e0;
+            border-color: #ff9800;
+            color: #f57c00;
+        }
+        
+        .result-box {
+            margin-top: 10px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-section"><h3>Research</h3></div>
+    
+    <div class="container">
+        <div class="research-layout">
+            <div class="tab-container">
+                <button class="tab-button active" onclick="switchTab(1)">경제</button>
+                <button class="tab-button" onclick="switchTab(2)">군사</button>
+            </div>
+            
+            <div id="timerDisplay" class="timer-display" style="display: none;">
+                <strong>진행 중인 연구: </strong>
+                <div id="timerItems"></div>
+            </div>
+            
+            <div id="tab1" class="tab-content active">
+                <div id="researchTree1" class="research-tree"></div>
+            </div>
+            
+            <div id="tab2" class="tab-content">
+                <div id="researchTree2" class="research-tree"></div>
+            </div>
+            
+            <div id="result" class="result-box"></div>
+        </div>
+    </div>
+    
+    <div id="modalOverlay" class="modal-overlay" onclick="closeModal(event)">
+        <div class="research-modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">연구 정보</div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="modal-info-grid">
+                    <div class="modal-info-item">
+                        <span class="modal-label">현재</span>
+                        <span class="modal-value" id="modalCurrentLevel">0</span>
+                    </div>
+                    <!-- <div class="modal-info-item">
+                        <span class="modal-label">다음</span>
+                        <span class="modal-value" id="modalNextLevel">1</span>
+                    </div> -->
+                    <div class="modal-info-item">
+                        <span class="modal-label">시간</span>
+                        <span class="modal-value" id="modalTime">30초</span>
+                    </div>
+                    <div class="modal-info-item">
+                        <span class="modal-label">자원</span>
+                    </div>
+                </div>
+                <div class="modal-costs" id="modalCosts"></div>
+                <div id="modalRequirement" style="display: none; margin-top: 6px; padding: 4px 6px; background: #ffebee; border-radius: 3px; color: #f44336; font-size: 10px;"></div>
+            </div>
+            <div class="modal-buttons" id="modalButtons"></div>
+        </div>
+    </div>
+
+    <script>
+        const CURRENT_LANGUAGE_FIELD = 'korean_name';
+        
+        const researchIcons = {
+            1001: '💰', 1011: '📉', 1012: '🏗️', 1013: '⚗️',
+            2001: '⚡', 2011: '⚔️', 2012: '🐎', 2013: '🏹',
+            2021: '🛡️', 2022: '🎖️', 2023: '🎯'
+        };
+        
+        // 전역 변수
+        let researchConfigData = {};  // 연구 설정 (그래프 구조)
+        let userResearchData = {};    // 유저 진행 상태 (API 응답 그대로 저장)
+        let displayTimer = null;
+        let userId = null;
+        let currentTab = 1;
+        let currentModalData = null;
+        let completedResearchChecks = new Set();
+        
+        // ========================================
+        // 초기화
+        // ========================================
+        
+        window.onload = function() {
+            window.parent.postMessage({
+                type: 'request_config',
+                configType: 'research'
+            }, '*');
+        };
+        
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'set_player_id') {
+                const newUserId = event.data.userId;
+                
+                if (userId !== newUserId) {
+                    userId = newUserId;
+                    
+                    if (Object.keys(researchConfigData).length > 0) {
+                        loadResearch();
+                    }
+                }
+            }
+            
+            if (event.data && event.data.type === 'response_config') {
+                const researchConfig = event.data.payload;
+                researchConfigData = researchConfig;
+                
+                console.log('📦 ConfigData 로드 완료:', researchConfigData);
+                
+                if (userId) {
+                    loadResearch();
+                } else {
+                    generateResearchTree();
+                }
+            }
+        });
+        
+        // ========================================
+        // 유틸리티 함수
+        // ========================================
+        
+        /**
+         * 유저의 특정 연구 상태 가져오기
+         * @returns { status, research_lv, end_time } 또는 null
+         */
+        function getUserResearchStatus(researchIdx) {
+            return userResearchData[researchIdx] || null;
+        }
+        
+        /**
+         * 유저의 현재 완료된 최고 레벨 계산
+         */
+        function getCurrentCompletedLevel(researchIdx) {
+            const userData = getUserResearchStatus(researchIdx);
+            
+            // status 2 = 완료
+            if (userData && userData.status === 0) {
+                return userData.research_lv;
+            }
+            
+            return 0;
+        }
+        
+        /**
+         * 유저가 현재 진행중인지 확인
+         */
+        function isResearchInProgress(researchIdx) {
+            const userData = getUserResearchStatus(researchIdx);
+            
+            // status 1 = 진행중
+            return userData && userData.status === 1;
+        }
+        
+        // ========================================
+        // UI 함수
+        // ========================================
+        
+        function switchTab(tabNumber) {
+            currentTab = tabNumber;
+            
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach((btn, index) => {
+                if (index + 1 === tabNumber) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach((content, index) => {
+                if (index + 1 === tabNumber) {
+                    content.classList.add('active');
+                } else {
+                    content.classList.remove('active');
+                }
+            });
+        }
+        
+        // ========================================
+        // 시간 관련 함수
+        // ========================================
+        
+        function parseServerUTCTime(serverTimeString) {
+            let utcString = serverTimeString;
+            
+            if (utcString.includes(' ') && !utcString.includes('T')) {
+                utcString = utcString.replace(' ', 'T');
+            }
+            
+            if (!utcString.endsWith('Z') && utcString.includes('T')) {
+                utcString += 'Z';
+            }
+            
+            return new Date(utcString);
+        }
+        
+        function calculateUTCTimeDiff(serverUTCTime) {
+            const endTime = parseServerUTCTime(serverUTCTime);
+            const now = new Date();
+            const diff = endTime - now;
+            
+            const isCompleted = diff <= 0;
+            
+            const totalSeconds = Math.max(0, Math.floor(diff / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return {
+                hours,
+                minutes,
+                seconds,
+                isCompleted,
+                format: () => `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+            };
+        }
+        
+        // ========================================
+        // 타이머 관련 함수
+        // ========================================
+        
+        function startDisplayTimer() {
+            if (displayTimer) {
+                return;
+            }
+            
+            console.log('🔄 화면 업데이트 타이머 시작');
+            updateDisplayOnly();
+            displayTimer = setInterval(updateDisplayOnly, 1000);
+        }
+        
+        function updateDisplayOnly() {
+            const timerDisplay = document.getElementById('timerDisplay');
+            const timerItems = document.getElementById('timerItems');
+            
+            if (!timerDisplay || !timerItems) return;
+            
+            let hasActiveResearch = false;
+            timerItems.innerHTML = '';
+            
+            // ✅ UserData만 순회 (단일 객체)
+            Object.keys(userResearchData).forEach(researchIdx => {
+                const userData = userResearchData[researchIdx];
+                
+                // status 1(진행중)만 타이머 표시
+                if (!userData || userData.status !== 1 || !userData.end_time) {
+                    return;
+                }
+                
+                hasActiveResearch = true;
+                
+                const timeDiff = calculateUTCTimeDiff(userData.end_time);
+                
+                const timerItem = document.createElement('span');
+                timerItem.className = 'timer-item';
+                
+                // ConfigData에서 이름 가져오기
+                const configResearch = researchConfigData[researchIdx]?.[userData.research_lv];
+                const researchName = configResearch 
+                    ? configResearch[CURRENT_LANGUAGE_FIELD] 
+                    : `연구 ${researchIdx}`;
+                
+                if (!timeDiff.isCompleted) {
+                    timerItem.textContent = `${researchName} Lv.${userData.research_lv}: ${timeDiff.format()}`;
+                    timerItem.classList.add('running');
+                } else {
+                    timerItem.textContent = `${researchName} Lv.${userData.research_lv}: 완료됨`;
+                    timerItem.classList.add('completed');
+                    
+                    completeResearch(parseInt(researchIdx), userData.research_lv);
+                }
+                
+                timerItems.appendChild(timerItem);
+            });
+            
+            timerDisplay.style.display = hasActiveResearch ? 'flex' : 'none';
+            
+            if (!hasActiveResearch && displayTimer) {
+                clearInterval(displayTimer);
+                displayTimer = null;
+                console.log('📺 진행중인 연구 없음 - 화면 업데이트 타이머 중단');
+            }
+        }
+        
+        // ========================================
+        // API 관련 함수
+        // ========================================
+        
+        async function completeResearch(researchIdx, level) {
+            const researchKey = `${researchIdx}_${level}`;
+            
+            if (completedResearchChecks.has(researchKey)) {
+                return;
+            }
+            
+            completedResearchChecks.add(researchKey);
+            
+            const configResearch = researchConfigData[researchIdx]?.[level];
+            const researchName = configResearch 
+                ? configResearch[CURRENT_LANGUAGE_FIELD] 
+                : `연구 ${researchIdx}-${level}`;
+            
+            console.log(`✅ ${researchName} 완료 API 호출`);
+            
+            try {
+                // parent의 공통 API 함수 사용
+                const result = await parent.apiRequest(3003, {
+                    research_idx: researchIdx,
+                    research_lv: level
+                }, userId);
+                
+                console.log(`🎉 ${researchName} 완료 API 결과:`, result);
+                
+                if (result.success) {
+                    await loadResearch();
+                    showResult(`${researchName} 완료! 연구 성공`);
+                    
+                    setTimeout(() => {
+                        completedResearchChecks.delete(researchKey);
+                    }, 2000);
+                } else {
+                    showResult(`${researchName} 완료 처리 실패: ${result.message || '알 수 없는 오류'}`);
+                    completedResearchChecks.delete(researchKey);
+                }
+            } catch (error) {
+                console.error(`❌ ${researchName} 완료 API 에러:`, error);
+                showResult(`${researchName} 완료 처리 에러: ${error.message}`);
+                completedResearchChecks.delete(researchKey);
+            }
+        }
+        
+        async function loadResearch() {
+            if (!userId) {
+                showResult('플레이어 ID가 설정되지 않았습니다.');
+                return;
+            }
+            
+            const previousData = { ...userResearchData };
+            userResearchData = {};
+            completedResearchChecks.clear();
+            
+            if (displayTimer) {
+                clearInterval(displayTimer);
+                displayTimer = null;
+            }
+            
+            showResult('연구 정보 로딩 중...');
+            
+            try {
+                // parent의 공통 API 함수 사용
+                const result = await parent.apiRequest(3001, {}, userId);
+                
+                console.log('🔬 연구 데이터 로드:', result.data);
+                
+                if (result.success && result.data) {
+                    // ✅ API 응답을 그대로 저장
+                    userResearchData = result.data;
+                } else {
+                    userResearchData = previousData;
+                }
+            } catch (error) {
+                console.log(`정보 로드 에러:`, error);
+                userResearchData = previousData;
+            }
+            
+            generateResearchTree();
+            startDisplayTimer();
+            showResult('연구 정보 로드 완료');
+        }
+        
+        async function callAPI(apiCode, researchIdx, level) {
+            if (!userId) {
+                showResult('플레이어 ID를 입력하세요');
+                return;
+            }
+            
+            const configResearch = researchConfigData[researchIdx]?.[level];
+            const researchName = configResearch 
+                ? configResearch[CURRENT_LANGUAGE_FIELD] 
+                : `연구 ${researchIdx}`;
+            
+            try {
+                showResult(`${researchName} Lv.${level} 요청 중...`);
+                
+                // parent의 공통 API 함수 사용
+                const result = await parent.apiRequest(apiCode, {
+                    research_idx: researchIdx,
+                    research_lv: level
+                }, userId);
+                
+                console.log(`🔧 ${researchName} API 호출 결과:`, result);
+                
+                if (result.success) {
+                    await loadResearch();
+                    
+                    if ((apiCode === 3002) && result.data && result.data.status !== 0) {
+                        startDisplayTimer();
+                    }
+                    
+                    showResult(`${researchName} Lv.${level} 성공: ${result.message || '완료'}`);
+                } else {
+                    showResult(`${researchName} Lv.${level} 실패: ${result.message || '알 수 없는 오류'}`);
+                }
+            } catch (error) {
+                console.error(`❌ ${researchName} API 에러:`, error);
+                showResult(`${researchName} Lv.${level} 에러: ${error.message}`);
+            }
+        }
+        
+        // ========================================
+        // 연구 트리 생성
+        // ========================================
+        
+        function generateResearchTree() {
+            const tree1 = document.getElementById('researchTree1');
+            const tree2 = document.getElementById('researchTree2');
+            
+            tree1.innerHTML = '';
+            tree2.innerHTML = '';
+            
+            const tab1Research = {};
+            const tab2Research = {};
+            
+            Object.keys(researchConfigData).forEach(researchIdx => {
+                const idx = parseInt(researchIdx);
+                const firstDigit = Math.floor(idx / 1000);
+                
+                if (firstDigit === 1) {
+                    tab1Research[researchIdx] = researchConfigData[researchIdx];
+                } else if (firstDigit === 2) {
+                    tab2Research[researchIdx] = researchConfigData[researchIdx];
+                }
+            });
+            
+            createResearchNodes(tree1, tab1Research);
+            createResearchNodes(tree2, tab2Research);
+        }
+        
+        function createResearchNodes(container, researchGroups) {
+            const tierMap = {};
+            
+            Object.keys(researchGroups).forEach(researchIdx => {
+                const researchDic = researchGroups[researchIdx];
+                const researchList = Object.values(researchDic);
+                
+                const tier = parseInt(researchIdx.charAt(researchIdx.length - 2));
+                
+                if (!tierMap[tier]) {
+                    tierMap[tier] = [];
+                }
+                tierMap[tier].push({ idx: researchIdx, list: researchList });
+            });
+            
+            Object.keys(tierMap).sort((a, b) => a - b).forEach(tier => {
+                const tierDiv = document.createElement('div');
+                tierDiv.className = 'research-tier';
+                tierDiv.value = tier;
+                
+                const nodesDiv = document.createElement('div');
+                nodesDiv.className = 'research-nodes';
+                
+                tierMap[tier].forEach((research, index) => {
+                    const node = createResearchNode(research.idx, research.list);
+                    nodesDiv.appendChild(node);
+                });
+                
+                tierDiv.appendChild(nodesDiv);
+                container.appendChild(tierDiv);
+            });
+        }
+        
+        function createResearchNode(researchIdx, researchList) {
+            const node = document.createElement('div');
+            node.className = 'research-node';
+            
+            // ✅ UserData에서 상태 가져오기 (단일 객체)
+            const currentLevel = getCurrentCompletedLevel(researchIdx);
+            const hasInProgress = isResearchInProgress(researchIdx);
+            
+            const nextLevel = hasInProgress ? currentLevel : currentLevel + 1;
+            const research = researchList.find(r => r.research_lv === nextLevel) || researchList[researchList.length - 1];
+            const maxLevel = researchList[researchList.length - 1].research_lv;
+            
+            const icon = document.createElement('div');
+            icon.className = 'research-icon';
+            icon.textContent = researchIcons[researchIdx] || '🔬';
+            
+            if (currentLevel === maxLevel) {
+                icon.classList.add('completed');
+            } else if (hasInProgress) {
+                icon.classList.add('in-progress');
+            } else if (!checkRequirements(research.required_researchs)) {
+                icon.classList.add('locked');
+            } else {
+                icon.classList.add('available');
+            }
+            
+            const badge = document.createElement('div');
+            badge.className = 'level-badge';
+            badge.textContent = `${currentLevel}/${maxLevel}`;
+            icon.appendChild(badge);
+            
+            node.appendChild(icon);
+            
+            const tooltip = createTooltip(researchIdx, researchList, currentLevel, nextLevel);
+            node.appendChild(tooltip);
+            
+            node.onclick = function(e) {
+                e.stopPropagation();
+                if (!icon.classList.contains('locked') || currentLevel > 0) {
+                    openModal(researchIdx, researchList, currentLevel, nextLevel, hasInProgress);
+                }
+            };
+            
+            return node;
+        }
+        
+        function createTooltip(researchIdx, researchList, currentLevel, nextLevel) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'research-tooltip';
+            
+            const research = researchList.find(r => r.research_lv === nextLevel) || researchList[researchList.length - 1];
+            const maxLevel = researchList[researchList.length - 1].research_lv;
+            
+            const title = document.createElement('div');
+            title.className = 'tooltip-title';
+            title.textContent = research[CURRENT_LANGUAGE_FIELD];
+            tooltip.appendChild(title);
+            
+            const level = document.createElement('div');
+            level.className = 'tooltip-level';
+            level.textContent = `현재 레벨: ${currentLevel} / ${maxLevel}`;
+            tooltip.appendChild(level);
+            
+            if (currentLevel < maxLevel) {
+                const costs = document.createElement('div');
+                costs.className = 'tooltip-costs';
+                const cost_dic = research.cost;
+                
+                if (cost_dic.food > 0) {
+                    const cost = document.createElement('div');
+                    cost.className = 'tooltip-cost';
+                    cost.textContent = `🌾 ${cost_dic.food}`;
+                    costs.appendChild(cost);
+                }
+                if (cost_dic.wood > 0) {
+                    const cost = document.createElement('div');
+                    cost.className = 'tooltip-cost';
+                    cost.textContent = `🪵 ${cost_dic.wood}`;
+                    costs.appendChild(cost);
+                }
+                if (cost_dic.stone > 0) {
+                    const cost = document.createElement('div');
+                    cost.className = 'tooltip-cost';
+                    cost.textContent = `🪨 ${cost_dic.stone}`;
+                    costs.appendChild(cost);
+                }
+                if (cost_dic.gold > 0) {
+                    const cost = document.createElement('div');
+                    cost.className = 'tooltip-cost';
+                    cost.textContent = `💰 ${cost_dic.gold}`;
+                    costs.appendChild(cost);
+                }
+                
+                tooltip.appendChild(costs);
+                
+                const time = document.createElement('div');
+                time.className = 'tooltip-time';
+                time.textContent = `⏱️ ${research.time}초`;
+                tooltip.appendChild(time);
+                
+                const reqDataList = getRequiredResearch(research.required_researchs);
+                if (reqDataList && reqDataList.length > 0) {
+                    for (const reqData of reqDataList) {
+                        if (reqData && typeof reqData === 'object' && reqData.idx && reqData.lv !== undefined) {
+                            const req = document.createElement('div');
+                            req.className = 'tooltip-requirement';
+                            req.textContent = `필요: 연구 ${reqData.idx} Lv.${reqData.lv}`;
+                            tooltip.appendChild(req);
+                        }
+                    }
+                }
+            }
+            
+            return tooltip;
+        }
+        
+        // ========================================
+        // 필수 조건 체크
+        // ========================================
+        
+        function getRequiredResearch(required) {
+            if (!required) return [];
+            
+            const results = [];
+            
+            if (Array.isArray(required)) {
+                if (required.length === 0) return [];
+                
+                if (Array.isArray(required[0])) {
+                    for (const item of required) {
+                        if (Array.isArray(item) && item.length >= 2) {
+                            results.push({
+                                idx: item[0],
+                                lv: item[1]
+                            });
+                        }
+                    }
+                    return results;
+                }
+                
+                if (typeof required[0] === 'number' && required.length >= 2) {
+                    return [{
+                        idx: required[0],
+                        lv: required[1]
+                    }];
+                }
+                
+                if (typeof required[0] === 'string') {
+                    return getRequiredResearch(required[0]);
+                }
+            }
+            
+            if (typeof required === 'string') {
+                const trimmed = required.trim();
+                if (trimmed === '') return [];
+                
+                const parts = trimmed.split(':');
+                if (parts.length >= 2) {
+                    return [{
+                        idx: parseInt(parts[0]),
+                        lv: parseInt(parts[1])
+                    }];
+                }
+            }
+            
+            return [];
+        }
+        
+        function checkRequirements(requiredResearchs) {
+            const reqDataList = getRequiredResearch(requiredResearchs);
+            if (!reqDataList || reqDataList.length === 0) return true;
+            
+            for (const reqData of reqDataList) {
+                if (typeof reqData !== 'object' || !reqData.idx || reqData.lv === undefined) {
+                    console.error("❌ reqData가 올바른 형태가 아닙니다:", reqData);
+                    return false;
+                }
+                
+                const reqIdx = reqData.idx;
+                const reqLv = reqData.lv;
+                
+                // ✅ UserData에서 확인 (단일 객체)
+                const userData = getUserResearchStatus(reqIdx);
+                
+                // 요구사항: 해당 레벨이 완료되어 있어야 함
+                if (!userData || userData.research_lv < reqLv || userData.status !== 2) {
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+        
+        // ========================================
+        // 모달
+        // ========================================
+        
+        function openModal(researchIdx, researchList, currentLevel, nextLevel, hasInProgress) {
+            const modal = document.getElementById('modalOverlay');
+            const research = researchList.find(r => r.research_lv === nextLevel) || researchList[researchList.length - 1];
+            const maxLevel = researchList[researchList.length - 1].research_lv;
+            
+            currentModalData = { researchIdx, nextLevel, hasInProgress };
+            
+            document.getElementById('modalTitle').textContent = research[CURRENT_LANGUAGE_FIELD];
+            document.getElementById('modalCurrentLevel').textContent = `${currentLevel} / ${maxLevel}`;
+            //document.getElementById('modalNextLevel').textContent = currentLevel < maxLevel ? nextLevel : '최대 레벨';
+            document.getElementById('modalTime').textContent = `${research.time}초`;
+            
+            const costsDiv = document.getElementById('modalCosts');
+            costsDiv.innerHTML = '';
+            
+            const cost_dic = research.cost;
+            
+            if (cost_dic.food > 0) {
+                const cost = document.createElement('div');
+                cost.className = 'modal-cost-item';
+                cost.textContent = `🌾 ${cost_dic.food}`;
+                costsDiv.appendChild(cost);
+            }
+            if (cost_dic.wood > 0) {
+                const cost = document.createElement('div');
+                cost.className = 'modal-cost-item';
+                cost.textContent = `🪵 ${cost_dic.wood}`;
+                costsDiv.appendChild(cost);
+            }
+            if (cost_dic.stone > 0) {
+                const cost = document.createElement('div');
+                cost.className = 'modal-cost-item';
+                cost.textContent = `🪨 ${cost_dic.stone}`;
+                costsDiv.appendChild(cost);
+            }
+            if (cost_dic.gold > 0) {
+                const cost = document.createElement('div');
+                cost.className = 'modal-cost-item';
+                cost.textContent = `💰 ${cost_dic.gold}`;
+                costsDiv.appendChild(cost);
+            }
+            
+            const reqDiv = document.getElementById('modalRequirement');
+            const reqDataList = getRequiredResearch(research.required_researchs);
+            if (reqDataList && reqDataList.length > 0) {
+                const reqTexts = reqDataList.map(reqData => 
+                    `${reqData.idx}-${reqData.lv}`
+                ).join(', ');
+                reqDiv.textContent = `⚠️ 필요: ${reqTexts}`;
+
+                reqDiv.style.display = 'block';
+            } else {
+                reqDiv.style.display = 'none';
+            }
+            
+            const buttonsDiv = document.getElementById('modalButtons');
+            buttonsDiv.innerHTML = '';
+            
+            const canStart = !hasInProgress && currentLevel < maxLevel && checkRequirements(research.required_researchs);
+            const userData = getUserResearchStatus(researchIdx);
+            
+            if (hasInProgress && userData && userData.status === 1) {
+                const completeBtn = document.createElement('button');
+                completeBtn.textContent = '즉시완료';
+                completeBtn.className = 'btn-complete';
+                completeBtn.onclick = () => {
+                    closeModal();
+                    callAPI(3003, parseInt(researchIdx), nextLevel);
+                };
+                buttonsDiv.appendChild(completeBtn);
+                
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = '취소';
+                cancelBtn.className = 'btn-cancel';
+                cancelBtn.onclick = () => {
+                    closeModal();
+                    callAPI(3004, parseInt(researchIdx), nextLevel);
+                };
+                buttonsDiv.appendChild(cancelBtn);
+            } else if (currentLevel === maxLevel) {
+                const completedBtn = document.createElement('button');
+                completedBtn.textContent = '연구 완료';
+                completedBtn.className = 'btn-close';
+                completedBtn.onclick = closeModal;
+                buttonsDiv.appendChild(completedBtn);
+            } else {
+                const startBtn = document.createElement('button');
+                startBtn.textContent = '연구 시작';
+                startBtn.className = 'btn-start';
+                startBtn.disabled = !canStart;
+                startBtn.onclick = () => {
+                    closeModal();
+                    callAPI(3002, parseInt(researchIdx), nextLevel);
+                };
+                buttonsDiv.appendChild(startBtn);
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = '닫기';
+                closeBtn.className = 'btn-close';
+                closeBtn.onclick = closeModal;
+                buttonsDiv.appendChild(closeBtn);
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function closeModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            const modal = document.getElementById('modalOverlay');
+            modal.classList.remove('active');
+            currentModalData = null;
+        }
+        
+        // ========================================
+        // 유틸리티
+        // ========================================
+        
+        function showResult(message) {
+
+            //잠시사용안함
+            // const resultBox = document.getElementById('result');
+            // resultBox.style.display = 'block';
+            // resultBox.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            // console.log(`📢 ${message}`);
+        }
+        
+        // ========================================
+        // 페이지 이벤트
+        // ========================================
+        
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                console.log('👀 페이지 활성화 - 화면 업데이트 재시작');
+                startDisplayTimer();
+            } else {
+                console.log('😴 페이지 비활성화');
+            }
+        });
+        
+        window.onbeforeunload = function() {
+            if (displayTimer) {
+                clearInterval(displayTimer);
+                displayTimer = null;
+            }
+            console.log('🔄 페이지 종료 - 타이머 정리');
+        };
+    </script>
+</body>
+</html>
