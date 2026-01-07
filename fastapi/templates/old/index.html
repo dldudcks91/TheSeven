@@ -23,44 +23,42 @@
         <div id="fetchResult" class="result-box"></div>
 
         <script>
-        // 공통 API 요청 함수
-        async function apiRequest(apiCode, data) {
-            const response = await fetch('/api', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer your-token-here'
-                },
-                body: JSON.stringify({
-                    user_no: parseInt(document.getElementById('userId').value),
-                    api_code: apiCode,
-                    data: data
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            return await response.json();
-        }
-
         async function postAPI(api_code) {
             const resultDiv = document.getElementById('fetchResult');
             
             try {
-                const requestData = {
-                    building_idx: parseInt(document.getElementById('buildingIdx').value),
-                    resourceFood: parseInt(document.getElementById('resourceFood').value),
-                    timestamp: Date.now()
+                // JSON 데이터 준비
+                const gameData = {
+                    api_code: api_code, // 건물 업그레이드
+                    data: {
+                        user_no: parseInt(document.getElementById('userId').value),
+                    
+                        building_idx: parseInt(document.getElementById('buildingIdx').value),
+                        resourceFood: parseInt(document.getElementById('resourceFood').value),
+                        timestamp: Date.now()
+                    }
                 };
 
                 resultDiv.textContent = '요청 중...';
                 
-                const result = await apiRequest(api_code, requestData);
+                // Fetch API로 전송
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer your-token-here'
+                    },
+                    body: JSON.stringify(gameData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
                 
                 resultDiv.className = 'result-box success';
-                resultDiv.textContent = `성공!\n전송한 데이터: ${JSON.stringify(requestData, null, 2)}\n\n응답: ${JSON.stringify(result, null, 2)}`;
+                resultDiv.textContent = `성공!\n전송한 데이터: ${JSON.stringify(gameData, null, 2)}\n\n응답: ${JSON.stringify(result, null, 2)}`;
                 
             } catch (error) {
                 resultDiv.className = 'result-box error';

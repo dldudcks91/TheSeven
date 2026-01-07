@@ -77,9 +77,9 @@ class GameDataManager:
                             
             research_configs[research_idx][research_lv] = {
                 'buff_idx': row['buff_idx'],
-                
                 'cost': {'food': int(row['food']), 'wood': int(row['wood']),'stone': int(row['stone']),'gold': int(row['gold'])},
                 'research_lv':research_lv,
+                'value': row['value'],
                 'time': int(row['research_time']),
                 'required_researches': requires,  # [(building_idx, level), ...]
                 'english_name': row['english_name'],
@@ -137,7 +137,6 @@ class GameDataManager:
                 'target_type': row['target_type'],
                 'target_sub_type': row['target_sub_type'],
                 'stat_type': row['stat_type'],
-                'value': row['value'],
                 'value_type': row['value_type'],
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']

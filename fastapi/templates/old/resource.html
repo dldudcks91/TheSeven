@@ -59,9 +59,17 @@
             userResourceData = {};
             
             try {
-                // parent의 공통 API 함수 사용
-                const result = await parent.apiRequest(1011, {}, userId);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 1011,
+                        data: {}
+                    })
+                });
                 
+                const result = await response.json();
                 if (result.success && result.data) {
                     userResourceData = result.data;
                 }
@@ -78,6 +86,9 @@
                 
             } catch (error) {
                 console.log('Resource 정보 로드 실패:', error);
+                
+                
+
             }
         }
     function formatNumber(num) {

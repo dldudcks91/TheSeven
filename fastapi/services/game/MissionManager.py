@@ -114,10 +114,10 @@ class MissionManager:
             mission_redis = self.redis_manager.get_mission_manager()
             cached_progress = await mission_redis.get_user_progress(user_no)
             
-            # if cached_progress:
-            #     self.logger.debug(f"Cache hit: Retrieved progress for {len(cached_progress)} missions")
-            #     self._cached_progress = cached_progress
-            #     return cached_progress
+            if cached_progress:
+                self.logger.debug(f"Cache hit: Retrieved progress for {len(cached_progress)} missions")
+                self._cached_progress = cached_progress
+                return cached_progress
             
             # 2. 캐시 미스: DB + 검증 후 캐싱
             self.logger.info(f"Cache miss: Loading from DB and verifying for user {user_no}")
@@ -299,7 +299,9 @@ class MissionManager:
         except Exception as e:
             self.logger.error(f"Error getting current value for {category}:{target_idx}: {e}")
             return 0
-    
+
+#-------------------- API 메서드 ---------------------------------------#
+
     async def mission_info(self):
         """
         미션 정보 조회 - 진행 상태만 반환
@@ -377,7 +379,7 @@ class MissionManager:
             
             
             # 7. 캐시 무효화
-            await self.invalidate_user_mission_cache(user_no)
+            #await self.invalidate_user_mission_cache(user_no)
             
             return {
                 "success": True,
@@ -638,34 +640,9 @@ class MissionManager:
         except Exception as e:
             self.logger.error(f"Error invalidating cache: {e}")
     
-    #-------------------- 여기서부터 API 메서드 ---------------------------------------#
     
-    async def mission_info(self):
-        """
-        미션 정보 조회 - 진행 상태만 반환
-        Config는 프론트엔드가 이미 가지고 있음
-        
-        Response:
-        {
-            "success": True,
-            "data": {
-                101001: {"current_value": 3, "is_completed": True, "is_claimed": True},
-                101002: {"current_value": 5, "is_completed": True, "is_claimed": False}
-            }
-        }
-        """
-        try:
-            progress = await self.get_user_mission_progress()
-            
-            return {
-                "success": True,
-                "message": f"Retrieved progress for {len(progress)} missions",
-                "data": progress
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting mission info: {e}")
-            return {"success": False, "message": str(e), "data": {}}
+    
+    
     
     #-------------------- 내부 헬퍼 메서드 ---------------------------------------#
     

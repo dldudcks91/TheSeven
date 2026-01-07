@@ -19,10 +19,11 @@ class APIManager():
         1012: (BuffManager, BuffManager.buff_info),
         
         
+        
         # === 건물 API (2xxx) ===
         2001: (BuildingManager, BuildingManager.building_info),
         2002: (BuildingManager, BuildingManager.building_create),
-        2003: (BuildingManager, BuildingManager.building_levelup),
+        2003: (BuildingManager, BuildingManager.building_upgrade),
         2004: (BuildingManager, BuildingManager.building_finish),
         2005: (BuildingManager, BuildingManager.building_cancel),
         2006: (BuildingManager, BuildingManager.finish_all_completed_buildings),

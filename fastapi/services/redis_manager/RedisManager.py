@@ -101,3 +101,53 @@ class RedisManager:
         # 🌟 Resource Manager는 작업 완료 개념이 없으므로 추가하지 않습니다.
             
         return result
+    
+    # ✅ 추가 필요한 메서드들
+
+    async def hset(self, key, field, value):
+        """Hash SET"""
+        return await self.redis.hset(key, field, value)
+    
+    async def hgetall(self, key):
+        """Hash GET ALL"""
+        return await self.redis.hgetall(key)
+    
+    async def hdel(self, key, *fields):
+        """Hash DELETE"""
+        return await self.redis.hdel(key, *fields)
+    
+    async def hmset(self, key, mapping):
+        """Hash MSET"""
+        return await self.redis.hset(key, mapping=mapping)
+    
+    async def zadd(self, key, mapping):
+        """Sorted Set ADD"""
+        return await self.redis.zadd(key, mapping)
+    
+    async def zrangebyscore(self, key, min_score, max_score):
+        """Sorted Set RANGE BY SCORE"""
+        return await self.redis.zrangebyscore(key, min_score, max_score)
+    
+    async def zrem(self, key, *members):
+        """Sorted Set REMOVE"""
+        return await self.redis.zrem(key, *members)
+    
+    async def keys(self, pattern):
+        """KEYS with pattern"""
+        return await self.redis.keys(pattern)
+    
+    async def get(self, key):
+        """GET"""
+        return await self.redis.get(key)
+    
+    async def setex(self, key, seconds, value):
+        """SET with expiry"""
+        return await self.redis.setex(key, seconds, value)
+    
+    async def expire(self, key, seconds):
+        """SET TTL"""
+        return await self.redis.expire(key, seconds)
+    
+    async def delete(self, *keys):
+        """DELETE"""
+        return await self.redis.delete(*keys)

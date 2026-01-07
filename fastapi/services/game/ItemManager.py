@@ -1,21 +1,17 @@
-from sqlalchemy.orm import Session
-import models
 from services.system.GameDataManager import GameDataManager
 from services.redis_manager import RedisManager
-from services.db_manager import DBManager
 from datetime import datetime
 import logging
 
 
 class ItemManager:
-    """아이템 관리자 - 컴포넌트 기반 구조"""
+    """아이템 관리자 - Redis 중심 구조 (DB 업데이트는 별도 Task 처리)"""
     
     CONFIG_TYPE = 'item'
     
-    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
+    def __init__(self, redis_manager: RedisManager):
         self._user_no: int = None 
         self._data: dict = None
-        self.db_manager = db_manager
         self.redis_manager = redis_manager
         self._cached_items = None
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -59,54 +55,22 @@ class ItemManager:
             }
         return None
     
-    def _format_item_for_cache(self, item_data):
-        """캐시용 아이템 데이터 포맷팅"""
-        try:
-            if isinstance(item_data, dict):
-                return {
-                    "user_no": item_data.get('user_no'),
-                    "item_idx": item_data.get('item_idx'),
-                    "quantity": item_data.get('quantity', 0),
-                    "cached_at": datetime.utcnow().isoformat()
-                }
-            else:
-                return {
-                    "user_no": item_data.user_no,
-                    "item_idx": item_data.item_idx,
-                    "quantity": item_data.quantity,
-                    "cached_at": datetime.utcnow().isoformat()
-                }
-        except Exception as e:
-            self.logger.error(f"Error formatting item data for cache: {e}")
-            return {}
-    
     async def get_user_items(self):
-        """사용자 아이템 데이터를 캐시 우선으로 조회"""
+        """Redis에서 사용자 아이템 데이터 조회 (메모리 캐시 활용)"""
         if self._cached_items is not None:
             return self._cached_items
         
         user_no = self.user_no
         
         try:
-            # 1. Redis 캐시에서 먼저 조회
+            # Redis에서 조회
             item_redis = self.redis_manager.get_item_manager()
             self._cached_items = await item_redis.get_cached_items(user_no)
             
             if self._cached_items:
                 self.logger.debug(f"Cache hit: Retrieved {len(self._cached_items)} items for user {user_no}")
-                return self._cached_items
-            
-            # 2. 캐시 미스: DB에서 조회
-            items_data = self.get_db_items(user_no)
-            
-            if items_data['success'] and items_data['data']:
-                # 3. Redis에 캐싱
-                cache_success = await item_redis.cache_user_items_data(user_no, items_data['data'])
-                if cache_success:
-                    self.logger.debug(f"Successfully cached {len(items_data['data'])} items for user {user_no}")
-                
-                self._cached_items = items_data['data']
             else:
+                self.logger.warning(f"No items found in Redis for user {user_no}")
                 self._cached_items = {}
                 
         except Exception as e:
@@ -115,47 +79,15 @@ class ItemManager:
         
         return self._cached_items
     
-    def get_db_items(self, user_no):
-        """DB에서 아이템 데이터만 순수하게 조회"""
-        try:
-            item_db = self.db_manager.get_item_manager()
-            items_result = item_db.get_user_items(user_no)
-            
-            if not items_result['success']:
-                return items_result
-            
-            # 데이터 포맷팅
-            formatted_items = {}
-            for item in items_result['data']:
-                item_idx = item['item_idx']
-                formatted_items[str(item_idx)] = self._format_item_for_cache(item)
-            
-            return {
-                "success": True,
-                "message": f"Loaded {len(formatted_items)} items from database",
-                "data": formatted_items
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error loading items from DB for user {user_no}: {e}")
-            return {
-                "success": False,
-                "message": f"Database error: {str(e)}",
-                "data": {}
-            }
-    
     async def invalidate_user_item_cache(self, user_no: int):
-        """사용자 아이템 캐시 무효화"""
+        """사용자 아이템 메모리 캐시 무효화 (Redis는 유지)"""
         try:
-            item_redis = self.redis_manager.get_item_manager()
-            cache_invalidated = await item_redis.invalidate_item_cache(user_no)
-            
-            # 메모리 캐시도 무효화
+            # 메모리 캐시만 무효화
             if self._user_no == user_no:
                 self._cached_items = None
             
-            self.logger.debug(f"Item cache invalidated for user {user_no}: {cache_invalidated}")
-            return cache_invalidated
+            self.logger.debug(f"Item memory cache invalidated for user {user_no}")
+            return True
             
         except Exception as e:
             self.logger.error(f"Error invalidating item cache for user {user_no}: {e}")
@@ -164,7 +96,7 @@ class ItemManager:
     #-------------------- 여기서부터 API 관련 로직 ---------------------------------------#
     
     async def item_info(self):
-        """아이템 정보 조회 - 순수하게 데이터만 반환"""
+        """아이템 정보 조회 - Redis에서 데이터 반환"""
         try:
             items_data = await self.get_user_items()
             
@@ -179,7 +111,7 @@ class ItemManager:
             return {"success": False, "message": str(e), "data": {}}
     
     async def add_item(self):
-        """아이템 추가"""
+        """아이템 추가 - Redis만 업데이트"""
         user_no = self.user_no
         
         try:
@@ -198,31 +130,19 @@ class ItemManager:
                     "data": {}
                 }
             
-            # 현재 보유량 조회
+            # 현재 보유량 조회 (Redis)
             items_data = await self.get_user_items()
             current_quantity = items_data.get(str(item_idx), {}).get('quantity', 0)
             new_quantity = current_quantity + quantity
             
-            # DB 업데이트
-            item_db = self.db_manager.get_item_manager()
-            update_result = item_db.upsert_item(user_no, item_idx, new_quantity)
-            
-            if not update_result['success']:
-                return update_result
-            
-            # Redis 캐시 업데이트
+            # Redis 업데이트
             item_redis = self.redis_manager.get_item_manager()
-            item_data = self._format_item_for_cache({
-                'user_no': user_no,
-                'item_idx': item_idx,
-                'quantity': new_quantity
-            })
-            await item_redis.update_cached_item(user_no, item_idx, item_data)
+            await item_redis.update_item_quantity(user_no, item_idx, new_quantity)
             
             # 메모리 캐시 무효화
             self._cached_items = None
             
-            self.logger.info(f"Item added: user_no={user_no}, item_idx={item_idx}, quantity={quantity}, new_total={new_quantity}")
+            self.logger.info(f"Item added (Redis): user_no={user_no}, item_idx={item_idx}, quantity={quantity}, new_total={new_quantity}")
             
             return {
                 "success": True,
@@ -239,7 +159,7 @@ class ItemManager:
             return {"success": False, "message": str(e), "data": {}}
     
     async def use_item(self):
-        """아이템 사용 (차감)"""
+        """아이템 사용 - Redis만 업데이트, 효과 적용 후 차감"""
         user_no = self.user_no
         
         try:
@@ -258,7 +178,7 @@ class ItemManager:
                     "data": {}
                 }
             
-            # 현재 보유량 조회
+            # 현재 보유량 조회 (Redis)
             items_data = await self.get_user_items()
             current_quantity = items_data.get(str(item_idx), {}).get('quantity', 0)
             
@@ -272,26 +192,25 @@ class ItemManager:
                     }
                 }
             
+            # 1. 아이템 효과 적용 (실패하면 차감하지 않음)
+            effect_result = await self._apply_item_effect(item_idx, quantity)
+            if not effect_result.get('success'):
+                return {
+                    "success": False,
+                    "message": f"Failed to apply item effect: {effect_result.get('message')}",
+                    "data": {}
+                }
+            
+            # 2. 효과 적용 성공 후 아이템 차감 (Redis)
             new_quantity = current_quantity - quantity
             
-            # DB 업데이트
-            item_db = self.db_manager.get_item_manager()
-            update_result = item_db.update_item_quantity(user_no, item_idx, new_quantity)
-            
-            if not update_result['success']:
-                return update_result
-            
-            # Redis 캐시 업데이트
             item_redis = self.redis_manager.get_item_manager()
             await item_redis.update_item_quantity(user_no, item_idx, new_quantity)
             
             # 메모리 캐시 무효화
             self._cached_items = None
             
-            # 아이템 효과 적용
-            effect_result = await self._apply_item_effect(item_idx, quantity)
-            
-            self.logger.info(f"Item used: user_no={user_no}, item_idx={item_idx}, quantity={quantity}, remaining={new_quantity}")
+            self.logger.info(f"Item used (Redis): user_no={user_no}, item_idx={item_idx}, quantity={quantity}, remaining={new_quantity}")
             
             return {
                 "success": True,
@@ -300,7 +219,7 @@ class ItemManager:
                     "item_idx": item_idx,
                     "used_quantity": quantity,
                     "remaining_quantity": new_quantity,
-                    "effect_applied": effect_result.get('success', False)
+                    "effect": effect_result.get('data', {})
                 }
             }
             
@@ -309,11 +228,11 @@ class ItemManager:
             return {"success": False, "message": str(e), "data": {}}
     
     async def _apply_item_effect(self, item_idx: int, quantity: int):
-        """아이템 효과 적용"""
+        """아이템 효과 적용 - ResourceManager를 통해 Redis 업데이트"""
         try:
             user_no = self.user_no
             
-            # GameDataManager에서 아이템 메타데이터 조회 (BuildingManager 방식)
+            # GameDataManager에서 아이템 메타데이터 조회
             if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
                 self.logger.warning("Item configuration not found")
                 return {"success": False, "message": "Item config not found"}
@@ -322,34 +241,68 @@ class ItemManager:
             
             if not item_config:
                 self.logger.warning(f"Item config not found: {item_idx}")
-                return {"success": False, "message": "Item config not found"}
+                return {"success": False, "message": f"Item {item_idx} config not found"}
             
             category = item_config.get('category')
             item_type = item_config.get('item_type')
             target_type = item_config.get('target_type')
             value = item_config.get('value', 0)
             
+            effect_data = {}
+            
             # 카테고리별 효과 적용
             if category == 'speedup':
-                # 가속 아이템 - 추후 구현
-                self.logger.info(f"Applied speedup: target={target_type}, seconds={value * quantity}")
+                # 가속 아이템 - 추후 구현 (Building/Research 타이머 감소)
+                total_seconds = value * quantity
+                self.logger.info(f"Speedup effect: target={target_type}, seconds={total_seconds}")
+                effect_data = {
+                    "category": "speedup",
+                    "target": target_type,
+                    "seconds": total_seconds
+                }
                 
             elif category == 'resource':
-                # 자원 아이템 - ResourceManager 호출
-                self.logger.info(f"Applied resource: type={target_type}, amount={value * quantity}")
+                # 자원 아이템 - Redis ResourceManager 호출
+                total_amount = value * quantity
+                
+                # ResourceManager를 통해 자원 추가 (Redis만 업데이트)
+                resource_redis = self.redis_manager.get_resource_manager()
+                
+                if target_type in ['food', 'wood', 'stone', 'gold', 'ruby']:
+                    await resource_redis.update_resource(user_no, target_type, total_amount)
+                    self.logger.info(f"Applied resource: user={user_no}, type={target_type}, amount={+total_amount}")
+                    effect_data = {
+                        "category": "resource",
+                        "resource_type": target_type,
+                        "amount": total_amount
+                    }
+                else:
+                    return {"success": False, "message": f"Unknown resource type: {target_type}"}
                 
             elif category == 'chest':
-                # 상자 아이템 - 랜덤 보상
-                self.logger.info(f"Opened chest: item_idx={item_idx}, count={quantity}")
+                # 상자 아이템 - 랜덤 보상 (추후 구현)
+                self.logger.info(f"Chest opened: item_idx={item_idx}, count={quantity}")
+                effect_data = {
+                    "category": "chest",
+                    "item_idx": item_idx,
+                    "count": quantity
+                }
             
-            return {"success": True, "message": "Item effect applied"}
+            else:
+                return {"success": False, "message": f"Unknown item category: {category}"}
+            
+            return {
+                "success": True,
+                "message": "Item effect applied",
+                "data": effect_data
+            }
             
         except Exception as e:
             self.logger.error(f"Error applying item effect: {e}")
             return {"success": False, "message": str(e)}
     
     async def get_item_detail(self):
-        """특정 아이템 상세 정보 조회 (메타데이터 + 보유량)"""
+        """특정 아이템 상세 정보 조회 (메타데이터 + Redis 보유량)"""
         try:
             validation_error = self._validate_input()
             if validation_error:
@@ -358,7 +311,7 @@ class ItemManager:
             item_idx = self.data.get('item_idx')
             user_no = self.user_no
             
-            # 1. GameDataManager에서 메타데이터 조회 (BuildingManager 방식)
+            # 1. GameDataManager에서 메타데이터 조회
             if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
                 return {
                     "success": False,
@@ -375,7 +328,7 @@ class ItemManager:
                     "data": {}
                 }
             
-            # 2. 보유량 조회
+            # 2. Redis에서 보유량 조회
             items_data = await self.get_user_items()
             quantity = items_data.get(str(item_idx), {}).get('quantity', 0)
             

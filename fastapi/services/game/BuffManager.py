@@ -1,528 +1,373 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, select
-from sqlalchemy.ext.asyncio import AsyncSession # 비동기 세션을 위한 임포트 추가
-
-import models, schemas
 from services.system.GameDataManager import GameDataManager
-from services.game import ResourceManager
-from services.game.ResearchManager import ResearchManager
-from services.redis_manager import RedisManager
 from services.db_manager import DBManager
+from services.redis_manager import RedisManager
 from datetime import datetime, timedelta
+import logging
+import uuid
 
-'''
-status 값
-0: 비활성/완료
-1: 활성
-2: 만료됨
-
-buff_type 값 (적용 대상)
-0: 전체 (글로벌)
-1: 연맹 (ally)
-2: 개인 (personal)
-'''
 
 class BuffManager:
+    """
+    하이브리드 버프 관리자 (BuildingManager 패턴 적용)
+    - Manager가 캐싱 주도권을 가짐 (Cache-Aside Pattern Explicit Control)
+    - 영구 버프: 연구, 도감 등 타 시스템 데이터를 조합하여 Redis에 캐싱
+    - 임시 버프: 생성 즉시 Redis에 반영
+    """
+    
     CONFIG_TYPE = 'buff'
+    CACHE_TTL = 60  # 계산 결과 캐시 유효 시간 (초)
     
-    # 버프 상태 상수
-    STATUS_INACTIVE = 0
-    STATUS_ACTIVE = 1
-    STATUS_EXPIRED = 2
-    
-    # 버프 적용 대상 상수
-    TARGET_GLOBAL = 0
-    TARGET_ALLY = 1
-    TARGET_PERSONAL = 2
-    
-    # 버프 카테고리 상수
-    BUFF_CATEGORIES = {
-        'building': 'construction',
-        'research': 'research',
-        'resource_production': 'production',
-        'resource_gathering': 'gathering',
-        'unit_train_speed': 'unit_training',
-        'unit_upgrade_speed': 'unit_upgrade',
-        
-    }
-    
-    # db: Session 대신 AsyncSession 사용을 권장합니다.
-    def __init__(self, redis_manager: RedisManager, db_manager: DBManager):
-        self._user_no: int = None
-        self._data: dict = None
-        
-        self.redis_manager = redis_manager
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
+        self._user_no: int = None 
         self.db_manager = db_manager
+        self.redis_manager = redis_manager
+        
+        # Redis 접근 컴포넌트
+        self.buff_redis = redis_manager.get_buff_manager()
+        self.logger = logging.getLogger(self.__class__.__name__)
+    
     @property
     def user_no(self):
-        """사용자 번호의 getter"""
         return self._user_no
 
     @user_no.setter
     def user_no(self, no: int):
-        """사용자 번호의 setter. 정수형인지 확인"""
         if not isinstance(no, int):
             raise ValueError("user_no는 정수여야 합니다.")
         self._user_no = no
 
-    @property
-    def data(self):
-        """요청 데이터의 getter"""
-        return self._data
+    # ==================== 영구 버프 (Permanent Buffs) ====================
+    
+    async def get_permanent_buffs(self, user_no: int):
+        """
+        영구 버프 조회 (Cache-Aside 패턴)
+        1. Redis 조회
+        2. 없으면 타 시스템(연구 등)에서 데이터 복구(_reconstruct)
+        3. 복구된 데이터를 Redis에 캐싱
+        """
+        try:
+            # 1. Redis에서 먼저 조회
+            buffs = await self.buff_redis.get_permanent_buffs(user_no)
+            
+            if buffs is not None:
+                # self.logger.debug(f"Buff Cache hit for user {user_no}")
+                return buffs
+            
+            # 2. Redis 미스: 데이터 재구축 (BuildingManager의 _load_from_db와 유사)
+            self.logger.info(f"Buff Cache miss for user {user_no}. Reconstructing from sources...")
+            reconstructed_buffs = await self._reconstruct_permanent_buffs(user_no)
+            
+            # 3. Redis에 캐싱 (Manager가 명시적으로 수행)
+            if reconstructed_buffs:
+                await self.buff_redis.cache_permanent_buffs(user_no, reconstructed_buffs)
+                self.logger.info(f"Reconstructed and cached {len(reconstructed_buffs)} buffs for user {user_no}")
+            
+            return reconstructed_buffs
+            
+        except Exception as e:
+            self.logger.error(f"Error getting permanent buffs for user {user_no}: {e}")
+            return {}
 
-    @data.setter
-    def data(self, value: dict):
-        """요청 데이터의 setter. 딕셔너리인지 확인"""
-        if not isinstance(value, dict):
-            raise ValueError("data는 딕셔너리여야 합니다.")
-        self._data = value
+    async def _reconstruct_permanent_buffs(self, user_no: int):
+        """
+        데이터 재구축 로직 (순수 조회만 수행, Redis 저장 안함)
+        - 연구, 도감, 영웅 등 타 시스템의 데이터를 취합
+        """
+        reconstructed = {}
         
-    def _validate_input(self):
-        """공통 입력값 검증"""
-        if not self._data:
-            return {
-                "success": False,
-                "message": "Missing required data payload",
-                "data": {}
-            }
-        
-        buff_idx = self.data.get('buff_idx')
-        if not buff_idx:
-            return {
-                "success": False,
-                "message": f"Missing required fields: buff_idx: {buff_idx}",
-                "data": {}
-            }
-        
-        return None
-    
-    async def _format_buff_data(self, buff):
-        """버프 데이터를 응답 형태로 포맷팅"""
-        # Redis에서 실제 완료 시간을 조회 (서버에서 관리하는 시간)
-        redis_completion_time = None
-        if buff.status == self.STATUS_ACTIVE:
-            try:
-                buff_redis = self.redis_manager.get_buff_manager()
-                # Redis 작업은 비동기로 가정하고 await 추가
-                redis_completion_time = await buff_redis.get_buff_completion_time(
-                    buff.user_no, buff.buff_idx
-                )
-            except Exception as redis_error:
-                print(f"Redis error: {redis_error}")
-                redis_completion_time = None
-        
-        return {
-            "id": buff.id,
-            "user_no": buff.user_no,
-            "ally_no": buff.ally_no,
-            "buff_type": buff.buff_type,
-            "target_no": buff.target_no,
-            "buff_idx": buff.buff_idx,
-            "status": buff.status,
-            "start_time": buff.start_time.isoformat() if buff.start_time else None,
-            "end_time": redis_completion_time.isoformat() if redis_completion_time else None,
-            "last_dt": buff.last_dt.isoformat() if buff.last_dt else None
-        }
-    
-    async def _get_buff(self, user_no, buff_idx):
-        """특정 버프 조회"""
-        # SQLAlchemy 2.0 비동기 쿼리로 변환
-        stmt = select(models.Buff).where(
-            models.Buff.user_no == user_no,
-            models.Buff.buff_idx == buff_idx
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-    
-    async def _get_user_buffs(self, user_no, ally_no=0):
-    
-        #개인 버프
-        user_buff_data = []
-        user_research_buff_data = await self._get_user_research_buffs(user_no)
-        user_buff_data.extend(user_research_buff_data)
-        return user_buff_data
-        
-    async def _get_user_research_buffs(self, user_no):
-        """사용자 관련 버프 조회 (개인 + 연맹 + 글로벌)"""
-        
-        
-        #개인 버프 가져오기
-        
-        buff_meta_data = GameDataManager.REQUIRE_CONFIGS['buff']
-        research_meta_data = GameDataManager.REQUIRE_CONFIGS['research']
-        # ResearchManager의 초기화가 db_manager를 사용하는 동기 방식일 수 있으므로 주의 필요
-        # ResearchManager의 메서드 호출은 비동기로 가정하고 await 추가
-        research_manager = ResearchManager(self.redis_manager, self.db_manager) 
-        research_manager.user_no = user_no
-        user_research_data = await research_manager.get_user_researches() 
-        
-        
-        
-        user_buff_data = []
-        for key, value in user_research_data.items():
-            research_idx = int(key)
-            research_level = value['level']
-            
-            buff_idx = research_meta_data[research_idx][research_level]['buff_idx']
-            user_buff_data.append(buff_meta_data[buff_idx])
-        
-        
-        #연맹 버프 가져오기
-        
-        
-        return user_buff_data
-    
-   
-    async def _handle_resource_transaction(self, user_no, buff_idx):
-        """버프 활성화를 위한 자원 체크 및 소모"""
         try:
-            required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][buff_idx]
-            costs = required.get('cost', {})
-            duration = required.get('duration', 3600)  # 기본 1시간
+            # [Source 1] 연구 데이터 역추적
+            research_redis = self.redis_manager.get_research_manager()
+            # 연구 캐시 조회 (없으면 연구 쪽도 DB 로드하겠지만, 여기선 캐시 가정)
+            all_research = await research_redis.get_cached_researches(user_no)
             
-            if costs:
-                # ResourceManager의 DB 접근 메서드는 비동기로 가정하고 await 추가
-                resource_manager = ResourceManager(self.db)
-                if not await resource_manager.check_require_resources(user_no, costs):
-                    return None, "Need More Resources"
-                
-                await resource_manager.consume_resources(user_no, costs)
-            
-            return duration, None
-            
-        except Exception as e:
-            return None, f"Resource error: {str(e)}"
-    
-    async def buff_info(self):
-        """
-        버프 정보를 조회합니다.
-        """
-        try:
-            user_no = self.user_no
-            
-            # 사용자의 모든 버프 조회
-            user_buffs = await self._get_user_buffs(user_no)
-            
-            # 버프 데이터 구성
-            buffs_data = {}
-            for buff in user_buffs:
-                # 비동기 포맷팅 함수 호출에 await 추가
-                buffs_data[buff['buff_idx']] = buff#await self._format_buff_data(buff)
-            
-            return {
-                "success": True,
-                "message": f"Retrieved {len(buffs_data)} buffs info",
-                "data": buffs_data
-            }
-            
-        except Exception as e:
-            return {"success": False, "message": f"Error retrieving buffs info: {str(e)}", "data": {}}
-    
-    async def buff_activate(self):
-        """
-        버프를 활성화합니다.
-        """
-        try:
-            user_no = self.user_no
-            
-            # 입력값 검증
-            validation_error = self._validate_input()
-            if validation_error:
-                return validation_error
-            
-            buff_idx = self.data.get('buff_idx')
-            target_no = self.data.get('target_no', user_no)  # 기본값은 자신
-            buff_type = self.data.get('buff_type', self.TARGET_PERSONAL)  # 기본값은 개인 버프
-            ally_no = self.data.get('ally_no', 0)
-            
-            # 기존 활성 버프 체크 (SQLAlchemy 2.0 비동기 쿼리로 변환)
-            stmt = select(models.Buff).where(
-                models.Buff.user_no == user_no,
-                models.Buff.buff_idx == buff_idx,
-                models.Buff.status == self.STATUS_ACTIVE
-            )
-            result = await self.db.execute(stmt)
-            existing_buff = result.scalars().first()
-            
-            if existing_buff:
-                return {"success": False, "message": "Buff is already active", "data": {}}
-            
-            # 자원 처리 (비동기 호출에 await 추가)
-            duration, error_msg = await self._handle_resource_transaction(user_no, buff_idx)
-            if error_msg:
-                # 자원 소비가 롤백되었는지 확인 필요 (ResourceManager 내부에서 처리 가정)
-                return {"success": False, "message": error_msg, "data": {}}
-            
-            # 시간 설정
-            start_time = datetime.utcnow()
-            completion_time = start_time + timedelta(seconds=duration)
-            
-            # 기존 비활성 버프가 있으면 재활성화, 없으면 새로 생성 (비동기 호출에 await 추가)
-            buff = await self._get_buff(user_no, buff_idx)
-            if buff:
-                buff.status = self.STATUS_ACTIVE
-                buff.start_time = start_time
-                buff.end_time = None  # DB에는 저장하지 않음
-                buff.last_dt = start_time
-            else:
-                buff = models.Buff(
-                    user_no=user_no,
-                    ally_no=ally_no,
-                    buff_type=buff_type,
-                    target_no=target_no,
-                    buff_idx=buff_idx,
-                    status=self.STATUS_ACTIVE,
-                    start_time=start_time,
-                    end_time=None,  # DB에는 저장하지 않음
-                    last_dt=start_time
-                )
-                self.db.add(buff)
-            
-            # DB 커밋 및 새로고침 (비동기 호출에 await 추가)
-            await self.db.commit()
-            
-            # Redis 완료 큐에 추가 (Redis 작업은 비동기로 가정하고 await 추가)
-            if self.redis_manager:
-                buff_redis = self.redis_manager.get_buff_manager()
-                await buff_redis.add_buff(user_no, buff_idx, completion_time, buff_type, target_no)
-            
-            # DB.refresh는 비동기 세션에서 사용하지 않거나,
-            # `expire_all()` 또는 `refresh` 메서드가 AsyncSession에서 지원된다면 사용 가능
-            # 여기서는 편의상 주석 처리하고 buff 객체가 업데이트 되었다고 가정합니다.
-            # await self.db.refresh(buff) 
-            
-            buff_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(buff_idx, {})
-            buff_name = buff_config.get('name', f'Buff_{buff_idx}')
-            
-            # 비동기 포맷팅 함수 호출에 await 추가
-            return {
-                "success": True,
-                "message": f"Buff {buff_name} activated for {duration} seconds",
-                "data": await self._format_buff_data(buff)
-            }
-            
-        except Exception as e:
-            await self.db.rollback() # 비동기 롤백에 await 추가
-            return {"success": False, "message": f"Error activating buff: {str(e)}", "data": {}}
-    
-    async def buff_cancel(self):
-        """
-        버프를 취소/비활성화합니다.
-        """
-        try:
-            user_no = self.user_no
-            
-            # 입력값 검증
-            validation_error = self._validate_input()
-            if validation_error:
-                return validation_error
-            
-            buff_idx = self.data.get('buff_idx')
-            
-            # 비동기 쿼리 호출에 await 추가
-            buff = await self._get_buff(user_no, buff_idx)
-            if not buff:
-                return {"success": False, "message": "Buff not found", "data": {}}
-            
-            if buff.status != self.STATUS_ACTIVE:
-                return {"success": False, "message": "Buff is not active", "data": {}}
-            
-            # Redis 큐에서 제거 (Redis 작업은 비동기로 가정하고 await 추가)
-            if self.redis_manager:
-                buff_redis = self.redis_manager.get_buff_manager()
-                await buff_redis.remove_buff(user_no, buff_idx)
-            
-            # 버프 비활성화
-            buff.status = self.STATUS_INACTIVE
-            buff.end_time = None
-            buff.last_dt = datetime.utcnow()
-            
-            # DB 커밋 및 새로고침 (비동기 호출에 await 추가)
-            await self.db.commit()
-            # await self.db.refresh(buff) # 비동기 세션에서 refresh 사용에 주의
-            
-            # 비동기 포맷팅 함수 호출에 await 추가
-            return {
-                "success": True,
-                "message": "Buff cancelled",
-                "data": await self._format_buff_data(buff)
-            }
-            
-        except Exception as e:
-            await self.db.rollback() # 비동기 롤백에 await 추가
-            return {"success": False, "message": f"Error cancelling buff: {str(e)}", "data": {}}
-    
-    async def buff_speedup(self):
-        """
-        버프를 즉시 완료합니다. (아이템 사용)
-        """
-        try:
-            user_no = self.user_no
-            
-            # 입력값 검증
-            validation_error = self._validate_input()
-            if validation_error:
-                return validation_error
-            
-            buff_idx = self.data.get('buff_idx')
-            
-            # 비동기 쿼리 호출에 await 추가
-            buff = await self._get_buff(user_no, buff_idx)
-            if not buff:
-                return {"success": False, "message": "Buff not found", "data": {}}
-            
-            if buff.status != self.STATUS_ACTIVE:
-                return {"success": False, "message": "Buff is not active", "data": {}}
-            
-            # Redis에서 완료 시간 조회 (Redis 작업은 비동기로 가정하고 await 추가)
-            if self.redis_manager:
-                buff_redis = self.redis_manager.get_buff_manager()
-                completion_time = await buff_redis.get_buff_completion_time(user_no, buff_idx)
-                if not completion_time:
-                    return {"success": False, "message": "Buff completion time not found", "data": {}}
-                
-                # 즉시 완료를 위해 현재 시간으로 업데이트 (Redis 작업은 비동기로 가정하고 await 추가)
-                current_time = datetime.utcnow()
-                await buff_redis.update_buff_completion_time(user_no, buff_idx, current_time)
-            
-            # 비동기 포맷팅 함수 호출에 await 추가
-            return {
-                "success": True,
-                "message": "Buff completion time accelerated. Will complete shortly.",
-                "data": await self._format_buff_data(buff)
-            }
-            
-        except Exception as e:
-            return {"success": False, "message": f"Error speeding up buff: {str(e)}", "data": {}}
-    
-    async def get_active_buffs(self, user_no, buff_category=None, ally_no=0):
-        """
-        활성화된 버프 목록을 조회합니다.
-        buff_category: 특정 카테고리의 버프만 조회 (예: 'building_speed')
-        """
-        try:
-            # 사용자 관련 활성 버프 조회 (비동기 호출에 await 추가)
-            active_buffs = await self._get_user_buffs(user_no, ally_no)
-            
-            # 현재 시간 기준으로 만료된 버프 필터링
-            current_time = datetime.utcnow()
-            valid_buffs = []
-            
-            for buff in active_buffs:
-                # Redis에서 실제 완료 시간 확인 (Redis 작업은 비동기로 가정하고 await 추가)
-                if self.redis_manager:
-                    completion_time = await self.redis_manager.get_buff_completion_time(
-                        buff.user_no, buff.buff_idx
-                    )
-                    if completion_time and current_time >= completion_time:
-                        continue  # 만료된 버프 제외
-                
-                # 버프 설정 정보 가져오기
-                buff_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(buff.buff_idx, {})
-                
-                # 카테고리 필터링
-                if buff_category:
-                    config_category = buff_config.get('category', '')
-                    if config_category != buff_category:
-                        continue
-                
-                buff_data = {
-                    'buff_idx': buff.buff_idx,
-                    'category': buff_config.get('category', ''),
-                    'effect_type': buff_config.get('effect_type', ''),
-                    'value': buff_config.get('value', 0),
-                    'reduction_percent': buff_config.get('reduction_percent', 0),
-                    'increase_percent': buff_config.get('increase_percent', 0),
-                    'buff_type': buff.buff_type,
-                    'target_no': buff.target_no
-                }
-                valid_buffs.append(buff_data)
-            
-            return valid_buffs
-            
-        except Exception as e:
-            print(f"Error getting active buffs: {e}")
-            return []
-    
-    async def calculate_buffed_value(self, user_no, base_value, buff_category, ally_no=0):
-        """
-        기본값에 버프 효과를 적용한 최종값을 계산합니다.
-        """
-        try:
-            # 비동기 호출에 await 추가
-            active_buffs = await self.get_active_buffs(user_no, buff_category, ally_no)
-            
-            if not active_buffs:
-                return base_value
-            
-            total_increase = 0
-            total_reduction = 0
-            
-            for buff in active_buffs:
-                # 증가 버프
-                if buff.get('increase_percent', 0) > 0:
-                    total_increase += buff['increase_percent']
-                
-                # 감소 버프 (시간 단축 등)
-                if buff.get('reduction_percent', 0) > 0:
-                    total_reduction += buff['reduction_percent']
-            
-            # 증가 효과 적용
-            if total_increase > 0:
-                base_value = int(base_value * (1 + total_increase / 100))
-            
-            # 감소 효과 적용 (시간 단축 등)
-            if total_reduction > 0:
-                total_reduction = min(total_reduction, 90)  # 최대 90% 단축
-                base_value = int(base_value * (1 - total_reduction / 100))
-                base_value = max(1, base_value)  # 최소 1
-            
-            return base_value
-            
-        except Exception as e:
-            print(f"Error calculating buffed value: {e}")
-            return base_value
-    
-    async def get_completion_status(self):
-        """
-        현재 진행 중인 버프들의 완료 상태를 조회합니다.
-        """
-        try:
-            user_no = self.user_no
-            
-            # 활성화된 버프들 조회 (SQLAlchemy 2.0 비동기 쿼리로 변환)
-            stmt = select(models.Buff).where(
-                models.Buff.user_no == user_no,
-                models.Buff.status == self.STATUS_ACTIVE
-            )
-            result = await self.db.execute(stmt)
-            active_buffs = result.scalars().all()
-            
-            completion_info = []
-            current_time = datetime.utcnow()
-            
-            for buff in active_buffs:
-                if self.redis_manager:
-                    # Redis 작업은 비동기로 가정하고 await 추가
-                    redis_completion_time = await self.redis_manager.get_buff_completion_time(
-                        user_no, buff.buff_idx
-                    )
+            if all_research:
+                research_configs = GameDataManager.REQUIRE_CONFIGS.get('research', {})
+                for res_idx_str, res_data in all_research.items():
+                    res_idx = int(res_idx_str)
+                    res_lv = res_data.get('building_lv', 1)
                     
-                    if redis_completion_time:
-                        remaining_seconds = max(0, int((redis_completion_time - current_time).total_seconds()))
-                        completion_info.append({
-                            "buff_idx": buff.buff_idx,
-                            "status": buff.status,
-                            "completion_time": redis_completion_time.isoformat(),
-                            "remaining_seconds": remaining_seconds,
-                            "is_ready": remaining_seconds == 0
-                        })
+                    # Config에서 buff_idx 확인
+                    config = research_configs.get(res_idx, {}).get(res_lv, {})
+                    buff_idx = config.get('buff_idx')
+                    
+                    if buff_idx:
+                        field = f"research:{res_idx}:{res_lv}"
+                        reconstructed[field] = str(buff_idx)
+            
+            # [Source 2] 추가 소스 (건물 스킨, 칭호 등) 로직이 있다면 여기에 추가
+            # ...
+
+        except Exception as e:
+            self.logger.error(f"Failed to reconstruct buffs for user {user_no}: {e}")
+            
+        return reconstructed
+
+    async def add_permanent_buff(self, user_no: int, source_type: str, source_id: str, buff_idx: int):
+        """영구 버프 추가 (Write-Through: Redis에 즉시 반영)"""
+        try:
+            field = f"{source_type}:{source_id}"
+            
+            # 1. Redis 업데이트
+            await self.buff_redis.set_permanent_buff(user_no, field, buff_idx)
+            
+            # 2. 계산 캐시 무효화 (값이 변했으므로)
+            await self.buff_redis.invalidate_buff_calculation_cache(user_no)
+            
+            self.logger.info(f"Permanent buff added: user={user_no}, source={field}")
             
             return {
                 "success": True,
-                "message": f"Retrieved completion status for {len(completion_info)} buffs",
-                "data": completion_info
+                "message": "Permanent buff added",
+                "data": {"source": field, "buff_idx": buff_idx}
+            }
+        except Exception as e:
+            self.logger.exception(f"Error adding permanent buff: {e}")
+            return {"success": False, "message": str(e)}
+
+    async def remove_permanent_buff(self, user_no: int, source_type: str, source_id: str):
+        """영구 버프 제거 (Write-Through)"""
+        try:
+            field = f"{source_type}:{source_id}"
+            
+            await self.buff_redis.del_permanent_buff(user_no, field)
+            await self.buff_redis.invalidate_buff_calculation_cache(user_no)
+            
+            return {"success": True}
+        except Exception as e:
+            self.logger.error(f"Error removing permanent buff: {e}")
+            return {"success": False, "message": str(e)}
+
+    # ==================== 임시 버프 (Temporary Buffs) ====================
+    
+    async def add_temporary_buff(self, user_no: int, buff_idx: int, value: float, duration_seconds: int, source: str = None):
+        """임시 버프 추가 (Write-Through)"""
+        try:
+            # 설정 검증
+            if buff_idx not in GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]:
+                return {"success": False, "message": f"Buff {buff_idx} not found"}
+            
+            buff_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][buff_idx]
+            buff_id = str(uuid.uuid4())[:12]
+            
+            now = datetime.utcnow()
+            expires_at = now + timedelta(seconds=duration_seconds)
+            
+            metadata = {
+                'buff_idx': str(buff_idx),
+                'target_type': buff_config['target_type'],
+                'target_sub_type': buff_config.get('target_sub_type', ''),
+                'stat_type': buff_config['stat_type'],
+                'value': str(value),
+                'value_type': buff_config['value_type'],
+                'started_at': now.isoformat(),
+                'expires_at': expires_at.isoformat(),
+                'source': source or 'unknown'
             }
             
+            # 1. Redis 업데이트
+            await self.buff_redis.add_temp_buff_task(user_no, buff_id, metadata, duration_seconds)
+            
+            # 2. 계산 캐시 무효화
+            await self.buff_redis.invalidate_buff_calculation_cache(user_no)
+            
+            return {
+                "success": True, 
+                "message": "Temporary buff added",
+                "data": {"buff_id": buff_id, "expires_at": expires_at.isoformat()}
+            }
         except Exception as e:
-            return {"success": False, "message": f"Error getting completion status: {str(e)}", "data": []}
+            self.logger.exception(f"Error adding temp buff: {e}")
+            return {"success": False, "message": str(e)}
+
+    async def get_active_temporary_buffs(self, user_no: int):
+        """임시 버프 조회"""
+        return await self.buff_redis.get_active_temp_buffs(user_no)
+
+    async def remove_temporary_buff(self, user_no: int, buff_id: str):
+        """임시 버프 수동 제거"""
+        try:
+            await self.buff_redis.remove_temp_buff(user_no, buff_id)
+            await self.buff_redis.invalidate_buff_calculation_cache(user_no)
+            return {"success": True}
+        except Exception as e:
+            self.logger.error(f"Error removing temporary buff: {e}")
+            return {"success": False, "message": str(e)}
+
+    # ==================== 통합 버프 계산 (Calculation Logic) ====================
+    async def get_all_buff_totals(self, user_no: int) -> dict:
+        """
+        ✅ 유저의 모든 버프를 전수 조사하여 합산표 반환 (Cache-Aside)
+        Returns:
+            {
+                "unit:attack:infantry": 15.0,
+                "unit:attack:all": 10.0,
+                "resource:get:gold": 25.5,
+                ...
+            }
+        """
+        try:
+            # 1. 통합 캐시 확인
+            cache_key = f"user:{user_no}:all_buff_totals"
+            cached_data = await self.buff_redis.cache_manager.get_data(cache_key)
+            if cached_data:
+                return cached_data
+
+            # 2. 캐시 미스 시 전수 계산 시작
+            self.logger.info(f"Calculating ALL buffs for user {user_no}...")
+            all_totals = {}
+
+            # 2-1. 모든 영구 버프 소스 가져오기 (복구 로직 포함)
+            permanent_buffs = await self.get_permanent_buffs(user_no)
+            research_configs = GameDataManager.REQUIRE_CONFIGS.get('research', {})
+            buff_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
+
+            for source, buff_idx_str in permanent_buffs.items():
+                try:
+                    buff_idx = int(buff_idx_str)
+                    source_parts = source.split(':')
+                    source_type = source_parts[0]
+                    
+                    # 수치(Value) 추출
+                    val = 0
+                    if source_type == 'research':
+                        res_idx, res_lv = int(source_parts[1]), int(source_parts[2])
+                        val = research_configs.get(res_idx, {}).get(res_lv, {}).get('value', 0)
+                    
+                    # 버프 종류(Type) 추출 및 합산
+                    b_config = buff_configs.get(buff_idx)
+                    if b_config:
+                        self._aggregate_buff(all_totals, b_config, val)
+                except: continue
+
+            # 2-2. 모든 활성 임시 버프 가져오기
+            temporary_buffs = await self.get_active_temporary_buffs(user_no)
+            for b_data in temporary_buffs:
+                try:
+                    val = float(b_data.get('value', 0))
+                    # b_data 자체가 이미 config 내용을 담고 있음
+                    self._aggregate_buff(all_totals, b_data, val)
+                except: continue
+
+            # 3. 결과 캐싱 (60초)
+            await self.buff_redis.cache_manager.set_data(cache_key, all_totals, expire_time=self.CACHE_TTL)
+            
+            return all_totals
+
+        except Exception as e:
+            self.logger.error(f"Error getting all buff totals for user {user_no}: {e}")
+            return {}
+
+    def _aggregate_buff(self, totals: dict, config: dict, value: float):
+        """딕셔너리에 버프 수치 누적 (Helper)"""
+        t_type = config.get('target_type', 'unknown')
+        s_type = config.get('stat_type', 'none')
+        sub_type = config.get('target_sub_type', 'all') or 'all'
+        
+        # 키 생성 규칙: "대상:스탯:서브타입"
+        key = f"{t_type}:{s_type}:{sub_type}"
+        totals[key] = totals.get(key, 0.0) + value
+        
+    async def get_total_buffs(self, user_no: int, target_type: str, stat_type: str = None, target_sub_type: str = None):
+        """
+        통합 버프 계산 (Cache-Aside)
+        1. 계산된 결과 캐시 확인
+        2. 없으면 영구+임시 버프 데이터 가져와서(필요시 복구 포함) 계산
+        3. 결과를 캐시에 저장
+        """
+        try:
+            cache_key = self._get_cache_key(user_no, target_type, stat_type, target_sub_type)
+            
+            # 1. 캐시 확인
+            cached_value = await self.buff_redis.get_total_buff_cache(cache_key)
+            if cached_value is not None:
+                return cached_value
+            
+            # 2. 계산 시작
+            total_buff = 0.0
+            
+            # 2-1. 영구 버프 조회 (get_permanent_buffs가 복구 로직까지 수행)
+            permanent_buffs = await self.get_permanent_buffs(user_no)
+            
+            for source, buff_idx_str in permanent_buffs.items():
+                try:
+                    buff_idx = int(buff_idx_str)
+                    source_parts = source.split(':')
+                    source_type = source_parts[0]
+                    
+                    value = 0
+                    if source_type == 'research':
+                        res_idx, res_lv = int(source_parts[1]), int(source_parts[2])
+                        res_config = GameDataManager.REQUIRE_CONFIGS['research'].get(res_idx, {}).get(res_lv, {})
+                        value = res_config.get('value', 0)
+                    
+                    buff_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(buff_idx, {})
+                    if self._buff_matches(buff_config, target_type, stat_type, target_sub_type):
+                        total_buff += value
+                except: continue
+            
+            # 2-2. 임시 버프 조회
+            temporary_buffs = await self.get_active_temporary_buffs(user_no)
+            for b_data in temporary_buffs:
+                if self._buff_matches_dict(b_data, target_type, stat_type, target_sub_type):
+                    total_buff += float(b_data.get('value', 0))
+            
+            # 3. 결과 캐싱
+            await self.buff_redis.set_total_buff_cache(cache_key, total_buff, self.CACHE_TTL)
+            
+            return total_buff
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating total buffs: {e}")
+            return 0.0
+
+    # ==================== 헬퍼 및 유틸리티 ====================
+
+    def _get_cache_key(self, user_no, t_type, s_type, sub_type):
+        return f"user:{user_no}:buff_cache:{t_type}:{s_type or 'all'}:{sub_type or 'all'}"
+
+    def _buff_matches(self, config, t_type, s_type, sub_type):
+        if not config: return False
+        if config.get('target_type') != t_type: return False
+        if s_type and config.get('stat_type') != s_type: return False
+        if sub_type:
+            target_sub = config.get('target_sub_type', 'all')
+            if target_sub != 'all' and target_sub != sub_type: return False
+        return True
+
+    def _buff_matches_dict(self, data, t_type, s_type, sub_type):
+        if data.get('target_type') != t_type: return False
+        if s_type and data.get('stat_type') != s_type: return False
+        if sub_type:
+            target_sub = data.get('target_sub_type', 'all')
+            if target_sub != 'all' and target_sub != sub_type: return False
+        return True
+
+    async def apply_buff_to_value(self, user_no: int, base_value: float, target_type: str, stat_type: str = None, target_sub_type: str = None):
+        """기본값에 버프를 적용한 최종값 계산"""
+        try:
+            total_buff = await self.get_total_buffs(user_no, target_type, stat_type, target_sub_type)
+            multiplier = 1 + (total_buff / 100)
+            final_value = base_value * multiplier
+            
+            if total_buff < 0:
+                final_value = max(1, int(final_value))
+            else:
+                final_value = int(final_value)
+                
+            return final_value
+        except Exception as e:
+            self.logger.error(f"Error applying buff: {e}")
+            return base_value
+
+    async def buff_info(self):
+        """API용 전체 정보 (현재 인스턴스의 user_no 기준)"""
+        user_no = self.user_no
+        try:
+            total_buffs = await self.get_all_total_buffs(user_no)
+            permanent_buffs = await self.get_permanent_buffs(user_no)
+            temporary_buffs = await self.get_active_temporary_buffs(user_no)
+            
+            return {"success": True, "data": {"total_buff": total_buffs, "permanent_buffs": permanent_buffs, "temporary_buffs": temporary_buffs}}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
