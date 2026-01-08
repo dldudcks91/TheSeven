@@ -270,7 +270,7 @@ class GameDataManager:
         if require_str and require_str != 'nan':
                 for req in require_str.split(','):
                     if ':' in req:
-                        idx, lv = req.strip().split(':')
+                        idx, lv = req.strip().split('_')
                         requires.append((int(idx), int(lv)))
                         
         return requires

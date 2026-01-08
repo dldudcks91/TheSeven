@@ -3,117 +3,360 @@ from typing import Optional, List, Dict, Any
 from .base_redis_task_manager import BaseRedisTaskManager
 from .base_redis_cache_manager import BaseRedisCacheManager
 from .redis_types import CacheType, TaskType
-import json
+import logging
+
 
 class BuffRedisManager:
     """
-    버프 전용 Redis 관리자 (데이터 접근 계층)
-    - BuildingRedisManager와 동일한 구조로 Task(임시)와 Cache(영구/계산)를 관리
-    - 비즈니스 로직 없음 (Manager가 제어)
+    버프 전용 Redis 관리자
+    
+    저장 구조:
+        permanent_buffs (Hash) - target_type별 분류:
+            Field: "unit"     → {"research:101_3": {"buff_idx": 202, "stat_type": "attack", ...}, ...}
+            Field: "resource" → {"research:201_1": {"buff_idx": 101, "stat_type": "get", ...}, ...}
+            Field: "building" → {...}
+        
+        temporary_buffs:
+            TaskManager(만료 큐) + 개별 메타데이터 (String)
+        
+        total_buffs (String) - 캐시:
+            {"unit:attack:infantry": 15.0, "resource:get:all": 10.0, ...}
     """
     
     def __init__(self, redis_client):
-        # 1. 임시 버프(시간제) 관리를 위한 TaskManager
         self.task_manager = BaseRedisTaskManager(redis_client, TaskType.BUFF)
-        # 2. 영구 버프 및 계산 결과 관리를 위한 CacheManager
         self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.BUFF)
-        self.redis_client = redis_client
-        self.cache_expire_time = 3600  # 1시간
-
-    # ==================== 영구 버프 (Permanent Buffs) ====================
-    # Hash 구조: user:{user_no}:permanent_buffs
-
-    async def get_permanent_buffs(self, user_no: int) -> Optional[Dict[str, str]]:
-        """
-        영구 버프 조회
-        Returns: None if cache miss, Dict if exists
-        """
-        key = f"user:{user_no}:permanent_buffs"
-        buffs = await self.redis_client.hgetall(key)
+        self.logger = logging.getLogger(self.__class__.__name__)
         
-        if not buffs:
+        self.cache_expire_time = 3600  # 영구버프 캐시 1시간
+        self.total_buffs_ttl = 60      # total_buffs 캐시 60초
+
+    # ==================== 영구 버프 ====================
+
+    async def get_permanent_buffs(self, user_no: int) -> Optional[Dict[str, Dict]]:
+        """
+        영구 버프 전체 조회
+        
+        Returns:
+            None if cache miss
+            {
+                "unit": {"research:101_3": {"buff_idx": 202, ...}, ...},
+                "resource": {"research:201_1": {"buff_idx": 101, ...}, ...}
+            }
+        """
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            buffs = await self.cache_manager.get_hash_data(hash_key)
+            
+            if buffs:
+                self.logger.debug(f"Cache hit: permanent buffs for user {user_no}")
+                return buffs
+            
             return None
             
-        # bytes -> str 변환
-        return {k.decode() if isinstance(k, bytes) else k: 
-                v.decode() if isinstance(v, bytes) else v 
-                for k, v in buffs.items()}
-
-    async def cache_permanent_buffs(self, user_no: int, buffs_mapping: Dict[str, str]) -> bool:
-        """
-        영구 버프 일괄 캐싱 (Manager가 복구한 데이터를 저장할 때 사용)
-        """
-        if not buffs_mapping:
-            return True
-        key = f"user:{user_no}:permanent_buffs"
-        try:
-            # 기존 키 덮어쓰기 (HSET)
-            return await self.redis_client.hset(key, mapping=buffs_mapping)
         except Exception as e:
-            print(f"Error caching permanent buffs: {e}")
+            self.logger.error(f"Error getting permanent buffs: {e}")
+            return None
+
+    async def get_permanent_buffs_by_type(self, user_no: int, target_type: str) -> Optional[Dict]:
+        """
+        특정 target_type의 영구 버프만 조회
+        
+        Args:
+            target_type: "unit", "resource", "building" 등
+            
+        Returns:
+            {"research:101_3": {"buff_idx": 202, ...}, ...}
+        """
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            buffs = await self.cache_manager.get_hash_field(hash_key, target_type)
+            
+            if buffs:
+                self.logger.debug(f"Cache hit: {target_type} buffs for user {user_no}")
+                return buffs
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting {target_type} buffs: {e}")
+            return None
+
+    async def cache_permanent_buffs(self, user_no: int, buffs: Dict[str, Dict]) -> bool:
+        """
+        영구 버프 전체 캐싱
+        
+        Args:
+            buffs: {
+                "unit": {"research:101_3": {...}, ...},
+                "resource": {"research:201_1": {...}, ...}
+            }
+        """
+        if not buffs:
+            return True
+        
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            
+            success = await self.cache_manager.set_hash_data(
+                hash_key, buffs, expire_time=self.cache_expire_time
+            )
+            
+            if success:
+                self.logger.info(f"Cached permanent buffs for user {user_no}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error caching permanent buffs: {e}")
             return False
 
-    async def set_permanent_buff(self, user_no: int, field: str, buff_idx: int) -> bool:
-        """단일 영구 버프 추가/업데이트"""
-        key = f"user:{user_no}:permanent_buffs"
-        return await self.redis_client.hset(key, field, str(buff_idx))
-
-    async def del_permanent_buff(self, user_no: int, field: str) -> bool:
-        """단일 영구 버프 삭제"""
-        key = f"user:{user_no}:permanent_buffs"
-        return await self.redis_client.hdel(key, field)
-
-    # ==================== 임시 버프 (Temporary Buffs) ====================
-    # Task Queue + Metadata Cache 구조
-
-    async def add_temp_buff_task(self, user_no: int, buff_id: str, metadata: Dict[str, Any], duration: int) -> bool:
-        """임시 버프 메타데이터 캐싱 및 만료 큐 등록"""
-        meta_key = f"user:{user_no}:temp_buff:{buff_id}"
+    async def set_permanent_buff(self, user_no: int, target_type: str,
+                                  source_key: str, buff_data: Dict) -> bool:
+        """
+        단일 영구 버프 추가/업데이트
         
-        # 1. 메타데이터 저장 (CacheManager 활용)
-        await self.cache_manager.set_data(meta_key, metadata, expire_time=duration)
-        
-        # 2. 완료 큐에 등록 (TaskManager 활용)
-        completion_time = datetime.utcnow() + timedelta(seconds=duration)
-        return await self.task_manager.add_to_queue(user_no, buff_id, completion_time)
-
-    async def get_active_temp_buffs(self, user_no: int) -> List[Dict[str, Any]]:
-        """활성화된 임시 버프 목록 조회"""
-        # TaskManager를 통해 현재 유효한 작업 목록 조회
-        active_tasks = await self.task_manager.get_user_tasks(user_no)
-        
-        results = []
-        for task in active_tasks:
-            buff_id = task['task_id']
-            meta_key = f"user:{user_no}:temp_buff:{buff_id}"
+        Args:
+            target_type: "unit", "resource", "building" 등
+            source_key: "research:101_3", "title:5" 등
+            buff_data: {
+                "buff_idx": 202,
+                "target_type": "unit",
+                "target_sub_type": "infantry",
+                "stat_type": "attack",
+                "value": 5,
+                "value_type": "percentage"
+            }
+        """
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
             
-            # 메타데이터 조회
-            meta = await self.cache_manager.get_data(meta_key)
-            if meta:
-                meta['buff_id'] = buff_id
-                results.append(meta)
-        return results
+            # 해당 target_type의 기존 데이터 조회
+            existing = await self.cache_manager.get_hash_field(hash_key, target_type)
+            if existing is None:
+                existing = {}
+            
+            # 새 버프 추가
+            existing[source_key] = buff_data
+            
+            # 저장
+            success = await self.cache_manager.set_hash_field(
+                hash_key, target_type, existing, expire_time=self.cache_expire_time
+            )
+            
+            if success:
+                self.logger.debug(f"Set permanent buff {target_type}:{source_key} for user {user_no}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error setting permanent buff: {e}")
+            return False
+
+    async def del_permanent_buff(self, user_no: int, target_type: str, source_key: str) -> bool:
+        """단일 영구 버프 삭제"""
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            
+            existing = await self.cache_manager.get_hash_field(hash_key, target_type)
+            if existing and source_key in existing:
+                del existing[source_key]
+                
+                if existing:
+                    await self.cache_manager.set_hash_field(
+                        hash_key, target_type, existing, expire_time=self.cache_expire_time
+                    )
+                else:
+                    await self.cache_manager.delete_hash_field(hash_key, target_type)
+                
+                self.logger.debug(f"Deleted permanent buff {target_type}:{source_key} for user {user_no}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error deleting permanent buff: {e}")
+            return False
+
+    async def invalidate_permanent_buffs(self, user_no: int) -> bool:
+        """영구 버프 캐시 전체 무효화"""
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            return await self.cache_manager.delete_data(hash_key)
+        except Exception as e:
+            self.logger.error(f"Error invalidating permanent buffs: {e}")
+            return False
+
+    # ==================== 임시 버프 ====================
+
+    def _get_temp_buff_key(self, user_no: int, buff_id: str) -> str:
+        return f"user:{user_no}:temp_buff:{buff_id}"
+
+    async def add_temp_buff(self, user_no: int, buff_id: str,
+                            metadata: Dict, duration: int) -> bool:
+        """
+        임시 버프 추가
+        
+        Args:
+            metadata: {
+                "buff_idx": 201,
+                "target_type": "unit",
+                "target_sub_type": "all",
+                "stat_type": "speed",
+                "value": 10,
+                "value_type": "percentage",
+                "expires_at": "2025-01-08T12:00:00Z",
+                "source": "item"
+            }
+        """
+        try:
+            meta_key = self._get_temp_buff_key(user_no, buff_id)
+            
+            # 메타데이터 저장
+            await self.cache_manager.set_data(meta_key, metadata, expire_time=duration)
+            
+            # 만료 큐 등록
+            completion_time = datetime.utcnow() + timedelta(seconds=duration)
+            success = await self.task_manager.add_to_queue(user_no, buff_id, completion_time)
+            
+            if success:
+                self.logger.debug(f"Added temp buff {buff_id} for user {user_no}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error adding temp buff: {e}")
+            return False
+
+    async def get_temp_buffs(self, user_no: int) -> List[Dict]:
+        """
+        활성 임시 버프 목록 조회
+        
+        Returns:
+            [
+                {
+                    "buff_id": "abc123",
+                    "buff_idx": 201,
+                    "target_type": "unit",
+                    "target_sub_type": "all",
+                    "stat_type": "speed",
+                    "value": 10,
+                    "value_type": "percentage",
+                    "expires_at": "2025-01-08T12:00:00Z",
+                    "source": "item"
+                },
+                ...
+            ]
+        """
+        try:
+            active_tasks = await self.task_manager.get_user_tasks(user_no)
+            
+            results = []
+            for task in active_tasks:
+                buff_id = task['task_id']
+                meta_key = self._get_temp_buff_key(user_no, buff_id)
+                
+                meta = await self.cache_manager.get_data(meta_key)
+                if meta:
+                    meta['buff_id'] = buff_id
+                    results.append(meta)
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Error getting temp buffs: {e}")
+            return []
+
+    async def get_temp_buffs_by_type(self, user_no: int, target_type: str) -> List[Dict]:
+        """특정 target_type의 임시 버프만 조회"""
+        all_buffs = await self.get_temp_buffs(user_no)
+        return [b for b in all_buffs if b.get('target_type') == target_type]
 
     async def remove_temp_buff(self, user_no: int, buff_id: str) -> bool:
         """임시 버프 제거"""
-        meta_key = f"user:{user_no}:temp_buff:{buff_id}"
-        await self.cache_manager.delete_data(meta_key)
-        return await self.task_manager.remove_from_queue(user_no, buff_id)
+        try:
+            meta_key = self._get_temp_buff_key(user_no, buff_id)
+            
+            await self.cache_manager.delete_data(meta_key)
+            await self.task_manager.remove_from_queue(user_no, buff_id)
+            
+            self.logger.debug(f"Removed temp buff {buff_id} for user {user_no}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error removing temp buff: {e}")
+            return False
 
-    # ==================== 계산 결과 캐시 (Calculation Cache) ====================
-    
-    async def get_total_buff_cache(self, cache_key: str) -> Optional[float]:
-        """계산된 총합 버프 조회"""
-        val = await self.redis_client.get(cache_key)
-        if val is not None:
-            return float(val.decode() if isinstance(val, bytes) else val)
-        return None
+    async def get_expired_temp_buffs(self, current_time: Optional[datetime] = None) -> List[Dict]:
+        """만료된 임시 버프 조회 (배치 처리용)"""
+        return await self.task_manager.get_completed_tasks(current_time)
 
-    async def set_total_buff_cache(self, cache_key: str, value: float, ttl: int):
-        """계산된 총합 버프 저장"""
-        return await self.redis_client.setex(cache_key, ttl, str(value))
+    # ==================== Total Buffs 캐시 ====================
 
-    async def invalidate_buff_calculation_cache(self, user_no: int):
-        """유저의 버프 계산 캐시 전체 삭제"""
-        pattern = f"user:{user_no}:buff_cache:*"
-        return await self.cache_manager.delete_by_pattern(pattern)
+    def _get_total_buffs_key(self, user_no: int) -> str:
+        return f"user:{user_no}:total_buffs"
+
+    async def get_total_buffs_cache(self, user_no: int) -> Optional[Dict[str, float]]:
+        """
+        total_buffs 캐시 조회
+        
+        Returns:
+            None if cache miss
+            {"unit:attack:infantry": 15.0, "resource:get:all": 10.0, ...}
+        """
+        try:
+            cache_key = self._get_total_buffs_key(user_no)
+            return await self.cache_manager.get_data(cache_key)
+        except Exception as e:
+            self.logger.error(f"Error getting total buffs cache: {e}")
+            return None
+
+    async def set_total_buffs_cache(self, user_no: int, totals: Dict[str, float]) -> bool:
+        """total_buffs 캐시 저장 (TTL 60초)"""
+        try:
+            cache_key = self._get_total_buffs_key(user_no)
+            return await self.cache_manager.set_data(
+                cache_key, totals, expire_time=self.total_buffs_ttl
+            )
+        except Exception as e:
+            self.logger.error(f"Error setting total buffs cache: {e}")
+            return False
+
+    async def invalidate_total_buffs_cache(self, user_no: int) -> bool:
+        """total_buffs 캐시 무효화 (버프 변경 시 호출)"""
+        try:
+            cache_key = self._get_total_buffs_key(user_no)
+            await self.cache_manager.delete_data(cache_key)
+            self.logger.debug(f"Invalidated total_buffs cache for user {user_no}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error invalidating total buffs cache: {e}")
+            return False
+
+    # ==================== 유틸리티 ====================
+
+    async def get_cache_info(self, user_no: int) -> Dict[str, Any]:
+        """캐시 정보 조회 (디버깅용)"""
+        try:
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+            
+            permanent = await self.get_permanent_buffs(user_no) or {}
+            temp_buffs = await self.get_temp_buffs(user_no)
+            total_buffs = await self.get_total_buffs_cache(user_no)
+            ttl = await self.cache_manager.get_ttl(hash_key)
+            
+            # 각 target_type별 버프 수
+            permanent_counts = {k: len(v) for k, v in permanent.items()}
+            
+            return {
+                "user_no": user_no,
+                "permanent_buffs_by_type": permanent_counts,
+                "temp_buff_count": len(temp_buffs),
+                "total_buffs_cached": total_buffs is not None,
+                "ttl_seconds": ttl,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting cache info: {e}")
+            return {"user_no": user_no, "error": str(e)}

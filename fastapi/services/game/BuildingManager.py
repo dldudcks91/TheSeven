@@ -273,8 +273,9 @@ class BuildingManager:
             # 5. 자원 버프 적용 / 자원 체크 및 소모 (Redis)
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
             
-            if not await resource_manager.check_require_resources(user_no, costs):
-                return {"success": False, "message": "Need More Resources", "data": {}}
+            # comsume_resources로 통일
+            # if not await resource_manager.check_require_resources(user_no, costs):
+            #     return {"success": False, "message": "Need More Resources", "data": {}}
             
             if not await resource_manager.consume_resources(user_no, costs):
                 return {"success": False, "message": "Failed to consume resources", "data": {}}
@@ -415,16 +416,24 @@ class BuildingManager:
             if not costs or base_upgrade_time <= 0:
                 return {"success": False, "message": "Invalid building configuration", "data": {}}
             
-            
-            
-            # 4. 자원 버프 적용 / 자원 체크 및 소모 (Redis만)
+            # 4. ⭐ 자원 소모 (원자적 검사 + 차감)
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
+            consume_result = await resource_manager.consume_resources(user_no, costs)
             
-            if not await resource_manager.check_require_resources(user_no, costs):
-                return {"success": False, "message": "Need More Resources", "data": {}}
-            
-            if not await resource_manager.consume_resources(user_no, costs):
-                return {"success": False, "message": "Failed to consume resources", "data": {}}
+            if not consume_result["success"]:
+                # 실패 시 상세 정보 반환
+                if consume_result.get("reason") == "insufficient":
+                    shortage = consume_result.get("shortage", {})
+                    return {
+                        "success": False, 
+                        "message": "Need More Resources", 
+                        "data": {"shortage": shortage}
+                    }
+                return {
+                    "success": False, 
+                    "message": "Failed to consume resources", 
+                    "data": consume_result
+                }
             
             # 5. 버프 적용
             final_upgrade_time = self._apply_building_buffs(user_no, base_upgrade_time)
@@ -454,7 +463,11 @@ class BuildingManager:
             return {
                 "success": True,
                 "message": f"Building {building_idx} upgrade to level {target_level} started",
-                "data": updated_building
+                "data": {
+                    **updated_building,
+                    "consumed_resources": consume_result.get("consumed", {}),
+                    "remaining_resources": consume_result.get("remaining", {})
+                }
             }
             
         except Exception as e:
@@ -489,7 +502,7 @@ class BuildingManager:
                 }
             
             # 2. 상태 검증
-            if building['status'] != 2:
+            if building['status'] not in [1,2]:
                 return {
                     "success": False,
                     "message": "Building is not being upgraded",
