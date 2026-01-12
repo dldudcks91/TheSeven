@@ -13,6 +13,7 @@ from .buff_redis_manager import BuffRedisManager
 from .resource_redis_manager import ResourceRedisManager
 from .item_redis_manager import ItemRedisManager
 from .mission_redis_manager import MissionRedisManager
+from .shop_redis_manager import ShopRedisManager
 
 from .RedisManager import RedisManager
 

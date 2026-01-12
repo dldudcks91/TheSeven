@@ -1191,15 +1191,24 @@
                 return;
             }
             
+            
             try {
                 showResult(`${unitIdx} 요청 중...`);
                 
-                // parent의 공통 API 함수 사용
-                const result = await parent.apiRequest(apiCode, {
-                    unit_idx: unitIdx,
-                    quantity: quantity
-                }, userId);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: apiCode,
+                        data: {
+                            unit_idx: unitIdx,
+                            quantity: quantity
+                        }
+                    })
+                });
                 
+                const result = await response.json();
                 console.log('result:', result)
                 
                 if (result.success) {

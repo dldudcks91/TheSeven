@@ -37,6 +37,10 @@ async def get_unit(request: Request):
 async def get_item(request: Request):
     return templates.TemplateResponse("item.html", {"request": request})
 
+@router.get("/shop.html")
+async def get_shop(request: Request):
+    return templates.TemplateResponse("shop.html", {"request": request})
+
 @router.get("/hero.html")
 async def get_hero(request: Request):
     return templates.TemplateResponse("hero.html", {"request": request})

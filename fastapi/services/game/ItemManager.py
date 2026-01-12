@@ -1,5 +1,6 @@
 from services.system.GameDataManager import GameDataManager
 from services.redis_manager import RedisManager
+from services.db_manager import DBManager
 from datetime import datetime
 import logging
 
@@ -9,7 +10,7 @@ class ItemManager:
     
     CONFIG_TYPE = 'item'
     
-    def __init__(self, redis_manager: RedisManager):
+    def __init__(self, redis_manager: RedisManager, db_manager:DBManager):
         self._user_no: int = None 
         self._data: dict = None
         self.redis_manager = redis_manager

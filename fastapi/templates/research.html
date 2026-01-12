@@ -777,12 +777,20 @@
             console.log(`✅ ${researchName} 완료 API 호출`);
             
             try {
-                // parent의 공통 API 함수 사용
-                const result = await parent.apiRequest(3003, {
-                    research_idx: researchIdx,
-                    research_lv: level
-                }, userId);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 3003,
+                        data: {
+                            research_idx: researchIdx,
+                            research_lv: level
+                        }
+                    })
+                });
                 
+                const result = await response.json();
                 console.log(`🎉 ${researchName} 완료 API 결과:`, result);
                 
                 if (result.success) {
@@ -821,9 +829,17 @@
             showResult('연구 정보 로딩 중...');
             
             try {
-                // parent의 공통 API 함수 사용
-                const result = await parent.apiRequest(3001, {}, userId);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: 3001,
+                        data: {}
+                    })
+                });
                 
+                const result = await response.json();
                 console.log('🔬 연구 데이터 로드:', result.data);
                 
                 if (result.success && result.data) {
@@ -856,12 +872,20 @@
             try {
                 showResult(`${researchName} Lv.${level} 요청 중...`);
                 
-                // parent의 공통 API 함수 사용
-                const result = await parent.apiRequest(apiCode, {
-                    research_idx: researchIdx,
-                    research_lv: level
-                }, userId);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(userId),
+                        api_code: apiCode,
+                        data: {
+                            research_idx: researchIdx,
+                            research_lv: level
+                        }
+                    })
+                });
                 
+                const result = await response.json();
                 console.log(`🔧 ${researchName} API 호출 결과:`, result);
                 
                 if (result.success) {

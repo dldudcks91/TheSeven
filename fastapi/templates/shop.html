@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>상점</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .refresh-btn {
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .refresh-btn:hover {
+            background: #f5f5f5;
+        }
+        
+        .shop-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .shop-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            background: #fff;
+        }
+        
+        .shop-item.sold {
+            background: #f9f9f9;
+            color: #999;
+        }
+        
+        .item-info {
+            font-size: 14px;
+        }
+        
+        .item-name {
+            font-weight: bold;
+        }
+        
+        .item-desc {
+            color: #666;
+        }
+        
+        .shop-item.sold .item-desc {
+            color: #999;
+        }
+        
+        .buy-btn {
+            padding: 5px 15px;
+            border: 1px solid #333;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        .buy-btn:hover:not(:disabled) {
+            background: #333;
+            color: #fff;
+        }
+        
+        .buy-btn:disabled {
+            border-color: #ccc;
+            color: #999;
+            cursor: not-allowed;
+        }
+        
+        .message {
+            padding: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+            font-size: 14px;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>상점</h1>
+            <button class="refresh-btn" onclick="refreshShop()">새로고침</button>
+        </div>
+        
+        <div id="message" class="message"></div>
+        
+        <div id="shop-grid" class="shop-grid">
+            <div class="loading">로딩중...</div>
+        </div>
+    </div>
+
+    <script>
+        // API Codes
+        const API_CODE = {
+            SHOP_INFO: 6011,
+            SHOP_REFRESH: 6012,
+            SHOP_BUY: 6013
+        };
+        
+        // user_no는 부모 창에서 가져오거나 설정
+        function getUserNo() {
+            // iframe인 경우 부모에서 가져오기
+            if (window.parent && window.parent.currentUserId) {
+                return parseInt(window.parent.currentUserId);
+            }
+            // 또는 localStorage에서
+            return parseInt(localStorage.getItem('user_no')) || 10001;
+        }
+        
+        function getItemDescription(itemInfo) {
+            const category = itemInfo.category;
+            const subCategory = itemInfo.sub_category;
+            const value = itemInfo.value;
+            
+            if (category === 'resource') {
+                return `${subCategory} +${value.toLocaleString()}`;
+            } else if (category === 'speedup') {
+                const minutes = Math.floor(value / 60);
+                if (subCategory === 'all') {
+                    return `모든 작업 ${minutes}분 가속`;
+                } else {
+                    return `${subCategory} ${minutes}분 가속`;
+                }
+            } else if (category === 'scroll') {
+                return `${subCategory} 스크롤`;
+            }
+            return '';
+        }
+        
+        function showMessage(text, type) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            msgEl.className = `message ${type}`;
+            
+            setTimeout(() => {
+                msgEl.className = 'message';
+            }, 3000);
+        }
+        
+        async function apiRequest(apiCode, data = {}) {
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: getUserNo(),
+                        api_code: apiCode,
+                        data: data
+                    })
+                });
+                
+                const result = await response.json();
+                console.log(`API ${apiCode} 응답:`, result);
+                return result;
+                
+            } catch (error) {
+                console.error('API Error:', error);
+                return { success: false, message: error.message };
+            }
+        }
+        
+        async function loadShop() {
+            const gridEl = document.getElementById('shop-grid');
+            gridEl.innerHTML = '<div class="loading">로딩중...</div>';
+            
+            const result = await apiRequest(API_CODE.SHOP_INFO);
+            
+            if (!result.success) {
+                showMessage(result.message || '상점 로드 실패', 'error');
+                gridEl.innerHTML = '<div class="loading">로드 실패</div>';
+                return;
+            }
+            
+            renderShop(result.data);
+        }
+        
+        function renderShop(shopData) {
+            const gridEl = document.getElementById('shop-grid');
+            const slots = shopData.slots || [];
+            
+            if (slots.length === 0) {
+                gridEl.innerHTML = '<div class="loading">상점이 비어있습니다</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            for (const slot of slots) {
+                const itemInfo = slot.item_info || {};
+                const isSold = slot.sold;
+                const description = getItemDescription(itemInfo);
+                const name = itemInfo.korean_name || 'Unknown';
+                
+                html += `
+                    <div class="shop-item ${isSold ? 'sold' : ''}">
+                        <div class="item-info">
+                            <span class="item-name">${name}:</span>
+                            <span class="item-desc">무료 → ${description}</span>
+                        </div>
+                        <button 
+                            class="buy-btn"
+                            onclick="buyItem(${slot.slot})"
+                            ${isSold ? 'disabled' : ''}
+                        >
+                            ${isSold ? '구매완료' : '구매'}
+                        </button>
+                    </div>
+                `;
+            }
+            
+            gridEl.innerHTML = html;
+        }
+        
+        async function refreshShop() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.disabled = true;
+            btn.textContent = '로딩...';
+            
+            const result = await apiRequest(API_CODE.SHOP_REFRESH);
+            
+            btn.disabled = false;
+            btn.textContent = '새로고침';
+            
+            if (!result.success) {
+                showMessage(result.message || '새로고침 실패', 'error');
+                return;
+            }
+            
+            showMessage('상점이 새로고침되었습니다', 'success');
+            renderShop(result.data);
+        }
+        
+        async function buyItem(slot) {
+            const result = await apiRequest(API_CODE.SHOP_BUY, { slot: slot });
+            
+            if (!result.success) {
+                showMessage(result.message || '구매 실패', 'error');
+                return;
+            }
+            
+            const itemName = result.data?.item_info?.korean_name || '아이템';
+            showMessage(`${itemName} 구매 완료`, 'success');
+            
+            loadShop();
+        }
+        
+        document.addEventListener('DOMContentLoaded', loadShop);
+    </script>
+</body>
+</html>

@@ -453,17 +453,12 @@
                 
                 <!-- 상점/교역 (오른쪽 하단) -->
                 <div class="game-section">
-                    <h3>상점 <button class="refresh-btn" onclick="loadShop()">새로고침</button></h3>
-                    <div id="shopList" class="unit-list">
-                        <div class="unit-item">
-                            <strong>식량 팩:</strong> 골드 100 → 식량 500
-                            <button onclick="buyItem('food_pack')">구매</button>
-                        </div>
-                        <div class="unit-item">
-                            <strong>건설 가속:</strong> 골드 50 → 건설 시간 -1시간
-                            <button onclick="buyItem('build_speed')">구매</button>
-                        </div>
-                    </div>
+                    
+                    <iframe 
+                        id="shopFrame" 
+                        src="shop.html" 
+                        style="width: 100%; height: calc(100% - 0px); border: none;">
+                    </iframe>
                 </div>
             </div>
         </div>
@@ -585,56 +580,33 @@
             showToast('전체 데이터 로드가 완료되었습니다', 'success');
         }
 
-        // ==================== 공통 API 요청 함수 ====================
-        /**
-         * 공통 API 요청 함수
-         * @param {number} apiCode - API 코드
-         * @param {object} data - 요청 데이터
-         * @param {number} userId - 사용자 ID (선택, 기본값은 전역 userId)
-         * @returns {Promise<object>} - API 응답 결과
-         */
-        async function apiRequest(apiCode, data = {}, userId = null) {
-            try {
-                // userId가 제공되지 않으면 전역 userId 사용
-                const finalUserId = userId || document.getElementById('globalUserId').value;
-                
-                if (!finalUserId) {
-                    throw new Error('플레이어 ID가 설정되지 않았습니다.');
-                }
-                
-                const gameData = {
-                    user_no: parseInt(finalUserId),
-                    api_code: apiCode,
-                    data: data
-                };
-                
-                console.log('API 요청:', gameData);
-                
-                const response = await fetch('/api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(gameData)
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-                console.log('API 응답:', result);
-                
-                return result;
-                
-            } catch (error) {
-                console.error('API 요청 에러:', error);
-                throw error;
-            }
-        }
-        // ==================== 공통 API 요청 함수 끝 ====================
-
         // 서버 캐시 프리로드 요청 함수
         async function preloadServerCache(userId) {
-            return await apiRequest(1010, {}, userId);
+            
+            const gameData = {
+                user_no: parseInt(userId),
+                api_code: 1010,  // 캐시 프리로드 API 코드
+                data: {}
+            };
+            
+            console.log('서버 캐시 프리로드 요청:', gameData);
+            
+            const response = await fetch('/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(gameData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('서버 캐시 프리로드 응답:', result);
+            
+            return result;
+                
+            
         }
         // 플레이어 ID 변경시 처리 - 메시지 전송하지 않음
         document.getElementById('globalUserId').addEventListener('input', function() {

@@ -161,8 +161,7 @@ class GameDataManager:
             item_configs[item_idx] = {
                 'item_idx': item_idx,
                 'category': row['category'],
-                'item_type': row['item_type'],
-                'target_type': row['target_type'],
+                'sub_category': row['sub_category'],
                 'value': row['value'],
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']
@@ -267,6 +266,7 @@ class GameDataManager:
     def _convert_required(cls, row, columns):
         requires = []
         require_str = str(row.get(columns, '')).strip()
+        
         if require_str and require_str != 'nan':
                 for req in require_str.split(','):
                     if ':' in req:

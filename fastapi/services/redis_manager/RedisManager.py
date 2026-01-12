@@ -1,6 +1,6 @@
 from typing import Dict, List, Any
 # ResourceRedisManager를 import 목록에 추가합니다.
-from services.redis_manager import BuildingRedisManager, UnitRedisManager, ResearchRedisManager, BuffRedisManager, ResourceRedisManager, ItemRedisManager, MissionRedisManager
+from services.redis_manager import BuildingRedisManager, UnitRedisManager, ResearchRedisManager, BuffRedisManager, ResourceRedisManager, ItemRedisManager, MissionRedisManager, ShopRedisManager
 # ResourceRedisManager를 임포트한다고 가정합니다.
 
 class RedisManager:
@@ -63,7 +63,11 @@ class RedisManager:
             self._mission_manager = MissionRedisManager(self.redis_client)
         return self._mission_manager
     
-    
+    def get_shop_manager(self) -> MissionRedisManager:
+        """Mission Redis 관리자 반환 (싱글톤 패턴)"""
+        if self._shop_manager is None:
+            self._shop_manager = ShopRedisManager(self.redis_client)
+        return self._shop_manager
     
     # --- 비동기 메서드 ---
     

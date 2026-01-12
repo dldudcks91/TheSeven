@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager 
+from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager, ShopManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -43,6 +43,14 @@ class APIManager():
         # === 미션 API (5xxx) ===
         5001: (MissionManager, MissionManager.mission_info),
         5002: (MissionManager, MissionManager.mission_claim),
+
+        # === 아이템 API (6xxx) === 
+
+        6001: (ItemManager, ItemManager.item_info),
+
+        6011: (ShopManager, ShopManager.shop_info),
+        6012: (ShopManager, ShopManager.shop_refresh),
+        6013: (ShopManager, ShopManager.shop_buy),
         
         
     }
