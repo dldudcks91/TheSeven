@@ -131,6 +131,12 @@ def get_websocket_manager() -> WebsocketManager:
         raise HTTPException(status_code=503, detail="WebSocket service is not available")
     return app.state.websocket_manager
 
+async def get_api_manager(
+    db_manager: DBManager = Depends(get_db_manager),
+    redis_manager: RedisManager = Depends(get_redis_manager)
+) -> APIManager:
+    """APIManager를 주입하기 위한 의존성 함수"""
+    return APIManager(db_manager, redis_manager)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -172,12 +178,11 @@ async def shutdown_event():
 @app.post("/api")
 async def api_post(
     request: ApiRequest, 
-    db_manager: DBManager = Depends(get_db_manager),
-    redis_manager: RedisManager = Depends(get_redis_manager)
+    # 이제 여기서 APIManager를 바로 받습니다.
+    api_manager: APIManager = Depends(get_api_manager)
 ):
     """API 요청 처리"""
-    
-    api_manager = APIManager(db_manager, redis_manager)
+    # 내부에서 APIManager(db_manager, redis_manager)를 호출하던 줄은 삭제합니다.
     result = await api_manager.process_request(request.user_no, request.api_code, request.data)
     return JSONResponse(content=result)
 

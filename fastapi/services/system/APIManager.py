@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager, ShopManager
+from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -44,7 +44,7 @@ class APIManager():
         5001: (MissionManager, MissionManager.mission_info),
         5002: (MissionManager, MissionManager.mission_claim),
 
-        # === 아이템 API (6xxx) === 
+        # === 아이템 API (60xx) === 
 
         6001: (ItemManager, ItemManager.item_info),
 
@@ -52,7 +52,21 @@ class APIManager():
         6012: (ShopManager, ShopManager.shop_refresh),
         6013: (ShopManager, ShopManager.shop_buy),
         
-        
+
+        # === 연맹 API (70xx) ===
+        7001: (AllianceManager, AllianceManager.alliance_info),
+        7002: (AllianceManager, AllianceManager.alliance_create),
+        7003: (AllianceManager, AllianceManager.alliance_join),
+        7004: (AllianceManager, AllianceManager.alliance_leave),
+        7005: (AllianceManager, AllianceManager.alliance_search),
+        7006: (AllianceManager, AllianceManager.alliance_members),
+        7007: (AllianceManager, AllianceManager.alliance_kick),
+        7008: (AllianceManager, AllianceManager.alliance_promote),
+        7009: (AllianceManager, AllianceManager.alliance_applications),
+        7010: (AllianceManager, AllianceManager.alliance_approve),
+        7011: (AllianceManager, AllianceManager.alliance_donate),
+        7012: (AllianceManager, AllianceManager.alliance_set_join_type),
+        7013: (AllianceManager, AllianceManager.alliance_disband),
     }
     
     def __init__(self, db_manager, redis_manager):

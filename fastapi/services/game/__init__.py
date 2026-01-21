@@ -19,6 +19,7 @@ from .ResearchManager import ResearchManager
 from .UnitManager import UnitManager 
 from .HeroManager import HeroManager 
 from .ShopManager import ShopManager 
+from .AllianceManager import AllianceManager
 
 __all__ = [
     "UserInitManager",
@@ -31,5 +32,6 @@ __all__ = [
     "ResearchManager",
     "UnitManager",
     "HeroManager",
+    "AllianceManager"
 
 ]
