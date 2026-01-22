@@ -8,7 +8,8 @@ class GameDataManager:
         'buff':{},
         'item':{},
         'mission':{},
-        'mission_index':{}  # 🔥 미션 인덱스 추가
+        'mission_index':{},  # 🔥 미션 인덱스 추가
+        'shop':{},
         }
     _loaded = False
     
@@ -27,6 +28,7 @@ class GameDataManager:
         cls._load_item_data()
         cls._load_mission_data()
         cls._build_mission_index()  # 🔥 미션 인덱스 자동 생성
+        cls._load_shop_data()
         cls._loaded = True
         print("Game data loaded successfully!")
     
@@ -165,6 +167,27 @@ class GameDataManager:
                 'value': row['value'],
                 'english_name': row['english_name'],
                 'korean_name': row['korean_name']
+            }
+    
+    @classmethod
+    def _load_shop_data(cls):
+        
+        
+        # CSV 파일 읽기 (한번만!)
+        df = pd.read_csv('./meta_data/shop_info.csv', encoding= 'cp949').fillna("")
+        
+        
+        shop_configs = cls.REQUIRE_CONFIGS['shop']
+        
+        for _, row in df.iterrows():
+            item_idx = int(row['item_idx'])
+            if item_idx not in shop_configs:
+                shop_configs[item_idx] = {}
+            
+            
+            shop_configs[item_idx] = {
+                'item_idx': item_idx,
+                'weight': int(row['weight'])
             }
     
     @classmethod

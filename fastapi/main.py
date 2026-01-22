@@ -184,6 +184,7 @@ async def api_post(
     """API 요청 처리"""
     # 내부에서 APIManager(db_manager, redis_manager)를 호출하던 줄은 삭제합니다.
     result = await api_manager.process_request(request.user_no, request.api_code, request.data)
+    print(result)
     return JSONResponse(content=result)
 
 

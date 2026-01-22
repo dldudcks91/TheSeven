@@ -1,6 +1,6 @@
 from services.system.GameDataManager import GameDataManager
 from services.redis_manager import RedisManager
-from services.alliance.AllianceDBManager import AllianceDBManager
+from services.db_manager import DBManager
 from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
@@ -41,13 +41,12 @@ class AllianceManager:
     # 기부 비율 (식량 100 → 경험치 1)
     DONATE_RATIO = 100
     
-    def __init__(self, db_session: Session, redis_manager: RedisManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self._user_no: int = None
         self._data: dict = None
         self.db = db_session
         self.redis_manager = redis_manager
-        self.alliance_redis = redis_manager.get_alliance_manager()
-        self.alliance_db = AllianceDBManager(db_session)
+        self.db_manager = db_manager
         self.logger = logging.getLogger(self.__class__.__name__)
     
     @property
@@ -293,9 +292,10 @@ class AllianceManager:
                 await self.alliance_redis.add_to_alliance_list(alliance_id)
                 
                 # DB 저장 (동기)
-                self.alliance_db.create_alliance(alliance_id, name, user_no, join_type)
-                self.alliance_db.add_member(alliance_id, user_no, self.POSITION_LEADER, 0)
-                self.db.commit()
+                alliance_db = self.db_manager.get_alliance_manager()
+                alliance_db.create_alliance(alliance_id, name, user_no, join_type)
+                alliance_db.add_member(alliance_id, user_no, self.POSITION_LEADER, 0)
+                alliance_db.commit()
                 
                 # 연맹 버프 추가
                 await self._add_alliance_buff(user_no, alliance_id, 1)

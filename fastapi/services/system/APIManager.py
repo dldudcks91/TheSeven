@@ -79,6 +79,7 @@ class APIManager():
         
         
         api = self.api_map.get(api_code)
+        print(user_no, api_code, data, api)
         if api == None:
             print("process request:", user_no, api_code, data)
             raise HTTPException(status_code=400, detail="유효하지 않은 API 코드입니다.")

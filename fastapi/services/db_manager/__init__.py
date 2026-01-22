@@ -11,7 +11,8 @@ from .item_db_manager import ItemDBManager
 from .buff_db_manager import BuffDBManager
 from .mission_db_manager import MissionDBManager
 from .user_init_db_manager import UserInitDBManager
-
+from .alliance_db_manager import AllianceDBManager
+from .shop_db_manager import ShopDBManager
 
 
 from .DBManager import DBManager
@@ -25,5 +26,8 @@ __all__ = [
     'ResearchDBManager',
     'ResourceDBManager',
     'BuffDBManager',
-    'DBManager'
+    'AllianceDBManager',
+    'ShopDBManager',
+    'DBManager',
+    
 ]

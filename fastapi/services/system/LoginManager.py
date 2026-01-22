@@ -6,7 +6,7 @@ from datetime import datetime
 
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
-from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager 
+from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager , ShopManager
 
 class LoginManager:
     """
@@ -88,7 +88,8 @@ class LoginManager:
             'resource': ResourceManager,
             'buff': BuffManager, # Buff Manager 추가
             'item': ItemManager,
-            'mission': MissionManager
+            'mission': MissionManager,
+            "shop": ShopManager
         }
         
         for key, manager_class in MANAGERS_TO_CREATE.items():
@@ -110,6 +111,7 @@ class LoginManager:
             'buff': [('buff_info', 'buffs')],
             'mission': [('mission_info', 'missions')],
             'item': [('item_info', 'items')],
+            'shop': [('shop_info', 'shops')],
         }
         
         tasks = []

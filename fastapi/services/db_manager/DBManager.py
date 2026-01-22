@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 
-from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager, UserInitDBManager
+from services.db_manager import BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager, UserInitDBManager, AllianceDBManager, ShopDBManager
 
 
 class DBManager:
@@ -10,15 +10,25 @@ class DBManager:
     
     def __init__(self, db_session: Session):
         self.db_session = db_session
+
+        self._user_init_manager = None
+
+        #town
+        
         self._building_manager = None
         self._unit_manager = None
         self._research_manager = None
-        self._buff_manager = None
+
         self._resource_manager = None
+        self._buff_manager = None
         
-        self._item_manager = None
+        
         self._mission_manager = None
-        self._user_init_manager = None
+        self._item_manager = None
+        self._shop_manager = None
+        
+        self._hero_manager = None
+        self._alliance_manager = None
     
     
     def get_building_manager(self) -> BuildingDBManager:
@@ -59,17 +69,33 @@ class DBManager:
         return self._item_manager
     
     def get_mission_manager(self) -> MissionDBManager:
-        """버프 DB 관리자 반환 (싱글톤 패턴)"""
+        """미션 DB 관리자 반환 (싱글톤 패턴)"""
         if self._mission_manager is None:
             self._mission_manager = MissionDBManager(self.db_session)
         return self._mission_manager
+
+    def get_shop_manager(self) -> ShopDBManager:
+        """상점 DB 관리자 반환 (싱글톤 패턴)"""
+        if self._shop_manager is None:
+            self._shop_manager = ShopDBManager(self.db_session)
+        return self._shop_manager
     
+
+
+
     def get_user_init_manager(self) -> UserInitDBManager:
-        """버프 DB 관리자 반환 (싱글톤 패턴)"""
+        """유저 가입 DB 관리자 반환 (싱글톤 패턴)"""
         if self._user_init_manager is None:
             self._user_init_manager = UserInitDBManager(self.db_session)
         return self._user_init_manager
-    
+
+    def get_aliiance_manager(self) -> AllianceDBManager:
+        """버프 DB 관리자 반환 (싱글톤 패턴)"""
+        if self._alliance_manager is None:
+            self._alliance_manager = AllianceDBManager(self.db_session)
+        return self._alliance_manager
+
+
     
     def get_all_table_stats(self) -> Dict[str, Dict[str, Any]]:
         """모든 테이블의 통계 조회 (관리자용)"""

@@ -16,7 +16,7 @@ class UserInitManager:
     # 초기 설정값
     INITIAL_CONFIG = {
         "resources": {
-            "food": 2000,
+            "food": 20000000,
             "wood": 2000,
             "stone": 2000,
             "gold": 2000,

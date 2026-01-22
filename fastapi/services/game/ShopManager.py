@@ -1,6 +1,7 @@
 from services.system.GameDataManager import GameDataManager
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
+from services.game import ItemManager
 from datetime import datetime
 import logging
 import random
@@ -27,10 +28,10 @@ class ShopManager:
         }
     """
     
-    CONFIG_TYPE = 'item'
+    CONFIG_TYPE = 'shop'
     SLOT_COUNT = 6
     
-    def __init__(self, redis_manager: RedisManager, db_manager: DBManager):
+    def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self._user_no: int = None
         self._data: dict = None
         self.redis_manager = redis_manager
@@ -59,23 +60,33 @@ class ShopManager:
         self._data = value
 
     def _get_random_items(self, count: int = SLOT_COUNT) -> List[int]:
-        """상점에 표시할 랜덤 아이템 선택"""
+        """weight 기반으로 상점 아이템 랜덤 선택 (중복 없이)"""
         try:
-            item_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
+            shop_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
             
-            if not item_configs:
-                self.logger.warning("No item configs found")
+            if not shop_configs:
+                self.logger.warning("No shop configs found")
                 return []
             
-            # 모든 아이템 인덱스
-            all_item_indices = list(item_configs.keys())
+            items = list(shop_configs.keys())
+            weights = [shop_configs[idx].get('weight', 1) for idx in items]
             
-            if len(all_item_indices) <= count:
-                return all_item_indices
+            if len(items) <= count:
+                return items
             
-            # 랜덤 선택 (중복 없이)
-            return random.sample(all_item_indices, count)
+            # 중복 없이 weight 기반 선택
+            selected = []
+            for _ in range(count):
+                chosen = random.choices(items, weights=weights, k=1)[0]
+                selected.append(chosen)
+                
+                # 제거
+                i = items.index(chosen)
+                items.pop(i)
+                weights.pop(i)
             
+            return selected
+        
         except Exception as e:
             self.logger.error(f"Error getting random items: {e}")
             return []
@@ -83,7 +94,7 @@ class ShopManager:
     def _get_item_detail(self, item_idx: int) -> Dict[str, Any]:
         """아이템 메타데이터 조회"""
         try:
-            item_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
+            item_configs = GameDataManager.REQUIRE_CONFIGS.get("item", {})
             config = item_configs.get(item_idx, {})
             
             return {
@@ -257,7 +268,8 @@ class ShopManager:
             item_idx = slot_info.get("item_idx")
             
             # 4. 아이템 추가 (ItemManager 사용)
-            item_manager = self._get_item_manager()
+            
+            item_manager = ItemManager(self.db_manager, self.redis_manager)
             item_manager.user_no = user_no
             item_manager.data = {"item_idx": item_idx, "quantity": 1}
             
@@ -287,8 +299,3 @@ class ShopManager:
         except Exception as e:
             self.logger.error(f"Error in shop_buy: {e}")
             return {"success": False, "message": str(e)}
-
-    def _get_item_manager(self):
-        """ItemManager 인스턴스 반환"""
-        from services.item.ItemManager import ItemManager
-        return ItemManager(self.redis_manager, self.db_manager)

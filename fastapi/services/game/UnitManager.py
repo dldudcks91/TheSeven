@@ -76,15 +76,15 @@ class UnitManager():
             return {
                 "success": False,
                 "message": "Missing required data payload",
-                "data": {}
+                "data": self._data
             }
         
-        unit_idx = self.data.get('unit_idx')
+        unit_idx = self._data.get('unit_idx')
         if not unit_idx:
             return {
                 "success": False,
                 "message": f"Missing required fields: unit_idx: {unit_idx}",
-                "data": {}
+                "data":  self._data
             }
         
         return None

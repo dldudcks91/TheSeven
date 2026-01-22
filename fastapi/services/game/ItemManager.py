@@ -10,7 +10,7 @@ class ItemManager:
     
     CONFIG_TYPE = 'item'
     
-    def __init__(self, redis_manager: RedisManager, db_manager:DBManager):
+    def __init__(self, db_manager:DBManager, redis_manager: RedisManager):
         self._user_no: int = None 
         self._data: dict = None
         self.redis_manager = redis_manager
@@ -140,8 +140,7 @@ class ItemManager:
             item_redis = self.redis_manager.get_item_manager()
             await item_redis.update_item_quantity(user_no, item_idx, new_quantity)
             
-            # 메모리 캐시 무효화
-            self._cached_items = None
+            
             
             self.logger.info(f"Item added (Redis): user_no={user_no}, item_idx={item_idx}, quantity={quantity}, new_total={new_quantity}")
             

@@ -5,522 +5,181 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아이템 관리</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            padding: 10px;
-            background-color: white;
-            margin: 0;
-        }
-        
-        .game-section h3 {
-            margin: 0 0 10px 0;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #ddd;
-            font-size: 16px;
-        }
-        
-        .container {
-            max-width: 100%;
-            margin: 0;
-        }
-        
-        strong {
-            margin-right: 10px;
-        }
-        
-        .item-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #ddd;
-            font-size: 12px;
-        }
-        
-        .item-table th,
-        .item-table td {
-            padding: 6px 8px;
-            text-align: left;
-            border: 1px solid #ddd;
-            line-height: 1.3;
-        }
-        
-        .item-table th {
-            background-color: #f5f5f5;
-            font-weight: bold;
-            font-size: 12px;
-            text-align: center;
-        }
-        
-        .item-table th:nth-child(1) { width: 8%; }   /* 아이템 ID */
-        .item-table th:nth-child(2) { width: 25%; }  /* 아이템명 */
-        .item-table th:nth-child(3) { width: 12%; }  /* 카테고리 */
-        .item-table th:nth-child(4) { width: 15%; }  /* 수량 */
-        .item-table th:nth-child(5) { width: 25%; }  /* 설명 */
-        .item-table th:nth-child(6) { width: 15%; }  /* 액션 */
-        
-        .item-icon {
-            font-size: 18px;
-            margin-right: 5px;
-        }
-        
-        .item-name {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .category-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 10px;
-            font-weight: bold;
-            text-align: center;
-        }
-        
-        .category-resource { background: #e8f5e9; color: #2e7d32; }
-        .category-speedup { background: #e3f2fd; color: #1976d2; }
-        .category-boost { background: #fff3e0; color: #e65100; }
-        .category-chest { background: #f3e5f5; color: #7b1fa2; }
-        .category-special { background: #fce4ec; color: #c2185b; }
-        
-        .quantity-display {
-            font-weight: bold;
-            font-size: 14px;
-            color: #333;
-            text-align: center;
-        }
-        
-        .quantity-zero {
-            color: #999;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-        }
-        
-        .action-buttons button {
-            padding: 4px 8px;
-            border: 1px solid #ccc;
-            background: white;
-            cursor: pointer;
-            font-size: 10px;
-            border-radius: 3px;
-        }
-        
-        .action-buttons button:hover {
-            background: #f0f0f0;
-        }
-        
-        .action-buttons button:disabled {
-            background: #e0e0e0;
-            color: #999;
-            cursor: not-allowed;
-        }
-        
-        .result-box {
-            margin-top: 10px;
-            padding: 8px;
-            border-radius: 3px;
-            font-size: 11px;
-        }
-        
-        .result-box.success {
-            background: #e8f5e9;
-            border: 1px solid #4caf50;
-            color: #2e7d32;
-        }
-        
-        .result-box.error {
-            background: #ffebee;
-            border: 1px solid #f44336;
-            color: #c62828;
-        }
-        
-        .filter-section {
-            margin-bottom: 10px;
-            padding: 8px;
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-        }
-        
-        .filter-section select {
-            padding: 4px 8px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            font-size: 11px;
-            margin-right: 10px;
-        }
-        
-        .stats-section {
-            margin-bottom: 10px;
-            padding: 8px;
-            background: #f0f8ff;
-            border: 1px solid #90caf9;
-            border-radius: 3px;
-            font-size: 11px;
-        }
-        
-        .stats-section strong {
-            margin-right: 15px;
-        }
+        /* 기존 디자인 유지 */
+        body { font-family: Arial, sans-serif; font-size: 12px; padding: 10px; background-color: white; margin: 0; }
+        .game-section h3 { margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 16px; }
+        .container { max-width: 100%; margin: 0; }
+        strong { margin-right: 10px; }
+        .item-table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; font-size: 12px; }
+        .item-table th, .item-table td { padding: 6px 8px; text-align: left; border: 1px solid #ddd; line-height: 1.3; }
+        .item-table th { background-color: #f5f5f5; font-weight: bold; }
+        .btn-use { padding: 4px 8px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 3px; }
+        .btn-use:hover { background-color: #0056b3; }
+        .result-box { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; font-weight: bold; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="game-section">
-            <h3>🎒 아이템 보관함</h3>
-            
-            <!-- 통계 섹션 -->
-            <div class="stats-section">
-                <strong>총 아이템 종류:</strong> <span id="total-items">0</span>
-                <strong>총 수량:</strong> <span id="total-quantity">0</span>
-            </div>
-            
-            <!-- 필터 섹션 -->
-            <div class="filter-section">
-                <label for="category-filter">카테고리:</label>
-                <select id="category-filter" onchange="applyFilter()">
-                    <option value="all">전체</option>
-                    <option value="resource">자원</option>
-                    <option value="speedup">가속</option>
-                    <option value="boost">부스트</option>
-                    <option value="chest">상자</option>
-                    <option value="special">특수</option>
-                </select>
-                
-                <label>
-                    <input type="checkbox" id="hide-zero" onchange="applyFilter()">
-                    0개 아이템 숨기기
-                </label>
-            </div>
-            
-            <!-- 아이템 테이블 -->
+            <h3>내 인벤토리</h3>
             <table class="item-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>아이템명</th>
-                        <th>카테고리</th>
-                        <th>수량</th>
+                        <th>아이템 ID</th>
+                        <th>이름</th>
                         <th>설명</th>
+                        <th>보유량</th>
                         <th>액션</th>
                     </tr>
                 </thead>
-                <tbody id="itemTableBody">
-                    <!-- 동적으로 생성됨 -->
+                <tbody id="item-list">
+                    <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">데이터를 불러오는 중...</td></tr>
                 </tbody>
             </table>
-            
-            <div id="result" class="result-box" style="display: none;"></div>
+            <div id="result" class="result-box"></div>
         </div>
     </div>
 
     <script>
-        const CURRENT_LANGUAGE_FIELD = 'korean_name';
-        
-        // 아이템 아이콘 매핑
-        const itemIconMap = {
-            // 자원류
-            11001: '🌾', // 식량
-            11002: '🪵', // 목재
-            11003: '🗿', // 석재
-            11004: '💰', // 골드
-            11005: '💎', // 루비
-            
-            // 가속류
-            12001: '⚡', // 일반 가속
-            12002: '⏱️', // 건설 가속
-            12003: '🔬', // 연구 가속
-            12004: '⚔️', // 훈련 가속
-            
-            // 부스트류
-            13001: '📈', // 자원 생산 부스트
-            13002: '🛡️', // 방어 부스트
-            13003: '⚔️', // 공격 부스트
-            
-            // 상자류
-            14001: '📦', // 일반 상자
-            14002: '🎁', // 고급 상자
-            14003: '💼', // 전설 상자
-            
-            // 특수 아이템
-            15001: '🎫', // 텔레포트
-            15002: '🔮', // 랜덤 텔레포트
-            15003: '🛡️', // 평화 방패
-        };
-        
-        // 아이템 이름 매핑
-        const itemNameMap = {
-            11001: { english_name: 'Food', korean_name: '식량' },
-            11002: { english_name: 'Wood', korean_name: '목재' },
-            11003: { english_name: 'Stone', korean_name: '석재' },
-            11004: { english_name: 'Gold', korean_name: '골드' },
-            11005: { english_name: 'Ruby', korean_name: '루비' },
-            
-            12001: { english_name: 'General Speedup', korean_name: '일반 가속' },
-            12002: { english_name: 'Building Speedup', korean_name: '건설 가속' },
-            12003: { english_name: 'Research Speedup', korean_name: '연구 가속' },
-            12004: { english_name: 'Training Speedup', korean_name: '훈련 가속' },
-            
-            13001: { english_name: 'Resource Boost', korean_name: '자원 생산 부스트' },
-            13002: { english_name: 'Defense Boost', korean_name: '방어 부스트' },
-            13003: { english_name: 'Attack Boost', korean_name: '공격 부스트' },
-            
-            14001: { english_name: 'Common Chest', korean_name: '일반 상자' },
-            14002: { english_name: 'Advanced Chest', korean_name: '고급 상자' },
-            14003: { english_name: 'Legendary Chest', korean_name: '전설 상자' },
-            
-            15001: { english_name: 'Teleport', korean_name: '텔레포트' },
-            15002: { english_name: 'Random Teleport', korean_name: '랜덤 텔레포트' },
-            15003: { english_name: 'Peace Shield', korean_name: '평화 방패' },
-        };
-        
-        let allItemsList = [];
-        let userItemData = {};
-        let userId = null;
-        let itemConfigData = {};
-        
-        window.onload = function() {
-            window.parent.postMessage({
-                type: 'request_config',
-                configType: 'item'
-            }, '*');
-        };
-        
-        window.addEventListener('message', function(event) {
+        let currentUserId = null;
+        let itemConfigs = null;
+
+        // 메시지 감지 및 실시간 유저 동기화
+        window.addEventListener('message', async function(event) {
             if (event.data && event.data.type === 'set_player_id') {
-                const newUserId = event.data.userId;
-                
-                if (userId !== newUserId) {
-                    userId = newUserId;
-                    
-                    if (Object.keys(itemConfigData).length > 0) {
-                        loadItems();
-                    }
+                const newUserId = parseInt(event.data.userId);
+                if (currentUserId !== newUserId) {
+                    currentUserId = newUserId;
+                    await loadItems(); 
                 }
             }
             
-            if (event.data && event.data.type === 'response_config') {
-                const itemConfig = event.data.payload;
-                itemConfigData = itemConfig;
-                console.log('Item config received:', itemConfigData);
-                
-                // config 데이터 키를 기반으로 아이템 목록 동적 생성
-                allItemsList = Object.keys(itemConfigData).map(idxStr => {
-                    const idx = parseInt(idxStr);
-                    const names = itemNameMap[idx] || { 
-                        english_name: `Item_${idx}`, 
-                        korean_name: `아이템 ${idx}` 
-                    };
-                    const config = itemConfigData[idx];
-                    
-                    return {
-                        idx: idx,
-                        english_name: names.english_name,
-                        korean_name: names.korean_name,
-                        display_name: names[CURRENT_LANGUAGE_FIELD] || names.korean_name,
-                        category: config.category || 'special',
-                        description: config.description || '',
-                        icon: itemIconMap[idx] || '📦'
-                    };
-                }).sort((a, b) => a.idx - b.idx);
-                
-                if (userId) {
-                    loadItems();
-                }
+            if (event.data && event.data.type === 'response_config' && event.data.configType === 'item') {
+                itemConfigs = event.data.payload;
+                await loadItems();
             }
         });
-        
-        async function loadItems() {
-            if (!userId) {
-                console.log('Item: 플레이어 ID가 설정되지 않았습니다.');
-                return;
+
+        function getUserNo() {
+            if (currentUserId) return currentUserId;
+            if (window.parent && window.parent.currentUserId) {
+                currentUserId = parseInt(window.parent.currentUserId);
+                return currentUserId;
             }
-            
+            return null;
+        }
+
+        async function loadItems() {
+            const uid = getUserNo();
+            if (!uid) return;
+
+            // Config가 없으면 부모에게 요청
+            if (!itemConfigs) {
+                window.parent.postMessage({ type: 'request_config', configType: 'item' }, '*');
+                // Config가 올 때까지 기다리지 않고 일단 API 호출은 진행
+            }
+
             try {
                 const response = await fetch('/api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_no: parseInt(userId),
-                        api_code: 6001, // ITEM_INFO
-                        data: {}
+                        user_no: uid,
+                        api_code: 6001
                     })
                 });
-                
                 const result = await response.json();
                 
                 if (result.success && result.data) {
-                    userItemData = result.data;
-                    generateItemTable();
-                    updateStats();
-                    console.log('Item 정보 로드 성공:', userItemData);
+                    renderItems(result.data);
                 } else {
-                    showResult('아이템 정보 로드 실패: ' + result.message, 'error');
+                    document.getElementById('item-list').innerHTML = 
+                        '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 아이템이 없습니다.</td></tr>';
                 }
             } catch (error) {
-                console.error('Item 정보 로드 실패:', error);
-                showResult('아이템 정보 로드 중 오류 발생', 'error');
+                console.error('API Error:', error);
             }
         }
-        
-        function getCategoryBadge(category) {
-            const categoryNames = {
-                'resource': '자원',
-                'speedup': '가속',
-                'boost': '부스트',
-                'chest': '상자',
-                'special': '특수'
-            };
+
+        function renderItems(data) {
+            const tbody = document.getElementById('item-list');
             
-            return `<span class="category-badge category-${category}">${categoryNames[category] || category}</span>`;
-        }
-        
-        function generateItemTable() {
-            const tbody = document.getElementById('itemTableBody');
-            if (!tbody) return;
-            
-            tbody.innerHTML = '';
-            
-            allItemsList.forEach(item => {
-                const quantity = userItemData[item.idx]?.quantity || 0;
-                const config = itemConfigData[item.idx] || {};
+            // [핵심] JSON의 키값들 중 숫자로 된 것(아이템 ID)만 필터링
+            const itemKeys = Object.keys(data).filter(key => !isNaN(key));
+
+            if (itemKeys.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 중인 아이템이 없습니다.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            itemKeys.forEach(key => {
+                const item = data[key];
+                const quantity = item.quantity || 0;
                 
-                const row = document.createElement('tr');
-                row.dataset.category = item.category;
-                row.dataset.quantity = quantity;
-                
-                const useButton = quantity > 0 ? 
-                    `<button onclick="useItem(${item.idx})">사용</button>` : 
-                    `<button disabled>사용</button>`;
-                
-                row.innerHTML = `
-                    <td style="text-align: center; color: #666;">${item.idx}</td>
-                    <td>
-                        <div class="item-name">
-                            <span class="item-icon">${item.icon}</span>
-                            <span>${item.display_name}</span>
-                        </div>
-                    </td>
-                    <td style="text-align: center;">
-                        ${getCategoryBadge(item.category)}
-                    </td>
-                    <td>
-                        <div class="quantity-display ${quantity === 0 ? 'quantity-zero' : ''}">
-                            ${quantity.toLocaleString()}
-                        </div>
-                    </td>
-                    <td style="font-size: 10px; color: #666;">
-                        ${config.description || item.description || '-'}
-                    </td>
-                    <td>
-                        <div class="action-buttons">
-                            ${useButton}
-                        </div>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
-        
-        function applyFilter() {
-            const categoryFilter = document.getElementById('category-filter').value;
-            const hideZero = document.getElementById('hide-zero').checked;
-            
-            const rows = document.querySelectorAll('#itemTableBody tr');
-            
-            rows.forEach(row => {
-                const category = row.dataset.category;
-                const quantity = parseInt(row.dataset.quantity);
-                
-                let show = true;
-                
-                // 카테고리 필터
-                if (categoryFilter !== 'all' && category !== categoryFilter) {
-                    show = false;
+                if (quantity > 0) {
+                    // Config 정보가 있으면 사용, 없으면 기본값
+                    const config = (itemConfigs && itemConfigs[key]) 
+                                   ? itemConfigs[key] 
+                                   : { korean_name: `아이템 ${key}`, description: '-' };
+                    
+                    html += `
+                        <tr>
+                            <td>${key}</td>
+                            <td><strong>${config.korean_name}</strong></td>
+                            <td>${config.description || '-'}</td>
+                            <td>${quantity.toLocaleString()}</td>
+                            <td>
+                                <button class="btn-use" onclick="useItem(${key})">사용</button>
+                            </td>
+                        </tr>
+                    `;
                 }
-                
-                // 0개 숨기기 필터
-                if (hideZero && quantity === 0) {
-                    show = false;
-                }
-                
-                row.style.display = show ? '' : 'none';
             });
-            
-            updateStats();
+
+            tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 중인 아이템이 없습니다.</td></tr>';
         }
-        
-        function updateStats() {
-            const visibleRows = document.querySelectorAll('#itemTableBody tr:not([style*="display: none"])');
-            
-            let totalQuantity = 0;
-            visibleRows.forEach(row => {
-                totalQuantity += parseInt(row.dataset.quantity) || 0;
-            });
-            
-            document.getElementById('total-items').textContent = visibleRows.length;
-            document.getElementById('total-quantity').textContent = totalQuantity.toLocaleString();
-        }
-        
+
         async function useItem(itemIdx) {
-            if (!userId) {
-                showResult('플레이어 ID가 설정되지 않았습니다.', 'error');
-                return;
-            }
-            
-            if (!confirm(`아이템 ${itemIdx}를 사용하시겠습니까?`)) {
-                return;
-            }
-            
+            if (!confirm('아이템을 사용하시겠습니까?')) return;
             try {
                 const response = await fetch('/api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_no: parseInt(userId),
-                        api_code: 6003, // USE_ITEM
-                        data: {
-                            item_idx: itemIdx,
-                            quantity: 1
-                        }
+                        user_no: getUserNo(),
+                        api_code: 6003,
+                        data: { item_idx: itemIdx, quantity: 1 }
                     })
                 });
-                
                 const result = await response.json();
-                
                 if (result.success) {
-                    showResult(`아이템 사용 성공: ${itemIdx}`, 'success');
-                    await loadItems(); // 새로고침
-                    
-                    // 자원이 변경되었을 수 있으므로 resource.html에 알림
-                    window.parent.postMessage({
-                        type: 'refresh_resource'
-                    }, '*');
+                    showResult(`사용 성공!`, 'success');
+                    await loadItems();
+                    window.parent.postMessage({ type: 'refresh_resource' }, '*');
                 } else {
-                    showResult('아이템 사용 실패: ' + result.message, 'error');
+                    showResult('실패: ' + result.message, 'error');
                 }
             } catch (error) {
-                console.error('아이템 사용 실패:', error);
-                showResult('아이템 사용 중 오류 발생', 'error');
+                showResult('오류 발생', 'error');
             }
         }
-        
+
         function showResult(message, type) {
             const resultDiv = document.getElementById('result');
             resultDiv.textContent = message;
             resultDiv.className = `result-box ${type}`;
             resultDiv.style.display = 'block';
-            
-            setTimeout(() => {
-                resultDiv.style.display = 'none';
-            }, 3000);
+            setTimeout(() => { resultDiv.style.display = 'none'; }, 3000);
         }
+
+        window.onload = function() {
+            window.parent.postMessage({ type: 'request_config', configType: 'item' }, '*');
+            const uid = getUserNo();
+            if (uid) loadItems();
+        };
     </script>
 </body>
 </html>

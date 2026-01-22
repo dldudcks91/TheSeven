@@ -8,6 +8,8 @@ class CacheType(Enum):
     RESEARCH = "research"
     BUFF = "buff"
     RESOURCES = "resources"
+    ITEM = "item"
+    SHOP = "shop"
 
 
 
