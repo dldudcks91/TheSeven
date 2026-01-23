@@ -515,7 +515,16 @@
 
                 
             }
+            if (event.data.type === 'refresh_item') {
+                // item iframe 찾아서 메시지 전달
+                const itemFrame = document.getElementById('itemFrame');
+                if (itemFrame) {
+                    itemFrame.contentWindow.postMessage({ type: 'refresh_items' }, '*');
+                }
+            }
         });
+
+        
 
         // 게임 설정 로드
         async function loadGameConfig() {

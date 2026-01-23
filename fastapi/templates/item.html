@@ -5,39 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>아이템 관리</title>
     <style>
-        /* 기존 디자인 유지 */
         body { font-family: Arial, sans-serif; font-size: 12px; padding: 10px; background-color: white; margin: 0; }
         .game-section h3 { margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 16px; }
         .container { max-width: 100%; margin: 0; }
-        strong { margin-right: 10px; }
+        .table-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: start; }
         .item-table { width: 100%; border-collapse: collapse; border: 1px solid #ddd; font-size: 12px; }
-        .item-table th, .item-table td { padding: 6px 8px; text-align: left; border: 1px solid #ddd; line-height: 1.3; }
+        .item-table th, .item-table td { padding: 4px 4px; text-align: center; border: 1px solid #ddd; line-height: 1.3; height: 12px; }
         .item-table th { background-color: #f5f5f5; font-weight: bold; }
-        .btn-use { padding: 4px 8px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 3px; }
-        .btn-use:hover { background-color: #0056b3; }
+        .btn-use { padding: 3px 8px; background: #fff; color: #333; border: 1px solid #ddd; cursor: pointer; font-size: 11px; }
+        .btn-use:hover { background: #555; }
+        .btn-use:disabled { background: #ccc; cursor: not-allowed; }
         .result-box { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; font-weight: bold; }
         .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .empty-msg { text-align: center; padding: 20px; color: #999; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="game-section">
-            <h3>내 인벤토리</h3>
-            <table class="item-table">
-                <thead>
-                    <tr>
-                        <th>아이템 ID</th>
-                        <th>이름</th>
-                        <th>설명</th>
-                        <th>보유량</th>
-                        <th>액션</th>
-                    </tr>
-                </thead>
-                <tbody id="item-list">
-                    <tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">데이터를 불러오는 중...</td></tr>
-                </tbody>
-            </table>
+            <h3>Item</h3>
+            <div id="item-list" class="table-wrapper">
+                <div class="empty-msg">데이터를 불러오는 중...</div>
+            </div>
             <div id="result" class="result-box"></div>
         </div>
     </div>
@@ -46,8 +36,8 @@
         let currentUserId = null;
         let itemConfigs = null;
 
-        // 메시지 감지 및 실시간 유저 동기화
         window.addEventListener('message', async function(event) {
+            
             if (event.data && event.data.type === 'set_player_id') {
                 const newUserId = parseInt(event.data.userId);
                 if (currentUserId !== newUserId) {
@@ -56,8 +46,13 @@
                 }
             }
             
-            if (event.data && event.data.type === 'response_config' && event.data.configType === 'item') {
+            if (event.data && event.data.type === 'response_config' && event.data.configType === 'items') {
                 itemConfigs = event.data.payload;
+                await loadItems();
+                console.log("ItemConfigs:", itemConfigs)
+            }
+            
+            if (event.data.type === 'refresh_items') {
                 await loadItems();
             }
         });
@@ -75,10 +70,8 @@
             const uid = getUserNo();
             if (!uid) return;
 
-            // Config가 없으면 부모에게 요청
             if (!itemConfigs) {
                 window.parent.postMessage({ type: 'request_config', configType: 'item' }, '*');
-                // Config가 올 때까지 기다리지 않고 일단 API 호출은 진행
             }
 
             try {
@@ -87,16 +80,17 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_no: uid,
-                        api_code: 6001
+                        api_code: 6001,
+                        data: {}
                     })
                 });
                 const result = await response.json();
-                
+                console.log("ItemInfo Request: ", result)
                 if (result.success && result.data) {
                     renderItems(result.data);
                 } else {
                     document.getElementById('item-list').innerHTML = 
-                        '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 아이템이 없습니다.</td></tr>';
+                        '<div class="empty-msg" style="grid-column: span 2;">보유 아이템이 없습니다.</div>';
                 }
             } catch (error) {
                 console.error('API Error:', error);
@@ -104,42 +98,52 @@
         }
 
         function renderItems(data) {
-            const tbody = document.getElementById('item-list');
-            
-            // [핵심] JSON의 키값들 중 숫자로 된 것(아이템 ID)만 필터링
+            const container = document.getElementById('item-list');
             const itemKeys = Object.keys(data).filter(key => !isNaN(key));
 
-            if (itemKeys.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 중인 아이템이 없습니다.</td></tr>';
+            // 수량 > 0인 아이템만 필터
+            const validItems = itemKeys.filter(key => (data[key].quantity || 0) > 0);
+
+            if (validItems.length === 0) {
+                container.innerHTML = '<div class="empty-msg" style="grid-column: span 2;">보유 중인 아이템이 없습니다.</div>';
                 return;
             }
 
-            let html = '';
-            itemKeys.forEach(key => {
-                const item = data[key];
-                const quantity = item.quantity || 0;
-                
-                if (quantity > 0) {
-                    // Config 정보가 있으면 사용, 없으면 기본값
-                    const config = (itemConfigs && itemConfigs[key]) 
-                                   ? itemConfigs[key] 
-                                   : { korean_name: `아이템 ${key}`, description: '-' };
-                    
-                    html += `
-                        <tr>
-                            <td>${key}</td>
-                            <td><strong>${config.korean_name}</strong></td>
-                            <td>${config.description || '-'}</td>
-                            <td>${quantity.toLocaleString()}</td>
-                            <td>
-                                <button class="btn-use" onclick="useItem(${key})">사용</button>
-                            </td>
-                        </tr>
-                    `;
-                }
-            });
+            // 왼쪽/오른쪽 분배
+            const half = Math.ceil(validItems.length / 2);
+            const leftItems = validItems.slice(0, half);
+            const rightItems = validItems.slice(half);
 
-            tbody.innerHTML = html || '<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">보유 중인 아이템이 없습니다.</td></tr>';
+            function buildTable(items) {
+                if (items.length === 0) {
+                    return `<table class="item-table">
+                        <thead><tr><th>이름</th><th>보유량</th><th>액션</th></tr></thead>
+                        <tbody><tr><td colspan="3" style="text-align:center; color:#999;">-</td></tr></tbody>
+                    </table>`;
+                }
+
+                let rows = '';
+                items.forEach(key => {
+                    const item = data[key];
+                    const quantity = item.quantity || 0;
+                    const config = (itemConfigs && (itemConfigs[key] || itemConfigs[parseInt(key)])) 
+                                ? (itemConfigs[key] || itemConfigs[parseInt(key)])
+                                : { korean_name: `아이템 ${key}` };
+                    
+                    rows += `<tr>
+                        <td><strong>${config.korean_name}</strong></td>
+                        <td>${quantity.toLocaleString()}</td>
+                        <td><button class="btn-use" onclick="useItem(${key})">사용</button></td>
+                    </tr>`;
+                });
+
+                return `<table class="item-table">
+                    <thead><tr><th>이름</th><th>보유량</th><th>액션</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+            }
+
+            container.innerHTML = buildTable(leftItems) + buildTable(rightItems);
         }
 
         async function useItem(itemIdx) {
@@ -156,7 +160,7 @@
                 });
                 const result = await response.json();
                 if (result.success) {
-                    showResult(`사용 성공!`, 'success');
+                    showResult('사용 성공!', 'success');
                     await loadItems();
                     window.parent.postMessage({ type: 'refresh_resource' }, '*');
                 } else {
