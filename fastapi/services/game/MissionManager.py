@@ -236,9 +236,9 @@ class MissionManager:
                 if not m_conf: continue
             
                 curr = await self._get_current_value(user_no, category, m_conf['target_idx'])
+                old = m_conf['value']
                 
-                
-                if curr >= m_conf['value']:
+                if curr >= old:
                     await self._complete_mission(m_idx)
                     completed_count += 1
             
