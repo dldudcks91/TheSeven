@@ -46,7 +46,7 @@
                 }
             }
             
-            if (event.data && event.data.type === 'response_config' && event.data.configType === 'items') {
+            if (event.data && event.data.type === 'response_config') {
                 itemConfigs = event.data.payload;
                 await loadItems();
                 console.log("ItemConfigs:", itemConfigs)
@@ -147,7 +147,7 @@
         }
 
         async function useItem(itemIdx) {
-            if (!confirm('아이템을 사용하시겠습니까?')) return;
+            //if (!confirm('아이템을 사용하시겠습니까?')) return;
             try {
                 const response = await fetch('/api', {
                     method: 'POST',

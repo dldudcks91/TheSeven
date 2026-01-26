@@ -509,6 +509,7 @@
                 
                 event.source.postMessage({
                     type: 'response_config',
+                    configType: requestedType,
                     payload: dataToSend
                 }, event.origin);
                 
@@ -520,6 +521,16 @@
                 const itemFrame = document.getElementById('itemFrame');
                 if (itemFrame) {
                     itemFrame.contentWindow.postMessage({ type: 'refresh_items' }, '*');
+                }
+            }
+            if (event.data.type === 'update_mission') {
+                // mission iframe 찾아서 데이터 전달
+                const missionFrame = document.getElementById('missionFrame');
+                if (missionFrame) {
+                    missionFrame.contentWindow.postMessage({ 
+                        type: 'update_mission_ui', 
+                        payload: event.data.payload 
+                    }, '*');
                 }
             }
         });

@@ -1,13 +1,13 @@
-unit_idx,unit_tier,train_time,food,wood,stone,gold,attack,defense,health,speed,category,english_name,korean_name
-401,1,2,100,0,0,0,1,1,100,2,infantry,Infantry,보병
-402,2,4,200,0,0,0,2,2,200,2,infantry,Heavy Infantry,중보병
-403,3,6,400,0,0,0,3,3,300,2,infantry,Swordsman,검사
-404,4,8,800,0,0,0,4,4,400,2,infantry,Paladin,팔라딘
-411,1,2,100,0,0,0,1,1,100,3,cavalry,Cavalry,기병
-412,2,4,200,0,0,0,2,2,200,3,cavalry,Heavy Cavalry,중기병
-413,3,6,400,0,0,0,3,3,300,3,cavalry,Knight,기사
-414,4,8,800,0,0,0,4,4,400,3,cavalry,Royal Knights / Royal Horse Guards,왕실기병대
-421,1,2,100,0,0,0,1,1,100,1,archer,Archer,궁병
-422,2,4,200,0,0,0,2,2,200,1,archer,Skirmisher,척후병
-423,3,6,400,0,0,0,3,3,300,1,archer,Sharpshooter / Sniper,저격수
-424,4,8,800,0,0,0,4,4,400,1,archer,Hawkeye,호크아이
+unit_idx,unit_tier,train_time,food,wood,stone,gold,attack,defense,health,speed,required_researchs,category,english_name,korean_name
+401,1,2,100,0,0,0,1,1,100,2,,infantry,Infantry,보병
+402,2,4,200,0,0,0,2,2,200,2,2021_1,infantry,Heavy Infantry,중보병
+403,3,6,400,0,0,0,3,3,300,2,2021_1,infantry,Swordsman,검사
+404,4,8,800,0,0,0,4,4,400,2,2021_1,infantry,Paladin,팔라딘
+411,1,2,100,0,0,0,1,1,100,3,,cavalry,Cavalry,기병
+412,2,4,200,0,0,0,2,2,200,3,2022_1,cavalry,Heavy Cavalry,중기병
+413,3,6,400,0,0,0,3,3,300,3,2022_1,cavalry,Knight,기사
+414,4,8,800,0,0,0,4,4,400,3,2022_1,cavalry,Royal Knights / Royal Horse Guards,왕실기병대
+421,1,2,100,0,0,0,1,1,100,1,,archer,Archer,궁병
+422,2,4,200,0,0,0,2,2,200,1,2023_1,archer,Skirmisher,척후병
+423,3,6,400,0,0,0,3,3,300,1,2023_1,archer,Sharpshooter / Sniper,저격수
+424,4,8,800,0,0,0,4,4,400,1,2023_1,archer,Hawkeye,호크아이

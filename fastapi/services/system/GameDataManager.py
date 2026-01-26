@@ -220,6 +220,8 @@ class GameDataManager:
                 'korean_name': row['korean_name']
             }
     
+    
+    
     @classmethod
     def _build_mission_index(cls):
         """

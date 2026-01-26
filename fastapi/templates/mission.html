@@ -418,6 +418,11 @@
                     renderMissions();
                 }
             }
+            
+            // 미션 UI 업데이트 (API 호출 없이 데이터만 갱신)
+            if (event.data && event.data.type === 'update_mission_ui' && event.data.payload) {
+                updateMissionUI(event.data.payload);
+            }
         });
         
         // 페이지 로드 시 부모 창에 Config 요청
@@ -690,6 +695,7 @@
                     
                     renderMissions();
                     showResult('보상을 받았습니다! 🎉');
+                    window.parent.postMessage({ type: 'refresh_item' }, '*');
                 } else {
                     showResult('보상 수령 실패: ' + (result.message || '알 수 없는 오류'));
                 }
@@ -707,6 +713,27 @@
                 loadMissions();
             }
         });
+        
+        // 미션 UI 부분 업데이트 (API 호출 없이)
+        function updateMissionUI(missionData) {
+            console.log('🔄 미션 UI 업데이트:', missionData);
+            
+            // 완료된 미션 업데이트
+            if (missionData.completed && missionData.completed > 0) {
+                // checked된 미션들의 current_value 업데이트
+                Object.keys(userMissionProgress).forEach(missionIdx => {
+                    const mission = missionConfig[missionIdx];
+                    if (mission && userMissionProgress[missionIdx]) {
+                        // 완료 조건 충족 시 is_completed = true
+                        if (userMissionProgress[missionIdx].current_value >= mission.value) {
+                            userMissionProgress[missionIdx].is_completed = true;
+                        }
+                    }
+                });
+            }
+            
+            renderMissions();  // UI만 다시 그림 (API 호출 없음)
+        }
     </script>
 </body>
 </html>

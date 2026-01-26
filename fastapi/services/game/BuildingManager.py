@@ -543,17 +543,30 @@ class BuildingManager:
                 'last_dt': now.isoformat()
             }
             
+            #캐싱 업데이트
             await building_redis.update_cached_building(user_no, building_idx, updated_building)
             
-            # 메모리 캐시 무효화
-            self._cached_buildings = None
+            #미션 업데이트
+            mission_update = None
+            try:
+                mission_manager = self._get_mission_manager()
+                mission_manager.user_no = user_no
+                mission_result = await mission_manager.check_building_missions(building_idx)  # ← 기존 메서드 사용
+                if mission_result.get('success'):
+                    mission_update = mission_result.get('data')
+            except Exception as mission_error:
+                self.logger.warning(f"Mission update failed (non-critical): {mission_error}")
+            
             
             self.logger.info(f"Building upgrade finished (Redis): user={user_no}, building={building_idx}, new_level={target_level}")
             
             return {
                 "success": True,
                 "message": f"Building {building_idx} upgraded to level {target_level}",
-                "data": updated_building
+                "data": {
+                    "building": updated_building,
+                    "mission_update": mission_update  # 미션 업데이트 결과 포함
+                        }
             }
             
         except Exception as e:
@@ -848,3 +861,15 @@ class BuildingManager:
         except Exception as e:
             self.logger.error(f"Error applying building buffs for user {user_no}: {e}")
             return base_time
+        
+    def _get_mission_manager(self):
+        from services.game.MissionManager import MissionManager
+        return MissionManager(self.db_manager, self.redis_manager)
+    
+    def _get_resource_manager(self):
+        from services.game.ResourceManager import ResourceManager
+        return ResourceManager(self.db_manager, self.redis_manager)
+    
+    def _get_buff_manager(self):
+        from services.game.BuffManager import BuffManager
+        return BuffManager(self.db_manager, self.redis_manager)
