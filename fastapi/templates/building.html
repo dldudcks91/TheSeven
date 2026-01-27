@@ -353,9 +353,14 @@
                 const result = await response.json();
                 console.log(`🎉 ${buildingName} 완료 API 결과:`, result);
                 
+                
+
                 if (result.success) {
-                    if (result.data) {
-                        userBuildingData[buildingIdx] = result.data;
+
+                    building_data = result.data['building']
+                    mission_data = result.data['mission_update']
+                    if (building_data) {
+                        userBuildingData[buildingIdx] = building_data;
                     }
                     
                     await loadBuildings();
@@ -364,6 +369,14 @@
                     setTimeout(() => {
                         completedBuildingChecks.delete(buildingIdx);
                     }, 2000);
+
+                    if (mission_data) {
+                            window.parent.postMessage({
+                                type: 'update_mission',
+                                payload: mission_data
+                            }, '*');
+                        }
+
                 } else {
                     showResult(`${buildingName} 완료 처리 실패: ${result.message || '알 수 없는 오류'}`);
                     completedBuildingChecks.delete(buildingIdx);

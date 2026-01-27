@@ -509,7 +509,6 @@
                 
                 event.source.postMessage({
                     type: 'response_config',
-                    configType: requestedType,
                     payload: dataToSend
                 }, event.origin);
                 
@@ -524,15 +523,17 @@
                 }
             }
             if (event.data.type === 'update_mission') {
-                // mission iframe 찾아서 데이터 전달
+                
                 const missionFrame = document.getElementById('missionFrame');
                 if (missionFrame) {
-                    missionFrame.contentWindow.postMessage({ 
-                        type: 'update_mission_ui', 
-                        payload: event.data.payload 
+                    missionFrame.contentWindow.postMessage({
+                        type: 'update_mission_ui',
+                        payload: event.data.payload
                     }, '*');
                 }
             }
+
+
         });
 
         
@@ -585,7 +586,7 @@
                             type: 'set_player_id',
                             userId: userId
                         }, '*');
-                        console.log(`${frameId}에 플레이어 ID 전송: ${userId}`);
+                        
                     } catch (error) {
                         console.warn(`${frameId}에 메시지 전송 실패:`, error);
                     }

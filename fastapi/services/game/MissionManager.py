@@ -212,6 +212,7 @@ class MissionManager:
         """카테고리별 미션 일괄 체크 및 결과 통합 반환"""
         try:
             user_no = self.user_no
+            mission_redis = self.redis_manager.get_mission_manager()
             related_idxs = self._get_related_missions(category, target_idx) if target_idx else []
             
             config = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {})
@@ -227,7 +228,7 @@ class MissionManager:
             completed_count = 0
             
             targets = related_idxs if target_idx else progress.keys()
-            print("[mission_test 1]:", targets, progress)
+            #print("[mission_test 1]:", targets, progress)
             for m_idx in targets:
                 if progress.get(m_idx, {}).get('is_completed'): continue
                 
@@ -237,18 +238,27 @@ class MissionManager:
             
                 curr = await self._get_current_value(user_no, category, m_conf['target_idx'])
                 old = m_conf['value']
-                
                 if curr >= old:
-                    await self._complete_mission(m_idx)
+                    await mission_redis.complete_mission(user_no, m_idx)
+                    progress[m_idx]['current_value'] = curr
+                    progress[m_idx]['is_completed'] = True
                     completed_count += 1
+                    updated = True
+                    
+                elif curr != old:
+                    await mission_redis.update_mission_progress(user_no, m_idx, curr)
+                    progress[m_idx]['current_value'] = curr
+                    updated = True
+        
+                    
             
-            if completed_count > 0:
-                await self.invalidate_user_mission_cache(user_no)
+            # if completed_count > 0:
+            #     await self.invalidate_user_mission_cache(user_no)
             
             
             return {
                 "success": True,
-                "data": await self.get_user_mission_progress(),
+                "data": progress,
                 "newly_completed": completed_count
             }
         except Exception as e:

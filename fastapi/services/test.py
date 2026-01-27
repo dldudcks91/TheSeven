@@ -48,7 +48,7 @@ for key in all_keys:
     
 print(zset_keys)
 #%%
-HASH_KEY = zset_keys['string'][-1]
+HASH_KEY = zset_keys['string'][6]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     
@@ -69,7 +69,7 @@ except Exception as e:
     print(f"오류 발생: {e}")
 
 #%%
-HASH_KEY = zset_keys['hash'][1]
+HASH_KEY = zset_keys['hash'][10]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     building_data = redis_client.hgetall(HASH_KEY)

@@ -718,19 +718,22 @@
         function updateMissionUI(missionData) {
             console.log('🔄 미션 UI 업데이트:', missionData);
             
-            // 완료된 미션 업데이트
-            if (missionData.completed && missionData.completed > 0) {
-                // checked된 미션들의 current_value 업데이트
-                Object.keys(userMissionProgress).forEach(missionIdx => {
-                    const mission = missionConfig[missionIdx];
-                    if (mission && userMissionProgress[missionIdx]) {
-                        // 완료 조건 충족 시 is_completed = true
-                        if (userMissionProgress[missionIdx].current_value >= mission.value) {
-                            userMissionProgress[missionIdx].is_completed = true;
-                        }
-                    }
-                });
+            if (missionData) {
+                userMissionProgress = missionData;
             }
+            // 완료된 미션 업데이트
+            // if (missionData.completed && missionData.completed > 0) {
+            //     // checked된 미션들의 current_value 업데이트
+            //     Object.keys(userMissionProgress).forEach(missionIdx => {
+            //         const mission = missionConfig[missionIdx];
+            //         if (mission && userMissionProgress[missionIdx]) {
+            //             // 완료 조건 충족 시 is_completed = true
+            //             if (userMissionProgress[missionIdx].current_value >= mission.value) {
+            //                 userMissionProgress[missionIdx].is_completed = true;
+            //             }
+            //         }
+            //     });
+            // }
             
             renderMissions();  // UI만 다시 그림 (API 호출 없음)
         }

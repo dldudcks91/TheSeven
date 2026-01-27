@@ -794,8 +794,21 @@
                 console.log(`🎉 ${researchName} 완료 API 결과:`, result);
                 
                 if (result.success) {
+                    // 데이터 업데이트
+                    if (result.data && result.data.research) {
+                        userResearchData[researchIdx] = result.data.research;
+                    }
+                    
                     await loadResearch();
                     showResult(`${researchName} 완료! 연구 성공`);
+                    
+                    // 미션 업데이트 데이터를 main.html로 전달
+                    if (result.data && result.data.mission_update) {
+                        window.parent.postMessage({
+                            type: 'update_mission',
+                            payload: result.data.mission_update
+                        }, '*');
+                    }
                     
                     setTimeout(() => {
                         completedResearchChecks.delete(researchKey);

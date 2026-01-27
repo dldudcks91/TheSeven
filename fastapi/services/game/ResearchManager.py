@@ -267,7 +267,7 @@ class ResearchManager:
             user_no=user_no,
             research_idx=research_idx,
             status=initial_status,
-            level=0
+            research_lv=0
         )
         
         if not create_result['success']:
@@ -310,29 +310,27 @@ class ResearchManager:
             return self.STATUS_LOCKED
     
     async def _has_ongoing_research(self, user_no):
-        """진행중인 연구가 있는지 확인 (Redis 기반)"""
+        """진행중인 연구가 있는지 확인 - O(1)"""
         try:
             research_redis = self.redis_manager.get_research_manager()
-            completion_time = await research_redis.get_research_completion_time(user_no)
-            if completion_time:
-                return True
-            return False
+            return await research_redis.has_ongoing_research(user_no)
         except Exception as e:
-            self.logger.error(f"Error checking ongoing research in Redis: {e}")
+            self.logger.error(f"Error checking ongoing research: {e}")
             return False
     
     async def _handle_resource_transaction(self, user_no, research_idx):
-        """자원 체크 및 소모를 한번에 처리"""
+        """자원 소모 (원자적 검사 + 차감)"""
         try:
             required = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][research_idx]
             costs = required['cost']
             base_time = required['time']
             
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
-            if not await resource_manager.check_require_resources(user_no, costs):
+            consume_result = await resource_manager.consume_resources(user_no, costs)
+            
+            if not consume_result["success"]:
                 return None, "Need More Resources"
             
-            await resource_manager.consume_resources(user_no, costs)
             return base_time, None
             
         except Exception as e:
@@ -369,6 +367,9 @@ class ResearchManager:
             self.logger.error(f"Error updating cached research {research_idx} for user {user_no}: {e}")
             return False
     
+    
+    
+    ### API 로직 ###
     async def research_info(self):
         """
         연구 정보를 조회합니다.
@@ -404,17 +405,16 @@ class ResearchManager:
         try:
             user_no = self.user_no
             
-            # 입력값 검증
+            # 1. 입력값 검증
             validation_error = self._validate_input()
             if validation_error:
                 return validation_error
             
             research_idx = self.data.get('research_idx')
-            
             if not research_idx:
                 return {"success": False, "message": "Missing research_idx", "data": {}}
             
-            # 진행중인 연구가 있는지 확인 (한 번에 하나만)
+            # 2. 진행중인 연구 확인 (한 번에 하나만)
             if await self._has_ongoing_research(user_no):
                 return {
                     "success": False, 
@@ -422,13 +422,21 @@ class ResearchManager:
                     "data": {}
                 }
             
-            # 연구 존재 확인 및 생성
+            # 3. 설정 데이터 조회
+            if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
+                return {"success": False, "message": "Research configuration not found", "data": {}}
+            
+            config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
+            if not config:
+                return {"success": False, "message": f"Research {research_idx} config not found", "data": {}}
+            
+            # 4. 연구 데이터 존재 확인 및 생성
             research = await self._ensure_research_exists(user_no, research_idx)
             
-            # 이미 완료된 연구인지 확인
-            if research.get('status') == self.STATUS_COMPLETED:
-                # 반복 가능한 연구인지 확인
-                config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
+            # 5. 상태 검증
+            current_status = research.get('status')
+            
+            if current_status == self.STATUS_COMPLETED:
                 if not config.get('repeatable', False):
                     return {
                         "success": False,
@@ -436,52 +444,74 @@ class ResearchManager:
                         "data": {}
                     }
             
-            # 연구 가능 상태인지 확인
-            if research.get('status') == self.STATUS_LOCKED:
+            if current_status == self.STATUS_LOCKED:
                 return {
                     "success": False,
                     "message": "Prerequisite research not completed",
                     "data": {}
                 }
             
-            # 자원 처리
-            base_time, error_msg = await self._handle_resource_transaction(user_no, research_idx)
-            if error_msg:
-                return {"success": False, "message": error_msg, "data": {}}
+            # 6. 자원 소모 (원자적 검사 + 차감)
+            costs = config.get('cost', {})
+            base_research_time = config.get('time', 0)
             
-            # 버프 적용된 시간 계산
-            research_time = self._apply_research_buffs(user_no, base_time)
+            if not costs or base_research_time <= 0:
+                return {"success": False, "message": "Invalid research configuration", "data": {}}
             
-            # 시간 설정
+            resource_manager = self._get_resource_manager()
+            consume_result = await resource_manager.consume_resources(user_no, costs)
+            
+            if not consume_result["success"]:
+                if consume_result.get("reason") == "insufficient":
+                    shortage = consume_result.get("shortage", {})
+                    return {
+                        "success": False, 
+                        "message": "Need More Resources", 
+                        "data": {"shortage": shortage}
+                    }
+                return {
+                    "success": False, 
+                    "message": "Failed to consume resources", 
+                    "data": consume_result
+                }
+            
+            # 7. 버프 적용
+            research_time = self._apply_research_buffs(user_no, base_research_time)
+            
+            # 8. 시간 설정
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=research_time)
             
-            # Redis 완료 큐에 추가
+            # 9. Redis 업데이트
             research_redis = self.redis_manager.get_research_manager()
-            await research_redis.add_research_to_queue(
-                user_no, 
-                research_idx, 
-                completion_time
-            )
             
-            # Redis 캐시 업데이트
+            # 완료 큐에 추가
+            await research_redis.add_research_to_queue(user_no, research_idx, completion_time)
+            
+            # 진행 중인 연구 설정 (O(1) 조회용)
+            await research_redis.set_ongoing_research(user_no, research_idx, completion_time)
+            
+            # 캐시 업데이트
+            current_level = research.get('research_lv', 0)
             updated_research = {
                 **research,
                 'status': self.STATUS_PROCESSING,
-                'started_at': start_time.isoformat(),
-                'complete_at': completion_time.isoformat(),
+                'research_lv': current_level,
+                'start_time': start_time.isoformat(),
+                'end_time': completion_time.isoformat(),
                 'cached_at': datetime.utcnow().isoformat()
             }
             await self._update_cached_research(user_no, research_idx, updated_research)
             
+            self.logger.info(f"Research started: user={user_no}, research={research_idx}, time={research_time}s")
+            
             return {
                 "success": True,
                 "message": f"Started research. Will complete in {research_time} seconds",
-                "data": await self._format_research_data(research_idx)
+                "data": updated_research
             }
             
         except Exception as e:
-            self.db_manager.rollback()
             self.logger.error(f"Error starting research: {e}")
             return {
                 "success": False, 
@@ -521,14 +551,15 @@ class ResearchManager:
                     "data": {}
                 }
             
-            # 완료 시간 확인
-            complete_at = research.get('complete_at')
-            if complete_at:
-                complete_time = datetime.fromisoformat(complete_at)
-                if datetime.utcnow() < complete_time:
+            # 완료 시간 확인 (end_time으로 통일)
+            end_time_str = research.get('end_time')
+            if end_time_str:
+                end_time = datetime.fromisoformat(end_time_str)
+                if datetime.utcnow() < end_time:
+                    remaining = int((end_time - datetime.utcnow()).total_seconds())
                     return {
                         "success": False,
-                        "message": "Research not yet completed",
+                        "message": f"Research not yet completed. {remaining}s remaining",
                         "data": {}
                     }
             
@@ -537,7 +568,7 @@ class ResearchManager:
             
             # 반복 가능한 연구인 경우 level 증가
             config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
-            new_level = research.get('level', 0) + 1
+            new_level = research.get('research_lv', 0) + 1
             
             update_result = research_db.complete_research(
                 user_no=user_no,
@@ -550,9 +581,23 @@ class ResearchManager:
             
             self.db_manager.commit()
             
-            # Redis 큐에서 제거
+            # Redis 큐에서 제거 + 진행 중인 연구 클리어
             research_redis = self.redis_manager.get_research_manager()
             await research_redis.remove_research_from_queue(user_no, research_idx)
+            await research_redis.clear_ongoing_research(user_no)
+            
+            # Redis 캐시 업데이트
+            now = datetime.utcnow()
+            updated_research = {
+                **research,
+                'status': self.STATUS_COMPLETED,
+                'research_lv': new_level,
+                'start_time': None,
+                'end_time': None,
+                'last_dt': now.isoformat(),
+                'cached_at': now.isoformat()
+            }
+            await self._update_cached_research(user_no, research_idx, updated_research)
             
             # 버프 적용
             buff_manager = BuffManager(self.db_manager, self.redis_manager)
@@ -562,13 +607,29 @@ class ResearchManager:
             # 선행 연구로 사용하는 다른 연구들의 상태 업데이트
             await self._unlock_dependent_researches(user_no, research_idx)
             
+            # 미션 업데이트
+            mission_update = None
+            try:
+                mission_manager = self._get_mission_manager()
+                mission_manager.user_no = user_no
+                mission_result = await mission_manager.check_research_missions(research_idx)
+                if mission_result.get('success'):
+                    mission_update = mission_result.get('data')
+            except Exception as mission_error:
+                self.logger.warning(f"Mission update failed (non-critical): {mission_error}")
+            
             # 캐시 무효화
             await self._invalidate_cache(user_no)
             
+            self.logger.info(f"Research finished: user={user_no}, research={research_idx}, new_level={new_level}")
+            
             return {
                 "success": True,
-                "message": f"Research completed successfully at level {new_level}",
-                "data": await self._format_research_data(research_idx)
+                "message": f"Research {research_idx} completed at level {new_level}",
+                "data": {
+                    "research": updated_research,
+                    "mission_update": mission_update
+                }
             }
             
         except Exception as e:
@@ -660,9 +721,10 @@ class ResearchManager:
             
             self.db_manager.commit()
             
-            # Redis 큐에서 제거
+            # Redis 큐에서 제거 + 진행 중인 연구 클리어
             research_redis = self.redis_manager.get_research_manager()
             await research_redis.remove_research_from_queue(user_no, research_idx)
+            await research_redis.clear_ongoing_research(user_no)
             
             # 캐시 무효화
             await self._invalidate_cache(user_no)
@@ -709,8 +771,8 @@ class ResearchManager:
                 }
             
             # 남은 시간 계산
-            complete_at = datetime.fromisoformat(research.get('complete_at'))
-            remaining_seconds = max(0, (complete_at - datetime.utcnow()).total_seconds())
+            end_time = datetime.fromisoformat(research.get('end_time'))
+            remaining_seconds = max(0, (end_time - datetime.utcnow()).total_seconds())
             
             # 다이아 비용 계산 (예: 1분당 1다이아)
             diamond_cost = max(1, int(remaining_seconds / 60))
@@ -749,3 +811,7 @@ class ResearchManager:
                 "message": f"Error instant completing research: {str(e)}",
                 "data": {}
             }
+    
+    def _get_mission_manager(self):
+        from services.game.MissionManager import MissionManager
+        return MissionManager(self.db_manager, self.redis_manager)

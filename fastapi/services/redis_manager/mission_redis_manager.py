@@ -160,13 +160,13 @@ class MissionRedisManager:
             # 2. 해당 미션 완료 처리
             if mission_idx in progress:
                 progress[mission_idx]['is_completed'] = True
-                progress[mission_idx]['is_claimed'] = True
+                progress[mission_idx]['is_claimed'] = False
             else:
                 # 캐시에 없으면 추가
                 progress[mission_idx] = {
                     "current_value": 0,  # 완료되었으므로 목표값 달성
                     "is_completed": True,
-                    "is_claimed": True,
+                    "is_claimed": False,
                     "completed_at": datetime.utcnow().isoformat()
                 }
             
