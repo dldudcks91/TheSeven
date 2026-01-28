@@ -152,7 +152,7 @@ class ResearchManager:
                 self._cached_researches = cached_data
                 return cached_data
             
-            # DB에서 조회
+            # Caching되있지 않으면 DB에서 조회
             
             researches_data =  self.get_db_researches(self.user_no)
             
@@ -411,9 +411,12 @@ class ResearchManager:
                 return validation_error
             
             research_idx = self.data.get('research_idx')
+            research_lv = self.data.get('research_lv')
             if not research_idx:
                 return {"success": False, "message": "Missing research_idx", "data": {}}
-            
+            if not research_lv:
+                return {"success": False, "message": "Missing research_lv", "data": {}}
+
             # 2. 진행중인 연구 확인 (한 번에 하나만)
             if await self._has_ongoing_research(user_no):
                 return {
@@ -425,10 +428,10 @@ class ResearchManager:
             # 3. 설정 데이터 조회
             if self.CONFIG_TYPE not in GameDataManager.REQUIRE_CONFIGS:
                 return {"success": False, "message": "Research configuration not found", "data": {}}
-            
-            config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
-            if not config:
-                return {"success": False, "message": f"Research {research_idx} config not found", "data": {}}
+            try:
+                config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][research_idx][research_lv]
+            except:
+                return {"success": False, "message": f"Research {research_idx} or {research_lv} config not found", "data": {}}
             
             # 4. 연구 데이터 존재 확인 및 생성
             research = await self._ensure_research_exists(user_no, research_idx)
@@ -815,3 +818,11 @@ class ResearchManager:
     def _get_mission_manager(self):
         from services.game.MissionManager import MissionManager
         return MissionManager(self.db_manager, self.redis_manager)
+    
+    def _get_buff_manager(self):
+        from services.game.BuffManager import BuffManager
+        return BuffManager(self.db_manager, self.redis_manager)
+    
+    def _get_resource_manager(self):
+        from services.game.ResourceManager import ResourceManager
+        return ResourceManager(self.db_manager, self.redis_manager)
