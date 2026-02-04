@@ -48,14 +48,14 @@ for key in all_keys:
     
 print(zset_keys)
 #%%
-HASH_KEY = zset_keys['string'][6]
+STRING_KEY = zset_keys['string'][6]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     
-    building_data = redis_client.get(HASH_KEY)
+    building_data = redis_client.get(STRING_KEY)
 
     if building_data:
-        print(f"✅ {HASH_KEY} 내용 (HGETALL):")
+        print(f"✅ {STRING_KEY} 내용 (HGETALL):")
         
         # 딕셔너리 형태로 출력하여 가독성을 높임
         print(json.dumps(building_data, indent=4))
@@ -63,7 +63,7 @@ try:
         
         
     else:
-        print(f"❌ Hash Key '{HASH_KEY}'가 존재하지 않거나 비어 있습니다.")
+        print(f"❌ STRING_KEY '{STRING_KEY}'가 존재하지 않거나 비어 있습니다.")
 
 except Exception as e:
     print(f"오류 발생: {e}")

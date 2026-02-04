@@ -471,6 +471,89 @@
         let gameConfigManager = null;
         let gameConfig = null;
         let loadConfigPromise = null; // Promise 캐시
+        
+        // ========================================
+        // WebSocket 관련
+        // ========================================
+        let websocket = null;
+        let wsReconnectAttempts = 0;
+        const WS_MAX_RECONNECT = 5;
+        const WS_RECONNECT_DELAY = 3000;
+        
+        function connectWebSocket(userId) {
+            if (!userId) return;
+            
+            // 기존 연결 정리
+            if (websocket) {
+                websocket.onclose = null; 
+                websocket.onerror = null;
+                websocket.close();
+            }
+            
+            const wsUrl = `ws://${window.location.host}/ws/${userId}`;
+            console.log(`🔌 WebSocket 연결: ${wsUrl}`);
+            
+            websocket = new WebSocket(wsUrl);
+            
+            websocket.onopen = () => {
+                console.log('✅ WebSocket 연결 성공');
+                wsReconnectAttempts = 0;
+                showToast('서버와 연결되었습니다', 'success');
+            };
+            
+            websocket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+            
+            websocket.onclose = () => {
+                console.log('🔌 WebSocket 연결 종료');
+                if (wsReconnectAttempts < WS_MAX_RECONNECT) {
+                    wsReconnectAttempts++;
+                    setTimeout(() => {
+                        const userId = document.getElementById('globalUserId').value;
+                        if (userId) connectWebSocket(userId);
+                    }, WS_RECONNECT_DELAY);
+                }
+            };
+            
+            websocket.onerror = (error) => {
+                console.error('❌ WebSocket 에러:', error);
+            };
+        }
+        
+        function handleWebSocketMessage(message) {
+            console.log('📩 WebSocket:', message);
+            
+            switch (message.type) {
+                case 'connected':
+                    console.log('서버 연결 확인:', message.user_no);
+                    break;
+                    
+                case 'unit_complete':
+                    // 유닛 훈련 완료 → unit iframe에 전달
+                    const unitFrame = document.getElementById('unitFrame');
+                    if (unitFrame) {
+                        unitFrame.contentWindow.postMessage({
+                            type: 'unit_complete',
+                            payload: message.data
+                        }, '*');
+                    }
+                    showToast(`유닛 훈련 완료!`, 'success');
+                    
+                    // 미션 업데이트
+                    if (message.data?.mission_update) {
+                        const missionFrame = document.getElementById('missionFrame');
+                        if (missionFrame) {
+                            missionFrame.contentWindow.postMessage({
+                                type: 'update_mission_ui',
+                                payload: message.data.mission_update
+                            }, '*');
+                        }
+                    }
+                    break;
+            }
+        }
 
         // 초기 실행 함수
         window.onload = function() {
@@ -479,6 +562,13 @@
             if (!loadConfigPromise) {
                 loadConfigPromise = loadGameConfig();
                 
+            }
+        };
+        
+        // 페이지 종료 시 WebSocket 정리
+        window.onbeforeunload = function() {
+            if (websocket) {
+                websocket.close();
             }
         };
 
@@ -571,11 +661,14 @@
             }
             
             showToast('데이터를 로드하고 있습니다...', 'info');
+            
             // 1. 서버에 캐시 프리로드 요청 (api_code: 1010)
             const cacheResponse = await preloadServerCache(userId);
             
+            // 2. WebSocket 연결
+            connectWebSocket(userId);
             
-            // 모든 iframe에 플레이어 ID 전달
+            // 3. 모든 iframe에 플레이어 ID 전달
             const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame'];
             
             frameIds.forEach(frameId => {

@@ -565,24 +565,24 @@ class ResearchManager:
                         "message": f"Research not yet completed. {remaining}s remaining",
                         "data": {}
                     }
-            
-            # DB 업데이트
-            research_db = self.db_manager.get_research_manager()
-            
-            # 반복 가능한 연구인 경우 level 증가
-            config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
             new_level = research.get('research_lv', 0) + 1
+            # DB 업데이트
+            # research_db = self.db_manager.get_research_manager()
             
-            update_result = research_db.complete_research(
-                user_no=user_no,
-                research_idx=research_idx,
-                level=new_level
-            )
+            # # 반복 가능한 연구인 경우 level 증가
+            # config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
+            # new_level = research.get('research_lv', 0) + 1
             
-            if not update_result['success']:
-                return update_result
+            # update_result = research_db.complete_research(
+            #     user_no=user_no,
+            #     research_idx=research_idx,
+            #     level=new_level
+            # )
             
-            self.db_manager.commit()
+            # if not update_result['success']:
+            #     return update_result
+            
+            # self.db_manager.commit()
             
             # Redis 큐에서 제거 + 진행 중인 연구 클리어
             research_redis = self.redis_manager.get_research_manager()

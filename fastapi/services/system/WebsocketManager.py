@@ -11,8 +11,10 @@ class WebsocketManager:
         await websocket.accept()
         self.active_connections[user_no] = websocket
 
-    def disconnect(self, user_no: int):
-        self.active_connections.pop(user_no, None)
+    def disconnect(self, user_no: int, websocket: WebSocket):
+        # 유저 번호만 보는 게 아니라, 소켓 객체(메모리 주소)까지 비교해서 일치할 때만 삭제
+        if self.active_connections.get(user_no) == websocket:
+            self.active_connections.pop(user_no, None)
 
     async def send_personal_message(self, message: str, user_no: int):
         if self.active_connections.get(user_no):
@@ -30,4 +32,4 @@ class WebsocketManager:
                 disconnected_users.append(user_no)
         # 실패한 연결들 정리
         for user_no in disconnected_users:
-            self.disconnect(user_no)
+            self.disconnect(user_no, connection)

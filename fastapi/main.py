@@ -201,6 +201,12 @@ async def websocket_endpoint(websocket: WebSocket, user_no: int):
         await ws_manager.connect(websocket, user_no)
         logger.info(f"WebSocket connected for user {user_no}")
         
+        # 연결 성공 메시지 전송
+        await ws_manager.send_personal_message(json.dumps({
+            'type': 'connected',
+            'user_no': user_no
+        }), user_no)
+        
         try:
             while True:
                 data = await websocket.receive_text()
@@ -232,7 +238,7 @@ async def websocket_endpoint(websocket: WebSocket, user_no: int):
                     
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for user {user_no}")
-            ws_manager.disconnect(user_no)
+            ws_manager.disconnect(user_no, websocket)
             
     except Exception as e:
         logger.error(f"WebSocket error for user {user_no}: {e}")
