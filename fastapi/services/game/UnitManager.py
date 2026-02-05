@@ -327,9 +327,9 @@ class UnitManager():
             
             # 작업 타입에 따른 버프 조회
             if task_type == self.TASK_TRAIN:
-                buffs = buff_manager.get_active_buffs(user_no, 'unit_train_speed')
+                buffs = buff_manager.get_total_buffs_by_type(user_no, 'unit_train_speed')
             elif task_type == self.TASK_UPGRADE:
-                buffs = buff_manager.get_active_buffs(user_no, 'unit_upgrade_speed')
+                buffs = buff_manager.get_total_buffs_by_type(user_no, 'unit_upgrade_speed')
             else:
                 return base_time
             

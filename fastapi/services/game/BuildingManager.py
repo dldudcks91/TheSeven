@@ -834,7 +834,7 @@ class BuildingManager:
                 return base_time
             
             buff_manager = BuffManager(self.db_manager, self.redis_manager)
-            building_speed_buffs = buff_manager.get_active_buffs(user_no, 'building_speed')
+            building_speed_buffs = buff_manager.get_total_buffs_by_type(user_no, 'building_speed')
             
             if not building_speed_buffs:
                 return base_time

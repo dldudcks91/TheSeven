@@ -340,7 +340,7 @@ class ResearchManager:
         """연구 시간 버프 적용"""
         try:
             buff_manager = BuffManager(self.db_manager, self.redis_manager)
-            buffs = buff_manager.get_active_buffs(user_no, 'research_speed')
+            buffs = buff_manager.get_total_buffs_by_type(user_no, 'research_speed')
             
             total_reduction = 0
             for buff in buffs:
@@ -439,13 +439,6 @@ class ResearchManager:
             # 5. 상태 검증
             current_status = research.get('status')
             
-            if current_status == self.STATUS_COMPLETED:
-                if not config.get('repeatable', False):
-                    return {
-                        "success": False,
-                        "message": "This research is already completed and not repeatable",
-                        "data": {}
-                    }
             
             if current_status == self.STATUS_LOCKED:
                 return {

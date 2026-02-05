@@ -794,7 +794,7 @@
                 console.log(`🎉 ${researchName} 완료 API 결과:`, result);
                 
                 if (result.success) {
-                    // 데이터 업데이트
+                    // 성공 시 데이터 업데이트
                     if (result.data && result.data.research) {
                         userResearchData[researchIdx] = result.data.research;
                     }
@@ -802,7 +802,6 @@
                     await loadResearch();
                     showResult(`${researchName} 완료! 연구 성공`);
                     
-                    // 미션 업데이트 데이터를 main.html로 전달
                     if (result.data && result.data.mission_update) {
                         window.parent.postMessage({
                             type: 'update_mission',
@@ -814,12 +813,19 @@
                         completedResearchChecks.delete(researchKey);
                     }, 2000);
                 } else {
-                    showResult(`${researchName} 완료 처리 실패: ${result.message || '알 수 없는 오류'}`);
-                    completedResearchChecks.delete(researchKey);
+                    // 💡 핵심 수정 부분: 'Research is not in progress'인 경우 중단 및 동기화
+                    if (result.message === 'Research is not in progress') {
+                        console.warn(`⚠️ ${researchName}은 이미 진행 중이 아닙니다. 상태를 동기화합니다.`);
+                        // 다시 요청하지 않도록 체크를 유지한 채로 리스트만 새로고침합니다.
+                        await loadResearch(); 
+                    } else {
+                        // 일반적인 에러(네트워크 등)일 때만 다음에 다시 시도할 수 있게 삭제합니다.
+                        showResult(`${researchName} 실패: ${result.message}`);
+                        completedResearchChecks.delete(researchKey);
+                    }
                 }
             } catch (error) {
                 console.error(`❌ ${researchName} 완료 API 에러:`, error);
-                showResult(`${researchName} 완료 처리 에러: ${error.message}`);
                 completedResearchChecks.delete(researchKey);
             }
         }
