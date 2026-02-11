@@ -44,3 +44,7 @@ async def get_shop(request: Request):
 @router.get("/hero.html")
 async def get_hero(request: Request):
     return templates.TemplateResponse("hero.html", {"request": request})
+
+@router.get("/buff.html")
+async def get_hero(request: Request):
+    return templates.TemplateResponse("buff.html", {"request": request})

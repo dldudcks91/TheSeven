@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buff Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            font-family: Arial, sans-serif;
+            background: transparent;
+            overflow: visible;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .buff-wrapper {
+            position: relative;
+            padding: 2px;
+            float: right;
+            pointer-events: auto;
+        }
+        
+        .buff-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        
+        .buff-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .buff-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: white;
+        }
+        
+        .buff-count {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4757;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            min-width: 16px;
+            height: 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+        
+        .buff-count.hidden {
+            display: none;
+        }
+        
+        .buff-tooltip {
+            display: none;
+            position: absolute;
+            top: 45px;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 280px;
+            max-width: 350px;
+            padding: 12px;
+            z-index: 100;
+        }
+        
+        .buff-tooltip.show {
+            display: block;
+        }
+        
+        .buff-tooltip-header {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 8px;
+        }
+        
+        .buff-category {
+            margin-bottom: 12px;
+        }
+        
+        .buff-category:last-child {
+            margin-bottom: 0;
+        }
+        
+        .buff-category-title {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+        
+        .buff-category.resource .buff-category-title { color: #f39c12; }
+        .buff-category.building .buff-category-title { color: #3498db; }
+        .buff-category.unit .buff-category-title { color: #e74c3c; }
+        .buff-category.research .buff-category-title { color: #9b59b6; }
+        
+        .buff-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 4px;
+            font-size: 12px;
+        }
+        
+        .buff-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .buff-stat {
+            color: #555;
+        }
+        
+        .buff-value {
+            font-weight: bold;
+            color: #27ae60;
+        }
+        
+        .buff-value.negative {
+            color: #e74c3c;
+        }
+        
+        .no-buffs {
+            color: #999;
+            font-size: 12px;
+            text-align: center;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="buff-wrapper" id="buffWrapper">
+        <div class="buff-icon" id="buffIcon">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L9 9H2L7.5 13.5L5.5 21L12 16.5L18.5 21L16.5 13.5L22 9H15L12 2Z"/>
+            </svg>
+            <span class="buff-count hidden" id="buffCount">0</span>
+        </div>
+        
+        <div class="buff-tooltip" id="buffTooltip">
+            <div class="buff-tooltip-header">🔮 활성 버프</div>
+            <div id="buffContent">
+                <div class="no-buffs">버프 정보를 불러오는 중...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let playerId = null;
+        let buffData = {};
+        let isHovering = false;
+        
+        const categoryNames = {
+            'resource': '🌾 자원',
+            'building': '🏗️ 건설',
+            'unit': '⚔️ 유닛',
+            'research': '🔬 연구'
+        };
+        
+        const statNames = {
+            'get': '획득량',
+            'use': '소모량',
+            'speed': '속도',
+            'attack': '공격력',
+            'defense': '방어력',
+            'hp': '체력',
+            'training': '훈련 속도',
+            'capacity': '수용량'
+        };
+        
+        const subTypeNames = {
+            'all': '전체',
+            'food': '식량',
+            'wood': '목재',
+            'stone': '석재',
+            'gold': '골드',
+            'ruby': '루비',
+            'infantry': '보병',
+            'cavalry': '기병',
+            'archer': '궁병',
+            'siege': '공성'
+        };
+        
+        // 부모로부터 플레이어 ID 받기
+        window.addEventListener('message', async (event) => {
+            if (event.data.type === 'set_player_id') {
+                playerId = event.data.userId;
+                console.log('Buff: Player ID set to', playerId);
+                await loadBuffs();
+            }
+        });
+        
+        // 마우스 이벤트 - wrapper 전체에 적용
+        const wrapper = document.getElementById('buffWrapper');
+        const tooltip = document.getElementById('buffTooltip');
+        
+        wrapper.addEventListener('mouseenter', () => {
+            isHovering = true;
+            tooltip.classList.add('show');
+            // 부모에게 iframe 확장 요청
+            window.parent.postMessage({ type: 'buff_expand' }, '*');
+        });
+        
+        wrapper.addEventListener('mouseleave', () => {
+            isHovering = false;
+            tooltip.classList.remove('show');
+            // 부모에게 iframe 축소 요청
+            window.parent.postMessage({ type: 'buff_collapse' }, '*');
+        });
+        
+        // 클릭 시 새로고침
+        document.getElementById('buffIcon').addEventListener('click', async () => {
+            await loadBuffs();
+        });
+        
+        async function loadBuffs() {
+            if (!playerId) return;
+            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: parseInt(playerId),
+                        api_code: 1111,
+                        data: {}
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('Buff API response:', result);
+                
+                if (result.success && result.data) {
+                    buffData = parseBuffData(result.data);
+                    renderBuffs();
+                } else {
+                    showNoBuffs();
+                }
+            } catch (error) {
+                console.error('Failed to load buffs:', error);
+                showNoBuffs('버프 로드 실패');
+            }
+        }
+        
+        function parseBuffData(data) {
+            const aggregated = {};
+            
+            for (const [category, jsonStr] of Object.entries(data)) {
+                try {
+                    const buffs = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+                    
+                    if (!aggregated[category]) {
+                        aggregated[category] = {};
+                    }
+                    
+                    for (const [key, buff] of Object.entries(buffs)) {
+                        const statType = buff.stat_type || 'unknown';
+                        const subType = buff.target_sub_type || 'all';
+                        const valueType = buff.value_type || 'flat';
+                        const value = parseFloat(buff.value) || 0;
+                        
+                        const aggregateKey = `${statType}:${subType}:${valueType}`;
+                        
+                        if (!aggregated[category][aggregateKey]) {
+                            aggregated[category][aggregateKey] = {
+                                stat_type: statType,
+                                target_sub_type: subType,
+                                value_type: valueType,
+                                total_value: 0
+                            };
+                        }
+                        
+                        aggregated[category][aggregateKey].total_value += value;
+                    }
+                } catch (e) {
+                    console.error(`Failed to parse buff category ${category}:`, e);
+                }
+            }
+            
+            return aggregated;
+        }
+        
+        function renderBuffs() {
+            const container = document.getElementById('buffContent');
+            const countBadge = document.getElementById('buffCount');
+            
+            const categories = Object.keys(buffData);
+            
+            if (categories.length === 0) {
+                showNoBuffs();
+                return;
+            }
+            
+            let totalBuffCount = 0;
+            let html = '';
+            
+            for (const category of categories) {
+                const buffs = buffData[category];
+                const buffEntries = Object.values(buffs);
+                
+                if (buffEntries.length === 0) continue;
+                
+                totalBuffCount += buffEntries.length;
+                
+                html += `<div class="buff-category ${category}">
+                    <div class="buff-category-title">${categoryNames[category] || category}</div>`;
+                
+                for (const buff of buffEntries) {
+                    const statName = statNames[buff.stat_type] || buff.stat_type;
+                    const subTypeName = subTypeNames[buff.target_sub_type] || buff.target_sub_type;
+                    const value = buff.total_value;
+                    const isPercentage = buff.value_type === 'percentage';
+                    const isNegative = value < 0;
+                    
+                    const displayValue = isPercentage 
+                        ? `${value >= 0 ? '+' : ''}${value}%`
+                        : `${value >= 0 ? '+' : ''}${value}`;
+                    
+                    const displayName = subTypeName === '전체' 
+                        ? statName 
+                        : `${subTypeName} ${statName}`;
+                    
+                    html += `<div class="buff-item">
+                        <span class="buff-stat">${displayName}</span>
+                        <span class="buff-value ${isNegative ? 'negative' : ''}">${displayValue}</span>
+                    </div>`;
+                }
+                
+                html += '</div>';
+            }
+            
+            container.innerHTML = html || '<div class="no-buffs">활성화된 버프가 없습니다</div>';
+            
+            if (totalBuffCount > 0) {
+                countBadge.textContent = totalBuffCount;
+                countBadge.classList.remove('hidden');
+            } else {
+                countBadge.classList.add('hidden');
+            }
+        }
+        
+        function showNoBuffs(message = '활성화된 버프가 없습니다') {
+            document.getElementById('buffContent').innerHTML = `<div class="no-buffs">${message}</div>`;
+            document.getElementById('buffCount').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
