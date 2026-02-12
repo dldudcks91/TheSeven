@@ -1,13 +1,47 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, TIMESTAMP, text, String
-from sqlalchemy.dialects.mysql import TINYINT
+from sqlalchemy import BigInteger, DateTime, ForeignKeyConstraint, Index, Integer, String, TIMESTAMP, text
+from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.ext.declarative import declarative_base
 
 class Base(DeclarativeBase):
     pass
+
+
+class Alliance(Base):
+    __tablename__ = 'alliance'
+    __table_args__ = (
+        Index('alliance_id', 'alliance_id', unique=True),
+        Index('name', 'name', unique=True)
+    )
+
+    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
+    name: Mapped[str] = mapped_column(String(20), nullable=False)
+    leader_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'1'"))
+    exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
+    join_type: Mapped[Optional[str]] = mapped_column(String(10), server_default=text("'free'"))
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+
+
+class AllianceApplication(Base):
+    __tablename__ = 'alliance_application'
+
+    alliance_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    applied_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+
+
+class AllianceMember(Base):
+    __tablename__ = 'alliance_member'
+
+    alliance_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    position: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'4'"))
+    donated_exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
+    joined_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
 
 
 class Buff(Base):
@@ -19,6 +53,20 @@ class Buff(Base):
     buff_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+
+class IdCounter(Base):
+    __tablename__ = 'id_counter'
+    __table_args__ = (
+        Index('counter_type', 'counter_type', unique=True),
+        Index('idx_counter_type', 'counter_type')
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    counter_type: Mapped[str] = mapped_column(String(50, 'utf8mb4_unicode_ci'), nullable=False)
+    current_value: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'0'"))
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
 
 class Item(Base):
@@ -64,28 +112,6 @@ class Unit(Base):
     wounded: Mapped[Optional[int]] = mapped_column(Integer)
     healing: Mapped[Optional[int]] = mapped_column(Integer)
     death: Mapped[Optional[int]] = mapped_column(Integer)
-
-
-class UnitTasks(Base):
-    __tablename__ = 'unit_tasks'
-    __table_args__ = (
-        CheckConstraint('(`quantity` > 0)', name='chk_quantity'),
-        CheckConstraint('(`status` in (0,1,2,3))', name='chk_status'),
-        CheckConstraint('(`task_type` in (0,1))', name='chk_task_type'),
-        Index('idx_unit_idx', 'unit_idx'),
-        Index('idx_user_no', 'user_no')
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_idx: Mapped[int] = mapped_column(Integer, nullable=False)
-    task_type: Mapped[int] = mapped_column(TINYINT, nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'1'"))
-    status: Mapped[int] = mapped_column(TINYINT, nullable=False, server_default=text("'0'"))
-    created_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
-    target_unit_idx: Mapped[Optional[int]] = mapped_column(Integer)
-    start_time: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP)
-    end_time: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP)
 
 
 class UserMission(Base):
@@ -167,16 +193,3 @@ class Resources(Base):
     ruby: Mapped[Optional[int]] = mapped_column(Integer)
 
     stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='resources')
-
-
-
-
-Base = declarative_base()
-
-class IDCounter(Base):
-    """ID 생성을 위한 Counter 테이블"""
-    __tablename__ = 'id_counter'
-    
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    counter_type: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    current_value: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'0'"))

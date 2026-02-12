@@ -91,7 +91,7 @@ async def startup_event():
         
         # 워커 관리자 초기화 및 시작
         worker_manager = BackgroundWorkerManager()
-        await worker_manager.initialize(redis_manager, db_manager)
+        await worker_manager.initialize(redis_manager)
         await worker_manager.start_all_workers()
         print("✅ BackGround Worker managers initialized")
         

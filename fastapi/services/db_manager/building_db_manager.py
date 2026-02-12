@@ -17,7 +17,6 @@ class BuildingDBManager:
         return models.Building
     
     def _format_response(self, success: bool, message: str, data: Any = None) -> Dict[str, Any]:
-        """응답 형태 통일"""
         return {
             "success": success,
             "message": message,
@@ -25,7 +24,6 @@ class BuildingDBManager:
         }
     
     def _serialize_model(self, model_instance) -> Dict[str, Any]:
-        """모델 인스턴스를 딕셔너리로 변환"""
         return {
             "id": model_instance.id,
             "user_no": model_instance.user_no,
@@ -37,18 +35,80 @@ class BuildingDBManager:
             "last_dt": model_instance.last_dt.isoformat() if model_instance.last_dt else None,
         }
     
+    # ============================================
+    # 동기화용 bulk upsert
+    # ============================================
+    
+    def bulk_upsert_buildings(self, user_no: int, buildings_data: Dict[str, Dict]) -> Dict[str, Any]:
+        """
+        Redis 건물 데이터를 MySQL에 bulk upsert
+        
+        Args:
+            user_no: 유저 번호
+            buildings_data: {building_idx: {building_idx, building_lv, status, start_time, end_time, last_dt, ...}}
+        """
+        try:
+            # 기존 건물 조회 (user_no 기준)
+            existing = self.db.query(models.Building).filter(
+                models.Building.user_no == user_no
+            ).all()
+            existing_map = {str(b.building_idx): b for b in existing}
+            
+            for building_idx_str, data in buildings_data.items():
+                building_idx = int(building_idx_str)
+                
+                if building_idx_str in existing_map:
+                    # UPDATE
+                    b = existing_map[building_idx_str]
+                    b.building_lv = data.get('building_lv') or b.building_lv
+                    b.status = data.get('status', b.status)
+                    b.start_time = self._parse_datetime(data.get('start_time'))
+                    b.end_time = self._parse_datetime(data.get('end_time'))
+                    b.last_dt = self._parse_datetime(data.get('last_dt')) or datetime.utcnow()
+                else:
+                    # INSERT
+                    new_building = models.Building(
+                        user_no=user_no,
+                        building_idx=building_idx,
+                        building_lv=data.get('building_lv') or 0,
+                        status=data.get('status', 0),
+                        start_time=self._parse_datetime(data.get('start_time')),
+                        end_time=self._parse_datetime(data.get('end_time')),
+                        last_dt=self._parse_datetime(data.get('last_dt')) or datetime.utcnow()
+                    )
+                    self.db.add(new_building)
+            
+            self.db.flush()
+            
+            return self._format_response(True, f"Synced {len(buildings_data)} buildings for user {user_no}")
+            
+        except SQLAlchemyError as e:
+            self.logger.error(f"bulk_upsert_buildings error: {e}")
+            return self._format_response(False, f"Database error: {str(e)}")
+    
+    def _parse_datetime(self, value) -> Optional[datetime]:
+        """문자열 또는 datetime을 datetime으로 변환"""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except (ValueError, TypeError):
+            return None
+    
+    # ============================================
+    # 기존 메서드들 (변경 없음)
+    # ============================================
+    
     def get_user_buildings(self, user_no: int, status: Optional[int] = None) -> Dict[str, Any]:
-        """사용자의 모든 건물 조회"""
         try:
             query = self.db.query(models.Building).filter(
                 models.Building.user_no == user_no
             )
-            
             if status is not None:
                 query = query.filter(models.Building.status == status)
-            
             buildings = query.all()
-            
             return self._format_response(
                 True,
                 f"Retrieved {len(buildings)} buildings",
@@ -57,123 +117,69 @@ class BuildingDBManager:
         except SQLAlchemyError as e:
             self.logger.error(f"Database error getting user buildings: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error getting user buildings: {e}")
-            return self._format_response(False, f"Error getting buildings: {str(e)}")
     
     def get_user_building(self, user_no: int, building_idx: int) -> Dict[str, Any]:
-        """특정 건물 조회 - user_no로 권한 확인"""
         try:
             building = self.db.query(models.Building).filter(
                 models.Building.user_no == user_no,
                 models.Building.building_idx == building_idx
             ).first()
-            
             if not building:
                 return self._format_response(False, "Building not found")
-            
-            return self._format_response(
-                True,
-                "Building retrieved successfully",
-                self._serialize_model(building)
-            )
+            return self._format_response(True, "Building retrieved successfully", self._serialize_model(building))
         except SQLAlchemyError as e:
             self.logger.error(f"Database error getting building: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error getting building: {e}")
-            return self._format_response(False, f"Error getting building: {str(e)}")
     
     def create_building(self, **kwargs) -> Dict[str, Any]:
-        """건물 생성 - commit하지 않음"""
         try:
             new_building = models.Building(**kwargs)
             self.db.add(new_building)
-            self.db.flush()  # commit 대신 flush
-            
-            return self._format_response(
-                True,
-                "Building created successfully",
-                self._serialize_model(new_building)
-            )
+            self.db.flush()
+            return self._format_response(True, "Building created successfully", self._serialize_model(new_building))
         except SQLAlchemyError as e:
             self.logger.error(f"Database error creating building: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error creating building: {e}")
-            return self._format_response(False, f"Error creating building: {str(e)}")
-    
-    
-
     
     def update_building_status(self, user_no: int, building_idx: int, **update_fields) -> Dict[str, Any]:
-        """건물 상태 업데이트 - user_no로 권한 확인"""
         try:
-            # 먼저 해당 사용자의 건물인지 확인
             building = self.db.query(models.Building).filter(
                 models.Building.user_no == user_no,
                 models.Building.building_idx == building_idx
             ).first()
-            
             if not building:
                 return self._format_response(False, "Building not found or no permission")
-            
-            # 업데이트 필드 적용
             for field, value in update_fields.items():
                 if hasattr(building, field):
                     setattr(building, field, value)
-            
-            # 마지막 업데이트 시간 갱신
             building.last_dt = datetime.utcnow()
-            
-            self.db.flush()  # commit 대신 flush
-            
-            return self._format_response(
-                True,
-                "Building updated successfully",
-                self._serialize_model(building)
-            )
+            self.db.flush()
+            return self._format_response(True, "Building updated successfully", self._serialize_model(building))
         except SQLAlchemyError as e:
             self.logger.error(f"Database error updating building: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error updating building: {e}")
-            return self._format_response(False, f"Error updating building: {str(e)}")
     
     def delete_building(self, user_no: int, building_idx: int) -> Dict[str, Any]:
-        """건물 삭제 - user_no로 권한 확인"""
         try:
             building = self.db.query(models.Building).filter(
                 models.Building.user_no == user_no,
                 models.Building.building_idx == building_idx
             ).first()
-            
             if not building:
                 return self._format_response(False, "Building not found or no permission")
-            
             self.db.delete(building)
-            self.db.flush()  # commit 대신 flush
-            
-            return self._format_response(
-                True,
-                "Building deleted successfully",
-                {"user_no": user_no, "building_idx": building_idx}
-            )
+            self.db.flush()
+            return self._format_response(True, "Building deleted successfully", {"user_no": user_no, "building_idx": building_idx})
         except SQLAlchemyError as e:
             self.logger.error(f"Database error deleting building: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error deleting building: {e}")
-            return self._format_response(False, f"Error deleting building: {str(e)}")
     
     def get_active_buildings(self, user_no: int) -> Dict[str, Any]:
-        """진행 중인 건물들 조회"""
         try:
             buildings = self.db.query(models.Building).filter(
                 models.Building.user_no == user_no,
-                models.Building.status.in_([1, 2])  # 건설중, 업그레이드중
+                models.Building.status.in_([1, 2])
             ).all()
-            
             return self._format_response(
                 True,
                 f"Retrieved {len(buildings)} active buildings",
@@ -182,6 +188,3 @@ class BuildingDBManager:
         except SQLAlchemyError as e:
             self.logger.error(f"Database error getting active buildings: {e}")
             return self._format_response(False, f"Database error: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error getting active buildings: {e}")
-            return self._format_response(False, f"Error getting active buildings: {str(e)}")

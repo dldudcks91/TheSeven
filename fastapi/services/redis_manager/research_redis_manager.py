@@ -18,7 +18,7 @@ class ResearchRedisManager:
         # TaskType과 CacheType은 RESEARCH로 변경
         self.task_manager = BaseRedisTaskManager(redis_client, TaskType.RESEARCH)
         self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.RESEARCH)
-        
+        self.redis_client = redis_client
         self.cache_expire_time = 3600  # 1시간
     
     def validate_task_data(self, research_idx: int, metadata: Optional[Dict[str, Any]] = None) -> bool:
@@ -138,6 +138,7 @@ class ResearchRedisManager:
             )
             
             if success:
+                self.redis_client.sadd("sync_pending:research", str(user_no))
                 print(f"Updated cached research {research_idx} for user {user_no}")
             
             return success

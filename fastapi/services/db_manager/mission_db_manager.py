@@ -1,7 +1,6 @@
-# mission_db_manager.py
-
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 import models
 import logging
@@ -14,248 +13,144 @@ class MissionDBManager:
         self.db = db_session
         self.logger = logging.getLogger(self.__class__.__name__)
     
-    def get_user_missions(self, user_no: int) -> Dict[str, Any]:
+    # ============================================
+    # 동기화용 bulk upsert
+    # ============================================
+    
+    def bulk_upsert_missions(self, user_no: int, missions_data: Dict[str, Dict]) -> Dict[str, Any]:
         """
-        유저의 미션 이력 조회 (완료 + 보상 수령 정보)
+        Redis 미션 데이터를 MySQL에 bulk upsert
         
-        Returns:
-            {
-                "success": True,
-                "data": {
-                    101001: {"is_completed": True, "is_claimed": True, "completed_at": "2024-01-01T00:00:00"},
-                    101002: {"is_completed": True, "is_claimed": False, "completed_at": "2024-01-02T00:00:00"}
-                }
-            }
+        Args:
+            user_no: 유저 번호
+            missions_data: {mission_idx: {current_value, target_value, is_completed, is_claimed}}
+        
+        Note:
+            Redis에는 is_completed/is_claimed (bool)로 저장되어 있고,
+            MySQL에는 completed_at/claimed_at (datetime)으로 저장됨.
+            - is_completed=true → completed_at에 현재시간 기록 (이미 있으면 유지)
+            - is_claimed=true → claimed_at에 현재시간 기록 (이미 있으면 유지)
         """
         try:
-            # SQL 쿼리 예시
-            # from models import UserMission
-            # 
-            # missions = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no
-            # ).all()
+            existing = self.db.query(models.UserMission).filter(
+                models.UserMission.user_no == user_no
+            ).all()
+            existing_map = {str(m.mission_idx): m for m in existing}
             
+            now = datetime.utcnow()
+            
+            for mission_idx_str, data in missions_data.items():
+                mission_idx = int(mission_idx_str)
+                is_completed = data.get('is_completed', False)
+                is_claimed = data.get('is_claimed', False)
+                
+                if mission_idx_str in existing_map:
+                    m = existing_map[mission_idx_str]
+                    # completed_at: 이미 있으면 유지, 새로 완료되면 now
+                    if is_completed and not m.completed_at:
+                        m.completed_at = now
+                    # claimed_at: 이미 있으면 유지, 새로 수령하면 now
+                    if is_claimed and not m.claimed_at:
+                        m.claimed_at = now
+                else:
+                    # 완료되거나 수령된 미션만 INSERT (진행중인 미션은 MySQL에 넣을 필요 없음)
+                    if is_completed or is_claimed:
+                        new_mission = models.UserMission(
+                            user_no=user_no,
+                            mission_idx=mission_idx,
+                            completed_at=now if is_completed else None,
+                            claimed_at=now if is_claimed else None
+                        )
+                        self.db.add(new_mission)
+            
+            self.db.flush()
+            
+            return {
+                "success": True,
+                "message": f"Synced missions for user {user_no}",
+                "data": {}
+            }
+            
+        except SQLAlchemyError as e:
+            self.logger.error(f"bulk_upsert_missions error: {e}")
+            return {
+                "success": False,
+                "message": f"Database error: {str(e)}",
+                "data": {}
+            }
+    
+    # ============================================
+    # 기존 메서드들 (변경 없음)
+    # ============================================
+    
+    def get_user_missions(self, user_no: int) -> Dict[str, Any]:
+        try:
             query = self.db.query(models.UserMission).filter(models.UserMission.user_no == user_no)
-            # 더미 데이터
             missions = query.all()
-            
             result = {}
             for mission in missions:
                 result[mission.mission_idx] = {
                     'completed_at': mission.completed_at.isoformat() if mission.completed_at else None,
                     'claimed_at': mission.claimed_at.isoformat() if mission.claimed_at else None
                 }
-            
-            return {
-                "success": True,
-                "message": f"Retrieved {len(result)} missions",
-                "data": result
-            }
-            
+            return {"success": True, "message": f"Retrieved {len(result)} missions", "data": result}
         except Exception as e:
             self.logger.error(f"Error getting user missions: {e}")
-            return {
-                "success": False,
-                "message": f"Database error: {str(e)}",
-                "data": {}
-            }
+            return {"success": False, "message": f"Database error: {str(e)}", "data": {}}
     
     def update_mission(self, user_no: int, mission_idx: int, 
                       is_completed: bool = None, is_claimed: bool = None) -> Dict[str, Any]:
-        """
-        미션 상태 업데이트 (완료 또는 보상 수령)
-        
-        Args:
-            user_no: 유저 번호
-            mission_idx: 미션 인덱스
-            is_completed: 완료 여부 (None이면 변경 안함)
-            is_claimed: 보상 수령 여부 (None이면 변경 안함)
-        """
         try:
-            # SQL 쿼리 예시
-            # from models import UserMission
-            # 
-            # # 기존 레코드 조회
-            # mission = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no,
-            #     UserMission.mission_idx == mission_idx
-            # ).first()
-            # 
-            # if not mission:
-            #     # 새로운 레코드 생성
-            #     mission = UserMission(
-            #         user_no=user_no,
-            #         mission_idx=mission_idx,
-            #         is_completed=False,
-            #         is_claimed=False
-            #     )
-            #     self.db.add(mission)
-            # 
-            # # 상태 업데이트
-            # if is_completed is not None:
-            #     mission.is_completed = is_completed
-            #     if is_completed and not mission.completed_at:
-            #         mission.completed_at = datetime.utcnow()
-            # 
-            # if is_claimed is not None:
-            #     mission.is_claimed = is_claimed
-            #     if is_claimed and not mission.claimed_at:
-            #         mission.claimed_at = datetime.utcnow()
-            # 
-            # self.db.commit()
-            
-            self.logger.info(
-                f"Mission updated: user_no={user_no}, mission_idx={mission_idx}, "
-                f"completed={is_completed}, claimed={is_claimed}"
-            )
-            
-            return {
-                "success": True,
-                "message": "Mission updated",
-                "data": {}
-            }
-            
+            self.logger.info(f"Mission updated: user_no={user_no}, mission_idx={mission_idx}, completed={is_completed}, claimed={is_claimed}")
+            return {"success": True, "message": "Mission updated", "data": {}}
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Error updating mission: {e}")
-            return {
-                "success": False,
-                "message": f"Database error: {str(e)}",
-                "data": {}
-            }
+            return {"success": False, "message": f"Database error: {str(e)}", "data": {}}
     
     def complete_mission(self, user_no: int, mission_idx: int) -> Dict[str, Any]:
-        """미션 완료 처리 (보상은 아직 수령 안함)"""
         return self.update_mission(user_no, mission_idx, is_completed=True, is_claimed=False)
     
     def claim_reward(self, user_no: int, mission_idx: int) -> Dict[str, Any]:
-        """보상 수령 처리"""
         return self.update_mission(user_no, mission_idx, is_claimed=True)
     
     def complete_and_claim(self, user_no: int, mission_idx: int) -> Dict[str, Any]:
-        """미션 완료 + 보상 수령 동시 처리"""
         return self.update_mission(user_no, mission_idx, is_completed=True, is_claimed=True)
     
     def sync_batch(self, items: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        배치 동기화 (Worker용)
-        
-        Args:
-            items: [
-                {
-                    "user_no": 1,
-                    "mission_idx": 101001,
-                    "is_completed": True,
-                    "is_claimed": True
-                }
-            ]
-        """
         try:
             success_count = 0
             error_count = 0
-            
             for item in items:
-                result = self.update_mission(
-                    item['user_no'],
-                    item['mission_idx'],
-                    item.get('is_completed'),
-                    item.get('is_claimed')
-                )
+                result = self.update_mission(item['user_no'], item['mission_idx'], item.get('is_completed'), item.get('is_claimed'))
                 if result['success']:
                     success_count += 1
                 else:
                     error_count += 1
-            
-            return {
-                "success": True,
-                "message": f"Synced {success_count} missions, {error_count} errors",
-                "data": {
-                    "success_count": success_count,
-                    "error_count": error_count
-                }
-            }
-            
+            return {"success": True, "message": f"Synced {success_count} missions, {error_count} errors", "data": {"success_count": success_count, "error_count": error_count}}
         except Exception as e:
             self.logger.error(f"Error in batch sync: {e}")
-            return {
-                "success": False,
-                "message": f"Batch sync error: {str(e)}",
-                "data": {
-                    "success_count": 0,
-                    "error_count": len(items)
-                }
-            }
+            return {"success": False, "message": f"Batch sync error: {str(e)}", "data": {"success_count": 0, "error_count": len(items)}}
     
     def is_mission_completed(self, user_no: int, mission_idx: int) -> bool:
-        """특정 미션 완료 여부 확인"""
         try:
-            # SQL 쿼리 예시
-            # from models import UserMission
-            # 
-            # mission = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no,
-            #     UserMission.mission_idx == mission_idx
-            # ).first()
-            # 
-            # return mission.is_completed if mission else False
-            
             return False
-            
         except Exception as e:
             self.logger.error(f"Error checking mission completion: {e}")
             return False
     
     def is_reward_claimed(self, user_no: int, mission_idx: int) -> bool:
-        """특정 미션 보상 수령 여부 확인"""
         try:
-            # SQL 쿼리 예시
-            # from models import UserMission
-            # 
-            # mission = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no,
-            #     UserMission.mission_idx == mission_idx
-            # ).first()
-            # 
-            # return mission.is_claimed if mission else False
-            
             return False
-            
         except Exception as e:
             self.logger.error(f"Error checking reward claim: {e}")
             return False
     
     def get_user_mission_stats(self, user_no: int) -> Dict[str, Any]:
-        """유저 미션 통계 조회"""
         try:
-            # SQL 쿼리 예시
-            # from models import UserMission
-            # 
-            # total_completed = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no,
-            #     UserMission.is_completed == True
-            # ).count()
-            # 
-            # total_claimed = self.db.query(UserMission).filter(
-            #     UserMission.user_no == user_no,
-            #     UserMission.is_claimed == True
-            # ).count()
-            
             total_completed = 0
             total_claimed = 0
-            
-            return {
-                "success": True,
-                "message": "Mission stats retrieved",
-                "data": {
-                    "total_completed": total_completed,
-                    "total_claimed": total_claimed
-                }
-            }
-            
+            return {"success": True, "message": "Mission stats retrieved", "data": {"total_completed": total_completed, "total_claimed": total_claimed}}
         except Exception as e:
             self.logger.error(f"Error getting mission stats: {e}")
-            return {
-                "success": False,
-                "message": f"Database error: {str(e)}",
-                "data": {}
-            }
+            return {"success": False, "message": f"Database error: {str(e)}", "data": {}}

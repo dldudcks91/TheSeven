@@ -13,7 +13,7 @@ class BuildingRedisManager:
         # 두 개의 매니저 컴포넌트 초기화
         self.task_manager = BaseRedisTaskManager(redis_client, TaskType.BUILDING)
         self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.BUILDING)
-        
+        self.redis_client = redis_client
         self.cache_expire_time = 3600  # 1시간
     
     def validate_task_data(self, building_idx: int, metadata: Optional[Dict[str, Any]] = None) -> bool:
@@ -130,8 +130,9 @@ class BuildingRedisManager:
                 building_data,
                 expire_time=self.cache_expire_time
             )
-            
+            print()
             if success:
+                self.redis_client.sadd("sync_pending:building", str(user_no))
                 print(f"Updated cached building {building_idx} for user {user_no}")
             
             return success
