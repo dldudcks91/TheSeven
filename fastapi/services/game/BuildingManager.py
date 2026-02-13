@@ -455,8 +455,7 @@ class BuildingManager:
             
             await building_redis.update_cached_building(user_no, building_idx, updated_building)
             
-            # 메모리 캐시 무효화
-            self._cached_buildings = None
+            
             
             self.logger.info(f"Building upgrade started (Redis): user={user_no}, building={building_idx}, level={current_level}->{target_level}, time={final_upgrade_time}s")
             

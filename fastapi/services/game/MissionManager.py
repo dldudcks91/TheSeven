@@ -189,8 +189,9 @@ class MissionManager:
             
             await self._grant_rewards(mission_idx)
             await mission_redis.mark_as_claimed(user_no, mission_idx)
-            await self.invalidate_user_mission_cache(user_no)
-            
+            #await self.invalidate_user_mission_cache(user_no)
+            if self._cached_progress and mission_idx in self._cached_progress:
+                self._cached_progress[mission_idx]['is_claimed'] = True
             # 갱신된 전체 데이터 반환
             return {"success": True, "data": await self.get_user_mission_progress()}
         except Exception as e:
@@ -224,13 +225,13 @@ class MissionManager:
                 return {"success": True, "data": progress, "newly_completed": 0}
 
             
-            
+            updated = False
             completed_count = 0
             
             targets = related_idxs if target_idx else progress.keys()
             #print("[mission_test 1]:", targets, progress)
             for m_idx in targets:
-                if progress.get(m_idx, {}).get('is_completed'): continue
+                #if progress.get(m_idx, {}).get('is_completed'): continue
                 
                 m_conf = config.get(m_idx) if isinstance(config, dict) else next((m for m in config if m.get('mission_idx') == m_idx), None)
                 
@@ -240,6 +241,7 @@ class MissionManager:
                 old = m_conf['value']
                 if curr >= old:
                     await mission_redis.complete_mission(user_no, m_idx)
+                    await mission_redis.update_mission_progress(user_no, m_idx, curr)
                     progress[m_idx]['current_value'] = curr
                     progress[m_idx]['is_completed'] = True
                     completed_count += 1
@@ -266,11 +268,11 @@ class MissionManager:
             return {"success": False, "data": {}}
 
     async def _complete_mission(self, mission_idx: int):
-        """미션 완료 처리 (Redis 업데이트 및 보상 지급)"""
+        """미션 완료 처리 (Redis 업데이트)"""
         try:
             mission_redis = self.redis_manager.get_mission_manager()
             await mission_redis.complete_mission(self.user_no, mission_idx)
-            await self._grant_rewards(mission_idx)
+            #await self._grant_rewards(mission_idx)
         except Exception as e:
             self.logger.error(f"Error in _complete_mission: {e}")
 

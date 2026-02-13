@@ -130,9 +130,11 @@ class BuildingRedisManager:
                 building_data,
                 expire_time=self.cache_expire_time
             )
-            print()
+            
+            
             if success:
-                self.redis_client.sadd("sync_pending:building", str(user_no))
+                await self.redis_client.sadd("sync_pending:building", str(user_no))
+                
                 print(f"Updated cached building {building_idx} for user {user_no}")
             
             return success

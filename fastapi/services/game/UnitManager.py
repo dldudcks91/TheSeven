@@ -94,7 +94,7 @@ class UnitManager():
         try:
             if isinstance(unit_data, dict):
                 return {
-                    "id": unit_data.get('id'),
+                    
                     "user_no": unit_data.get('user_no'),
                     "unit_idx": unit_data.get('unit_idx'),
                     "total": unit_data.get('total'),
@@ -110,7 +110,7 @@ class UnitManager():
                 }
             else:
                 return {
-                    "id": unit_data.id,
+                    
                     "user_no": unit_data.user_no,
                     "unit_idx": unit_data.unit_idx,
                     "total": unit_data.total,
@@ -421,8 +421,8 @@ class UnitManager():
                 return {"success": False, "message": error_msg, "data": {}}
             
             # 버프 적용된 시간 계산
-            #train_time = self._apply_unit_buffs(user_no, base_time * quantity, self.TASK_TRAIN)
-            train_time = base_time
+            train_time = self._apply_unit_buffs(user_no, base_time * quantity, self.TASK_TRAIN)
+            #train_time = base_time
             # 시간 설정
             start_time = datetime.utcnow()
             completion_time = start_time + timedelta(seconds=train_time)
@@ -797,101 +797,48 @@ class UnitManager():
         return [{**unit_data},{**target_unit_data}]
     
     async def finish_unit_internal(self, user_no: int, task_id: str):
-        """
-        유닛 생산 완료 처리
-        
-        Args:
-            user_no: 사용자 번호
-            task_id: 작업 ID
-            
-        Returns:
-            성공 시 결과 딕셔너리, 실패 시 None
-        """
+        """유닛 생산/업그레이드 완료 처리 (상태 기반 동기화)"""
         try:
             unit_redis = self.redis_manager.get_unit_manager()
             
-            # ✅ 1. 내부에서 Task 메타데이터 조회
+            # 1. Task 메타데이터 조회
             metadata = await unit_redis.get_task_metadata(user_no, task_id)
-            # print("---------metadata--------")
-            # print(metadata)
-            # print("-------------------------")
             if not metadata:
-                self.logger.warning(f"Task not found: {task_id}")
                 return None
             
-            # 2. 메타데이터에서 필요한 정보 추출
             unit_idx = int(metadata.get('unit_idx'))
             quantity = int(metadata.get('quantity', 0))
             task_type = int(metadata.get('task_type', -1))
             target_unit_idx = metadata.get('target_unit_idx')
-            
-            if target_unit_idx:
-                target_unit_idx = int(target_unit_idx)
-            
-            # 3. 검증
-            if int(metadata.get('user_no', 0)) != user_no:
-                self.logger.warning(f"Task user mismatch: {task_id}")
-                return None
-            
-            if quantity <= 0:
-                self.logger.warning(f"Invalid quantity in task: {task_id}")
-                return None
-            
-            # 4. 캐시에서 유닛 정보 조회
-            
-            
+    
+            # 2. 현재 캐시 데이터 로드
             units_data = await self.get_user_units(user_no)
-            
             unit_data = units_data.get(str(unit_idx))
-            
-            if not unit_data:
-                self.logger.warning(f"Unit not found: user_no={user_no}, unit_idx={unit_idx}")
-                return None
-            
-            # 5. 비즈니스 로직 처리
-            
-            
+            if not unit_data: return None
+    
+            # 3. 비즈니스 로직 처리 (수치 변경)
+            updated_units = []
             if task_type == self.TASK_TRAIN:
-                # 훈련 완료
-                updated_units = [await self._handle_unit_train(unit_data, quantity)]
-                action = 'training'
-                
+                updated_units.append(await self._handle_unit_train(unit_data, quantity))
             elif task_type == self.TASK_UPGRADE:
-                # 업그레이드 완료
                 target_unit_data = units_data.get(str(target_unit_idx))
-                if not target_unit_data:
-                    self.logger.warning(f"Unit not found: user_no={user_no}, unit_idx={target_unit_idx}")
-                    return None
-                updated_units = await self._handle_unit_upgrade(unit_data, target_unit_data, quantity)
-                action = 'upgrading'
-            
-            
-            
-            for updated_unit in updated_units:
-                updated_unit['cached_at'] = datetime.utcnow().isoformat()
-            
-                # 6. Redis 캐시 업데이트
-                await self._update_cached_unit(user_no, unit_idx, updated_unit)
+                if target_unit_data:
+                    res = await self._handle_unit_upgrade(unit_data, target_unit_data, quantity)
+                    updated_units.extend(res)
+    
+            # 4. Redis 캐시 업데이트 및 Task 삭제
+            if updated_units:
+                for u in updated_units:
+                    u['cached_at'] = datetime.utcnow().isoformat()
+                    # update_cached_unit 내부에서 sync_pending:unit 플래그를 sadd 함
+                    await self._update_cached_unit(user_no, u['unit_idx'], u)
                 
-                # 7. Task 삭제
-                await unit_redis.remove_from_queue(user_no, task_id)
+                # ✅ 모든 유닛 업데이트가 성공한 후 Task 큐에서 최종 삭제
+                await unit_redis.remove_from_queue(user_no, int(task_id))
+                self.logger.info(f"Unit task {task_id} finished and state synced for user {user_no}")
+                return True
                 
-            
-                # 8. DB 동기화 큐에 추가
-                sync_data = {
-                    'unit_idx': unit_idx,
-                    'quantity': quantity,
-                    'task_type': task_type,
-                    'target_unit_idx': target_unit_idx,
-                    'timestamp': datetime.utcnow().isoformat()
-                }
-            
-                await unit_redis.add_to_sync_queue(user_no, unit_idx, sync_data)
-            
-                self.logger.info(f"Unit {action} completed: user_no={user_no}, unit_idx={unit_idx}, quantity={quantity}")
-            
-            return True
-            
+            return None
         except Exception as e:
-            self.logger.error(f"Error finishing unit: {e}")
+            self.logger.error(f"Error in finish_unit_internal: {e}")
             return None

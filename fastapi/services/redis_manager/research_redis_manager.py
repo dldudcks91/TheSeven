@@ -138,7 +138,7 @@ class ResearchRedisManager:
             )
             
             if success:
-                self.redis_client.sadd("sync_pending:research", str(user_no))
+                await self.redis_client.sadd("sync_pending:research", str(user_no))
                 print(f"Updated cached research {research_idx} for user {user_no}")
             
             return success

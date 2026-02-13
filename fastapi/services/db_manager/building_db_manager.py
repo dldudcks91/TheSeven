@@ -25,7 +25,6 @@ class BuildingDBManager:
     
     def _serialize_model(self, model_instance) -> Dict[str, Any]:
         return {
-            "id": model_instance.id,
             "user_no": model_instance.user_no,
             "building_idx": model_instance.building_idx,
             "building_lv": model_instance.building_lv,

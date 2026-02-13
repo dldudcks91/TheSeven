@@ -161,6 +161,7 @@ class UnitRedisManager:
             )
             
             if success:
+                await self.redis_client.sadd("sync_pending:unit",str(user_no))
                 print(f"Updated cached unit {unit_idx} for user {user_no}")
             
             return success
@@ -177,7 +178,7 @@ class UnitRedisManager:
             
             if success:
                 print(f"Removed cached unit {unit_idx} for user {user_no}")
-            
+                
             return success
             
         except Exception as e:
@@ -388,7 +389,7 @@ class UnitRedisManager:
             )
             
             # 동기화 대기 목록에 추가 (Set)
-            await self.redis_client.sadd("unit:sync_pending",str(user_no))
+            await self.redis_client.sadd("sync_pending:unit",str(user_no))
             
             print(f"Added to sync queue: user_no={user_no}, unit_idx={unit_idx}")
             

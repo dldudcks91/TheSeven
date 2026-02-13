@@ -596,13 +596,26 @@ class ResearchManager:
             await self._update_cached_research(user_no, research_idx, updated_research)
             
             # 버프 적용
-            buff_manager = BuffManager(self.db_manager, self.redis_manager)
-            buff_manager.user_no = user_no
-            await buff_manager.apply_research_buffs(research_idx, new_level)
+            research_config = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {}).get(research_idx, {}).get(new_level, {})
+            buff_idx = research_config.get('buff_idx')
+            buff_value = research_config.get('value', 0)
             
+            # 2. BuffManager를 통해 영구 버프 등록 및 캐시 갱신
+            if buff_idx:
+                buff_manager = self._get_buff_manager()
+                await buff_manager.add_permanent_buff(
+                    user_no=user_no,
+                    source_type="research",
+                    source_id=f"{research_idx}_{new_level}",
+                    buff_idx=buff_idx,
+                    value=buff_value
+                )
+                self.logger.debug(f"Permanent buff {buff_idx} applied for research {research_idx} lv.{new_level}")
             # 선행 연구로 사용하는 다른 연구들의 상태 업데이트
             await self._unlock_dependent_researches(user_no, research_idx)
             
+            
+           
             # 미션 업데이트
             mission_update = None
             try:
@@ -615,7 +628,7 @@ class ResearchManager:
                 self.logger.warning(f"Mission update failed (non-critical): {mission_error}")
             
             # 캐시 무효화
-            await self._invalidate_cache(user_no)
+            # await self._invalidate_cache(user_no)
             
             self.logger.info(f"Research finished: user={user_no}, research={research_idx}, new_level={new_level}")
             

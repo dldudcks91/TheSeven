@@ -47,15 +47,14 @@ class AllianceMember(Base):
 class Buff(Base):
     __tablename__ = 'buff'
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
-    category: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category: Mapped[int] = mapped_column(Integer, nullable=False)
     buff_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
-class IdCounter(Base):
+class IDCounter(Base):
     __tablename__ = 'id_counter'
     __table_args__ = (
         Index('counter_type', 'counter_type', unique=True),
@@ -72,9 +71,8 @@ class IdCounter(Base):
 class Item(Base):
     __tablename__ = 'item'
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    item_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     quantity: Mapped[Optional[int]] = mapped_column(Integer)
 
 
@@ -85,9 +83,8 @@ class StatNation(Base):
         Index('user_no_UNIQUE', 'user_no', unique=True)
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     account_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
@@ -100,9 +97,8 @@ class StatNation(Base):
 class Unit(Base):
     __tablename__ = 'unit'
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    unit_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unit_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     total: Mapped[Optional[int]] = mapped_column(Integer)
     ready: Mapped[Optional[int]] = mapped_column(Integer)
     training: Mapped[Optional[int]] = mapped_column(Integer)
@@ -130,9 +126,8 @@ class Building(Base):
         Index('user_no_2', 'user_no', 'building_idx')
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    building_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    building_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     building_lv: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[int] = mapped_column(Integer, nullable=False)
     start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
@@ -149,9 +144,8 @@ class Hero(Base):
         Index('user_no_2', 'user_no', 'hero_idx')
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    hero_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hero_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     hero_lv: Mapped[int] = mapped_column(Integer, nullable=False)
     exp: Mapped[Optional[int]] = mapped_column(Integer)
 
@@ -165,9 +159,8 @@ class Research(Base):
         Index('user_no_2', 'user_no', 'research_idx')
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    research_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    research_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     research_lv: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[int] = mapped_column(Integer, nullable=False)
     start_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)

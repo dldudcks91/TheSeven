@@ -25,7 +25,7 @@ class UnitDBManager:
     
     def _serialize_model(self, model_instance) -> Dict[str, Any]:
         return {
-            "id": model_instance.id,
+            
             "user_no": model_instance.user_no,
             "unit_idx": model_instance.unit_idx,
             "total": model_instance.total,

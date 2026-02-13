@@ -25,7 +25,6 @@ class ResearchDBManager:
     
     def _serialize_model(self, model_instance) -> Dict[str, Any]:
         return {
-            "id": model_instance.id,
             "user_no": model_instance.user_no,
             "research_idx": model_instance.research_idx,
             "research_lv": model_instance.research_lv,

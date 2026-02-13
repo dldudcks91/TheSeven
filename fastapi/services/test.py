@@ -47,6 +47,7 @@ for key in all_keys:
     
     
 print(zset_keys)
+
 #%%
 STRING_KEY = zset_keys['string'][6]
 try:
@@ -132,6 +133,10 @@ else:
         # 필요에 따라 추가적인 디코딩 또는 파싱이 필요할 수 있습니다.
         # 여기서는 단순히 출력만 합니다.
         print(f"  - 멤버: {member}, 점수(Score): {score}")
+        
+        
+#%%
+
 
 
             

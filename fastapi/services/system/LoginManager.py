@@ -99,17 +99,17 @@ class LoginManager:
     
     async def _load_all_data(self, managers: Dict[str, Any]) -> Dict[str, Any]:
         """
-        모든 게임 데이터 로드 (동시 실행)
+        모든 게임 데이터 로드
+        - 1단계: 기본 데이터 병렬 로드
+        - 2단계: 기본 데이터에 의존하는 것들 병렬 로드 (buff, mission)
         """
         
-        # 1. 개선된 LOAD_CONFIG 정의
-        LOAD_CONFIG = {
+        # 1단계: 기본 데이터 병렬 로드
+        PHASE1_CONFIG = {
             'building': [('building_info', 'buildings')],
-            'unit': [('unit_info', 'units')], 
-            'research': [('research_info', 'researches')], 
+            'unit': [('unit_info', 'units')],
+            'research': [('research_info', 'researches')],
             'resource': [('resource_info', 'resources')],
-            'buff': [('buff_info', 'buffs')],
-            'mission': [('mission_info', 'missions')],
             'item': [('item_info', 'items')],
             'shop': [('shop_info', 'shops')],
         }
@@ -117,36 +117,54 @@ class LoginManager:
         tasks = []
         task_names = []
         
-        # 2. 매니저별 작업 목록 순회
-        # tasks_to_run: [('buff_info', 'buffs'), ('buff_reward_info', 'buff_rewards')]
-        for manager_key, tasks_to_run in LOAD_CONFIG.items():
+        for manager_key, tasks_to_run in PHASE1_CONFIG.items():
             manager = managers.get(manager_key)
-            
             if manager:
-                # 3. 매니저의 개별 작업 순회
                 for method_name, result_name in tasks_to_run:
                     try:
-                        # getattr을 사용하여 메서드를 동적으로 찾고 호출
                         load_method = getattr(manager, method_name)
                         tasks.append(load_method())
-                        task_names.append(result_name) 
+                        task_names.append(result_name)
                     except AttributeError:
-                        # 해당 메서드가 없는 경우 경고 로깅
                         self.logger.error(f"Manager {manager_key} is missing expected method: {method_name}")
-            
-        # 4. 병렬 실행
-        # asyncio.gather는 tasks에 담긴 7개의 코루틴(5개 매니저 + buff 2개)을 동시에 실행합니다.
+        
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # 5. 결과 정리
         data = {}
         for name, result in zip(task_names, results):
             if isinstance(result, Exception):
                 self.logger.error(f"Error loading {name}: {result}")
-                # 오류가 발생한 경우, 해당 키의 값은 빈 딕셔너리로 설정
                 data[name] = {}
             else:
-                # 최종 결과 딕셔너리에 깔끔한 키 이름 사용
+                data[name] = result if result else {}
+        
+        # 2단계: 의존성 있는 데이터 병렬 로드
+        PHASE2_CONFIG = {
+            'buff': [('buff_info', 'buffs')],
+            'mission': [('mission_info', 'missions')],
+        }
+        
+        tasks2 = []
+        task_names2 = []
+        
+        for manager_key, tasks_to_run in PHASE2_CONFIG.items():
+            manager = managers.get(manager_key)
+            if manager:
+                for method_name, result_name in tasks_to_run:
+                    try:
+                        load_method = getattr(manager, method_name)
+                        tasks2.append(load_method())
+                        task_names2.append(result_name)
+                    except AttributeError:
+                        self.logger.error(f"Manager {manager_key} is missing expected method: {method_name}")
+        
+        results2 = await asyncio.gather(*tasks2, return_exceptions=True)
+        
+        for name, result in zip(task_names2, results2):
+            if isinstance(result, Exception):
+                self.logger.error(f"Error loading {name}: {result}")
+                data[name] = {}
+            else:
                 data[name] = result if result else {}
         
         return data

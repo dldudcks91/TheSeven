@@ -253,24 +253,22 @@ class BaseRedisCacheManager:
     async def set_hash_field(self, hash_key: str, field: str, value: Any, 
                        expire_time: Optional[int] = None) -> bool:
         """Hash의 특정 필드 설정"""
-        try:
-            expire_time = expire_time or self.default_expire_time
+        
+        expire_time = expire_time or self.default_expire_time
+        
+        # 값을 JSON으로 직렬화
+        serialized_value = json.dumps(value, default=str)
+        
+        pipeline = self.redis_client.pipeline()
+        pipeline.hset(hash_key, str(field), serialized_value)
+        pipeline.expire(hash_key, expire_time)  # TTL 갱신
+        
+        results = await pipeline.execute()
+        
+        
+        return results[0] in [0, 1]
             
-            # 값을 JSON으로 직렬화
-            serialized_value = json.dumps(value, default=str)
-            
-            pipeline = self.redis_client.pipeline()
-            pipeline.hset(hash_key, str(field), serialized_value)
-            pipeline.expire(hash_key, expire_time)  # TTL 갱신
-            
-            results = await pipeline.execute()
-            
-            self.logger.debug(f"Set hash field {field} in {hash_key}")
-            return bool(results[0])
-            
-        except Exception as e:
-            self.logger.error(f"Error setting hash field {field} in {hash_key}: {e}")
-            return False
+        
     
     async def get_hash_field(self, hash_key: str, field: str) -> Optional[Any]:
         """Hash의 특정 필드 조회"""

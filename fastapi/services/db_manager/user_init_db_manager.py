@@ -294,7 +294,6 @@ class UserInitDBManager:
                 True,
                 "Building created successfully",
                 {
-                    "id": new_building.id,
                     "user_no": user_no,
                     "building_idx": building_config["building_idx"],
                     "building_lv": building_config["building_lv"],

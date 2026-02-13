@@ -146,40 +146,32 @@ class MissionRedisManager:
             return False
     
     async def complete_mission(self, user_no: int, mission_idx: int):
-        """미션 완료 처리"""
+        """미션 완료 처리 - 기존 수령 상태 보존 및 타임스탬프 추가"""
         try:
             data_key = self._get_data_key(user_no)
-            
-            # 1. 현재 진행 상태 조회
-            progress = await self.get_user_progress(user_no)
-            
-            if progress is None:
-                # 캐시가 없으면 새로 생성
-                progress = {}
-            
-            # 2. 해당 미션 완료 처리
-            if mission_idx in progress:
-                progress[mission_idx]['is_completed'] = True
-                progress[mission_idx]['is_claimed'] = False
+            # 1. 특정 미션 데이터만 직접 조회 (전체 조회보다 효율적)
+            mission_data = await self.get_mission_by_idx(user_no, mission_idx)
+            now_iso = datetime.utcnow().isoformat()
+    
+            if mission_data:
+                # 기존에 이미 완료되었다면 업데이트 스킵 (타임스탬프 보존)
+                if mission_data.get('is_completed'):
+                    return True
+                
+                mission_data['is_completed'] = True
+                mission_data['completed_at'] = now_iso
+                # is_claimed는 건드리지 않음 (기존 값 유지)
             else:
-                # 캐시에 없으면 추가
-                progress[mission_idx] = {
-                    "current_value": 0,  # 완료되었으므로 목표값 달성
+                # 캐시에 없었던 경우 새로 생성
+                mission_data = {
+                    "current_value": 0,
                     "is_completed": True,
                     "is_claimed": False,
-                    "completed_at": datetime.utcnow().isoformat()
+                    "completed_at": now_iso
                 }
-            
-            # 3. Hash 업데이트
-            await self.redis_client.hset(
-                data_key,
-                str(mission_idx),
-                json.dumps(progress[mission_idx])
-            )
-            
-            print(f"[Redis] Mission {mission_idx} completed for user {user_no}")
+    
+            await self.redis_client.hset(data_key, str(mission_idx), json.dumps(mission_data))
             return True
-            
         except Exception as e:
             print(f"[Redis] Error completing mission: {e}")
             return False
