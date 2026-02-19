@@ -200,15 +200,14 @@ class LoginManager:
         """
         try:
             unit_redis = self.redis_manager.get_unit_manager()
-            
+            units_data = await unit_redis.get_cached_units(user_no)
             await unit_redis.register_active_tasks_to_queue(
                 user_no,
-                self.db_manager,
-                None
+                units_data
             )
             
             self.logger.debug(f"Registered unit tasks for user {user_no}")
-            
+            #print(f"[LoginManager >> Task] Registered unit tasks for user {user_no}: {units_data}")
         except AttributeError:
             self.logger.debug(f"Unit task registration not available")
         except Exception as e:

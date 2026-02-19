@@ -746,6 +746,10 @@
                 allUnits = Object.values(units).flat();
                 
             }
+
+            if (event.data && event.data.type === 'update_unit_ui' && event.data.payload) {
+                updateUnitUI(event.data.payload);
+            }
         });
 
         window.onload = function() {
@@ -766,6 +770,12 @@
         
         
         
+        function updateUnitUI(updatedUnits) {
+            console.log('🔄 유닛 UI 업데이트:', updatedUnits);
+            Object.assign(userUnitData, updatedUnits);
+            generateCurrentTable();
+        }
+
         function generateCurrentTable() {
             generateUnitTables();
 
@@ -928,11 +938,12 @@
                     data.current_task.remaining_time = remaining - 1;
                     
                     if (remaining - 1 <= 0) {
-                        if (!completedUnits.has(unit.unit_idx)) {
-                            console.log(`유닛 ${unit.unit_idx} 자동 완료 시작`);
-                            autoCompleteUnit(unit.unit_idx);
-                            completedUnits.add(unit.unit_idx);
-                        }
+                        // WebSocket으로 서버에서 완료 알림 수신으로 변경
+                        // if (!completedUnits.has(unit.unit_idx)) {
+                        //     console.log(`유닛 ${unit.unit_idx} 자동 완료 시작`);
+                        //     autoCompleteUnit(unit.unit_idx);
+                        //     completedUnits.add(unit.unit_idx);
+                        // }
                     }
                 }
             });
@@ -944,6 +955,8 @@
         
 
         
+        // WebSocket으로 서버에서 완료 알림 수신으로 변경
+        /*
         async function autoCompleteUnit(unitIdx) {
             if (!userId) {
                 console.log('userId가 없어서 자동 완료 중단');
@@ -983,6 +996,7 @@
                 completedUnits.delete(unitIdx);
             }
         }
+        */
 
 
         function formatCost(unit) {

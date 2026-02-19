@@ -536,12 +536,13 @@
                     break;
                     
                 case 'unit_complete':
+                    console.log("[Webosocket] unit_complete", message)
                     // 유닛 훈련 완료 → unit iframe에 전달
                     const unitFrame = document.getElementById('unitFrame');
                     if (unitFrame) {
                         unitFrame.contentWindow.postMessage({
                             type: 'unit_complete',
-                            payload: message.data
+                            payload: message.data.unit
                         }, '*');
                     }
                     showToast(`유닛 훈련 완료!`, 'success');

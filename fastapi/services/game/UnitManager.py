@@ -4,7 +4,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 import models, schemas
 from services.system.GameDataManager import GameDataManager
-from services.game import ResourceManager, BuffManager
+from services.game import ResourceManager, BuffManager, MissionManager
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
 from datetime import datetime, timedelta
@@ -106,6 +106,7 @@ class UnitManager():
                     "death": unit_data.get('death'),
                     "training": unit_data.get('training'),
                     "upgrading": unit_data.get('upgrading'),
+                    "training_end_time": unit_data.get('training_end_time'),
                     "cached_at": datetime.utcnow().isoformat()
                 }
             else:
@@ -122,6 +123,7 @@ class UnitManager():
                     "death": unit_data.death,
                     "training": unit_data.training,
                     "upgrading": unit_data.upgrading,
+                    "training_end_time": unit_data.get('training_end_time'),
                     "cached_at": datetime.utcnow().isoformat()
                 }
         except Exception as e:
@@ -435,6 +437,7 @@ class UnitManager():
             updated_unit = {
                 **unit,
                 'training': unit.get('training', 0) + quantity,
+                'training_end_time': completion_time.isoformat(),
                 'cached_at': datetime.utcnow().isoformat()
             }
             await self._update_cached_unit(user_no, unit_idx, updated_unit)
@@ -705,10 +708,11 @@ class UnitManager():
                 return validation_error
             
             unit_idx = self.data.get('unit_idx')
+            unit_type = self.data.get('unit_type')
             
             # Redis에서 완료 시간 확인
             unit_redis = self.redis_manager.get_unit_manager()
-            completion_time = await unit_redis.get_unit_completion_time(user_no, unit_idx)
+            completion_time = await unit_redis.get_unit_completion_time(user_no, unit_type, unit_idx)
             
             if not completion_time:
                 return {"success": False, "message": "No task in progress for this unit", "data": {}}
@@ -723,29 +727,50 @@ class UnitManager():
                     "data": {}
                 }
             
-            # 완료된 유닛 조회 - metadata에 모든 정보가 포함되어 있음
-            completed_units = await unit_redis.get_completed_units()
-            completed_task = None
+            # 완료된 유닛 조회 - metadata에 모든 정보가 포함되어 있음(Task로 바꿔서 이제 필요없음)
+            # completed_units = await unit_redis.get_completed_units()
+            # completed_task = None
             
-            for completed in completed_units:
-                if completed.get('user_no') == user_no and completed.get('task_id') == str(unit_idx):
-                    completed_task = completed
-                    break
+            # for completed in completed_units:
+            #     if completed.get('user_no') == user_no and completed.get('task_id') == str(unit_idx):
+            #         completed_task = completed
+            #         break
             
-            if not completed_task:
-                return {"success": False, "message": "Completed task not found", "data": {}}
+            # if not completed_task:
+            #     return {"success": False, "message": "Completed task not found", "data": {}}
             
             # 내부 완료 처리 호출 - metadata 전달
-            result = await self.finish_unit_internal(user_no, unit_idx, completed_task)
+
             
-            if result:
-                return {
-                    "success": True,
-                    "message": f"Unit {result['action']} completed successfully",
-                    "data": await self._format_unit_data(unit_idx)
-                }
-            else:
+            updated_units = await self.finish_unit_internal(user_no, str(unit_type), str(unit_idx))
+
+            print('[UnitManager >> unit_finish]:', user_no, unit_type, unit_idx, completion_time, updated_units)
+            if not updated_units:
                 return {"success": False, "message": "Failed to complete unit task", "data": {}}
+            
+            # 3. 미션 체크
+
+            mission_update = None
+            try:
+                mission_manager = self._get_mission_manager()
+                mission_manager.user_no = user_no
+                mission_result = await mission_manager.check_unit_missions(unit_idx)
+
+                if mission_result.get('success'):
+                    mission_update = mission_result.get('data')
+            except Exception as e:
+                self.logger.error(f"Error checking unit missions: {e}")
+    
+            
+            return {
+                "success": True,
+                "message": f"Unit train/upgrade completed successfully",
+                "data": {
+                    'unit':updated_units,
+                    "mission_update": mission_update
+                    }
+            }
+            
             
         except Exception as e:
             self.logger.error(f"Error in unit_finish: {e}")
@@ -766,7 +791,7 @@ class UnitManager():
             
             return completed_units if completed_units else []
         except Exception as e:
-            self.logger.error(f"Error getting completed units for worker: {e}")
+            print(f"Error getting completed units for worker: {e}")
             return []
     
     
@@ -779,7 +804,7 @@ class UnitManager():
         unit_data['training'] = max(0, unit_data.get('training', 0) - quantity)
         unit_data['ready'] = unit_data.get('ready', 0) + quantity
         unit_data['total'] = unit_data.get('total', 0) + quantity
-        
+        unit_data['training_end_time'] = None
         return {**unit_data}
     
     async def _handle_unit_upgrade(self, unit_data: Dict[str, Any], target_unit_data: Dict[str, Any], quantity):
@@ -796,25 +821,30 @@ class UnitManager():
             
         return [{**unit_data},{**target_unit_data}]
     
-    async def finish_unit_internal(self, user_no: int, task_id: str):
+    async def finish_unit_internal(self, user_no: int, task_id: str, sub_id: str):
         """유닛 생산/업그레이드 완료 처리 (상태 기반 동기화)"""
         try:
             unit_redis = self.redis_manager.get_unit_manager()
             
             # 1. Task 메타데이터 조회
             metadata = await unit_redis.get_task_metadata(user_no, task_id)
-            if not metadata:
-                return None
             
-            unit_idx = int(metadata.get('unit_idx'))
+            if not metadata:
+                metadata = {}
+            
+            unit_idx = int(metadata.get('unit_idx',0))
             quantity = int(metadata.get('quantity', 0))
             task_type = int(metadata.get('task_type', -1))
             target_unit_idx = metadata.get('target_unit_idx')
     
             # 2. 현재 캐시 데이터 로드
             units_data = await self.get_user_units(user_no)
-            unit_data = units_data.get(str(unit_idx))
-            if not unit_data: return None
+            #unit_data = units_data.get(str(unit_idx))
+            unit_data = units_data.get(str(sub_id))
+            task_type = 0
+            
+            if not unit_data: 
+                return None
     
             # 3. 비즈니스 로직 처리 (수치 변경)
             updated_units = []
@@ -825,7 +855,8 @@ class UnitManager():
                 if target_unit_data:
                     res = await self._handle_unit_upgrade(unit_data, target_unit_data, quantity)
                     updated_units.extend(res)
-    
+
+            
             # 4. Redis 캐시 업데이트 및 Task 삭제
             if updated_units:
                 for u in updated_units:
@@ -834,11 +865,63 @@ class UnitManager():
                     await self._update_cached_unit(user_no, u['unit_idx'], u)
                 
                 # ✅ 모든 유닛 업데이트가 성공한 후 Task 큐에서 최종 삭제
-                await unit_redis.remove_from_queue(user_no, int(task_id))
+                await unit_redis.remove_from_queue(user_no, int(task_id), int(sub_id))
                 self.logger.info(f"Unit task {task_id} finished and state synced for user {user_no}")
-                return True
+                return updated_units
                 
             return None
         except Exception as e:
             self.logger.error(f"Error in finish_unit_internal: {e}")
             return None
+    async def recover_orphaned_tasks(self):
+        """
+        Task 큐 유실 시 복구 처리 (로그인 시 호출)
+        training > 0인데 Task 큐에 없는 유닛 → 강제 완료 (ready로 이동)
+        """
+        try:
+            user_no = self.user_no
+            unit_redis = self.redis_manager.get_unit_manager()
+            units_data = await self.get_user_units(user_no)
+            
+            if not units_data:
+                return
+            
+            recovered = 0
+            for unit_idx_str, unit_data in units_data.items():
+                training = unit_data.get('training', 0)
+                if training <= 0:
+                    continue
+                
+                # Task 큐에 있는지 확인
+                completion_time = await unit_redis.get_unit_completion_time(user_no, int(unit_idx_str))
+                if completion_time:
+                    continue  # Task 존재 → 정상
+                
+                # Task 없음 → 강제 완료
+                unit_data['ready'] = unit_data.get('ready', 0) + training
+                unit_data['training'] = 0
+                unit_data['cached_at'] = datetime.utcnow().isoformat()
+                
+                await self._update_cached_unit(user_no, int(unit_idx_str), unit_data)
+                recovered += 1
+                self.logger.info(f"Recovered orphaned training: user={user_no}, unit={unit_idx_str}, qty={training}")
+            
+            if recovered > 0:
+                self.logger.info(f"Recovered {recovered} orphaned unit tasks for user {user_no}")
+        
+        except Exception as e:
+            self.logger.error(f"Error recovering orphaned tasks: {e}")
+
+
+
+    def _get_mission_manager(self):
+        from services.game.MissionManager import MissionManager
+        return MissionManager(self.db_manager, self.redis_manager)
+    
+    def _get_resource_manager(self):
+        from services.game.ResourceManager import ResourceManager
+        return ResourceManager(self.db_manager, self.redis_manager)
+    
+    def _get_buff_manager(self):
+        from services.game.BuffManager import BuffManager
+        return BuffManager(self.db_manager, self.redis_manager)

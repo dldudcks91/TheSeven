@@ -220,6 +220,8 @@ class MissionManager:
             progress = await self.get_user_mission_progress()
             
             
+            print("[mission_test] progress:", progress, related_idxs, target_idx)
+            
             # 연관 미션이 없어도 현재 상태 반환 (정합성)
             if target_idx and not related_idxs:
                 return {"success": True, "data": progress, "newly_completed": 0}
@@ -229,7 +231,7 @@ class MissionManager:
             completed_count = 0
             
             targets = related_idxs if target_idx else progress.keys()
-            #print("[mission_test 1]:", targets, progress)
+            
             for m_idx in targets:
                 #if progress.get(m_idx, {}).get('is_completed'): continue
                 
@@ -252,7 +254,7 @@ class MissionManager:
                     progress[m_idx]['current_value'] = curr
                     updated = True
         
-                    
+            
             
             # if completed_count > 0:
             #     await self.invalidate_user_mission_cache(user_no)

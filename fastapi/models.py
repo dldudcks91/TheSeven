@@ -108,6 +108,8 @@ class Unit(Base):
     wounded: Mapped[Optional[int]] = mapped_column(Integer)
     healing: Mapped[Optional[int]] = mapped_column(Integer)
     death: Mapped[Optional[int]] = mapped_column(Integer)
+    training_end_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    cached_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
 class UserMission(Base):

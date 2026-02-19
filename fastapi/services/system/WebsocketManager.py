@@ -19,6 +19,7 @@ class WebsocketManager:
     async def send_personal_message(self, message: str, user_no: int):
         if self.active_connections.get(user_no):
             await self.active_connections[user_no].send_text(message)
+            print("[Websocket Manager]: ", message, user_no)
     
     
     async def broadcast_message(self, message: dict):

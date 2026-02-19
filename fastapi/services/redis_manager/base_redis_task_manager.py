@@ -33,7 +33,7 @@ class BaseRedisTaskManager(ABC):
         try:
             score = completion_time.timestamp()
             member = self._create_member_key(user_no, task_id, sub_id)
-            print("---------add_to_queue_data--------")
+            print(f"---------add_to_queue_data to {member}--------")
             print(metadata)
             print("----------------------------")
             if metadata:
@@ -63,6 +63,7 @@ class BaseRedisTaskManager(ABC):
             current_time = datetime.utcnow()
         
         max_score = current_time.timestamp()
+        
         completed = await self.redis_client.zrangebyscore(
             self.queue_key, 0, max_score
         )
@@ -75,7 +76,8 @@ class BaseRedisTaskManager(ABC):
             result.append({
                 'task_type':self.task_type.value,
                 'user_no': parsed['user_no'],
-                'task_id': parsed['task_id']
+                'task_id': parsed['task_id'],
+                'sub_id' : parsed['sub_id']
             })
         
         return result

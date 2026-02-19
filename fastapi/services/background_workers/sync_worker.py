@@ -106,11 +106,13 @@ class UnitSyncWorker(BaseWorker):
         redis_key = f"user_data:{user_no}:unit"
         raw_data = await self.redis_manager.redis_client.hgetall(redis_key)
         
-        if not raw_data:
+        if not raw_data:    
             return
         
         units_data = {}
         for unit_idx, json_str in raw_data.items():
+            if unit_idx =="0":
+                continue
             units_data[unit_idx] = json.loads(json_str)
         
         db_manager = DBManager(db_session)

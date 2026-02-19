@@ -89,16 +89,18 @@ async def startup_event():
         db_manager = DBManager(db_session)
         app.state.db_manager = db_manager
         
-        # 워커 관리자 초기화 및 시작
-        worker_manager = BackgroundWorkerManager()
-        await worker_manager.initialize(redis_manager)
-        await worker_manager.start_all_workers()
-        print("✅ BackGround Worker managers initialized")
-        
         # WebSocket 관리자 초기화
         websocket_manager = WebsocketManager() 
         app.state.websocket_manager = websocket_manager
         print("✅ Websocket managers initialized")
+
+        # 워커 관리자 초기화 및 시작
+        worker_manager = BackgroundWorkerManager()
+        await worker_manager.initialize(redis_manager, websocket_manager)
+        await worker_manager.start_all_workers()
+        print("✅ BackGround Worker managers initialized")
+        
+        
         
         # 2. 게임 데이터를 메모리에 로드 (한번만!)
         GameDataManager.initialize()

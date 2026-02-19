@@ -41,7 +41,7 @@ class BackgroundWorkerManager:
         self.worker_tasks = {}
         self.is_initialized = False
     
-    async def initialize(self, redis_manager: RedisManager, config: Optional[Dict[str, float]] = None):
+    async def initialize(self, redis_manager: RedisManager, websocket_manager = None, config: Optional[Dict[str, float]] = None):
         """
         워커들 초기화
         """
@@ -55,7 +55,7 @@ class BackgroundWorkerManager:
             'unit': UnitSyncWorker(redis_manager),
             'resources': ResourceSyncWorker(redis_manager),
             'mission': MissionSyncWorker(redis_manager),
-            'game_task': TaskWorker(redis_manager), # 새 TaskWorker 등록
+            'game_task': TaskWorker(redis_manager, websocket_manager), # 새 TaskWorker 등록
         }
         
         # 커스텀 주기 적용

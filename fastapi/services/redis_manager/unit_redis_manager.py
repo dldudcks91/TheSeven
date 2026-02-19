@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from .base_redis_task_manager import BaseRedisTaskManager
 from .base_redis_cache_manager import BaseRedisCacheManager
@@ -54,15 +54,15 @@ class UnitRedisManager:
             metadata['target_unit_idx'] = str(target_unit_idx)
         
         
-        return await self.task_manager.add_to_queue(user_no = user_no, task_id = unit_type, completion_time = completion_time, sub_id = None, metadata = metadata)
+        return await self.task_manager.add_to_queue(user_no = user_no, task_id = unit_type, completion_time = completion_time, sub_id = unit_idx, metadata = metadata)
     
-    async def remove_unit(self, user_no: int, unit_idx: int, queue_id: Optional[int] = None) -> bool:
+    async def remove_unit(self, user_no: int, unit_type: int, unit_idx: Optional[int] = None) -> bool:
         """유닛을 완료 큐에서 제거"""
-        return await self.task_manager.remove_from_queue(user_no, unit_idx, queue_id)
+        return await self.task_manager.remove_from_queue(user_no, unit_type, unit_idx)
     
-    async def get_unit_completion_time(self, user_no: int, unit_idx: int, queue_id: Optional[int] = None) -> Optional[datetime]:
+    async def get_unit_completion_time(self, user_no: int, unit_type: int, unit_idx: Optional[int] = None) -> Optional[datetime]:
         """유닛 완료 시간 조회"""
-        return await self.task_manager.get_completion_time(user_no, unit_idx, queue_id)
+        return await self.task_manager.get_completion_time(user_no, unit_type, unit_idx)
     
     async def update_unit_completion_time(self, user_no: int, unit_idx: int, new_completion_time: datetime, 
                                          queue_id: Optional[int] = None) -> bool:
@@ -277,7 +277,7 @@ class UnitRedisManager:
                 "cached_data": cached_unit,
                 "completion_time": completion_time.isoformat() if completion_time else None,
                 "in_queue": completion_time is not None,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
             return status
@@ -288,7 +288,7 @@ class UnitRedisManager:
                 "unit_idx": unit_idx,
                 "user_no": user_no,
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
     
     # === 기존 호환성을 위한 별칭 메서드들 ===
@@ -508,3 +508,76 @@ class UnitRedisManager:
             
         except Exception as e:
             print(f"Error decrementing unit field: {e}")
+
+
+    async def register_active_tasks_to_queue(self, user_no: int, units_data: dict):
+        """
+        로그인 시 training_end_time이 있는 유닛을 Task 큐에 재등록
+        training > 0인데 training_end_time이 없으면 강제 완료 처리
+        """
+        print(f"[LoginManager >> Task >> Unit] Registered unit tasks for user {user_no}: {units_data}")
+        try:
+            registered = 0
+            recovered = 0
+            
+            for unit_idx_str, unit_data in units_data.items():
+                training = unit_data.get('training', 0)
+                if training <= 0:
+                    continue
+                
+                training_end_time_str = unit_data.get('training_end_time')
+                unit_idx = int(unit_idx_str)
+                
+
+                
+                # training_end_time 없음 → 강제 완료
+                if not training_end_time_str or datetime.now(timezone.utc).replace(tzinfo=None) >= datetime.fromisoformat(training_end_time_str):
+                    unit_data['total'] = unit_data.get('total', 0) + training
+                    unit_data['ready'] = unit_data.get('ready', 0) + training
+                    unit_data['training'] = 0
+                    unit_data['training_end_time'] = None
+                    unit_data['cached_at'] = datetime.utcnow().isoformat()
+                    
+                    hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+                    await self.cache_manager.set_hash_field(
+                        hash_key, unit_idx_str, unit_data,
+                        expire_time=self.cache_expire_time
+                    )
+                    recovered += 1
+                    continue
+                
+                # 이미 큐에 있는지 확인
+                existing = await self.get_unit_completion_time(user_no, unit_idx)
+                if existing:
+                    continue
+                
+                # 완료 시간 파싱
+                try:
+                    completion_time = datetime.fromisoformat(training_end_time_str)
+                except (ValueError, TypeError):
+                    continue
+                
+                # Task 큐에 등록
+                quantity = unit_data.get('training', 0)
+                unit_type = unit_idx
+                
+                await self.add_unit_to_queue(
+                    user_no=user_no,
+                    unit_type=unit_type,
+                    unit_idx=unit_idx,
+                    completion_time=completion_time,
+                    quantity=quantity,
+                    task_type=0
+                )
+                registered += 1
+            
+            if registered > 0:
+                print(f"[Redis] Registered {registered} active unit tasks for user {user_no}")
+            if recovered > 0:
+                print(f"[Redis] Recovered {recovered} orphaned unit tasks for user {user_no}")
+            
+            return registered
+            
+        except Exception as e:
+            print(f"[Redis] Error registering active tasks: {e}")
+            return 0
