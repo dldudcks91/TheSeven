@@ -63,7 +63,7 @@ class MissionRedisManager:
         
         Args:
             progress: {
-                101001: {"current_value": 3, "is_completed": True, "is_claimed": True}
+                101001: {"current_value": 3, "is_completed": True, "is_claimed": True, "completed_at": 00:00, "claimed_at": 00:00}
             }
         """
         try:
@@ -97,11 +97,11 @@ class MissionRedisManager:
             
             await pipeline.execute()
             
-            print(f"[Redis] Cached progress for {len(progress)} missions for user {user_no}")
+            
             return True
             
         except Exception as e:
-            print(f"[Redis] Error caching progress: {e}")
+            
             return False
     
     async def update_mission_progress(self, user_no: int, mission_idx: int, current_value: int):
@@ -124,7 +124,9 @@ class MissionRedisManager:
                 mission_data = {
                     "current_value": current_value,
                     "is_completed": False,
-                    "is_claimed": False
+                    "is_claimed": False,
+                    "completed_at": None,
+                    "claimed_at": None
                 }
             else:
                 data_str = mission_data_bytes.decode() if isinstance(mission_data_bytes, bytes) else mission_data_bytes
@@ -137,12 +139,14 @@ class MissionRedisManager:
                 str(mission_idx),
                 json.dumps(mission_data)
             )
+
+            await self.redis_client.sadd("sync_pending:mission", str(user_no))
             
-            print(f"[Redis] Updated progress for mission {mission_idx}: {current_value}")
+            
             return True
             
         except Exception as e:
-            print(f"[Redis] Error updating mission progress: {e}")
+            
             return False
     
     async def complete_mission(self, user_no: int, mission_idx: int):
@@ -167,7 +171,8 @@ class MissionRedisManager:
                     "current_value": 0,
                     "is_completed": True,
                     "is_claimed": False,
-                    "completed_at": now_iso
+                    "completed_at": now_iso,
+                    "claimed_at": None,
                 }
     
             await self.redis_client.hset(data_key, str(mission_idx), json.dumps(mission_data))

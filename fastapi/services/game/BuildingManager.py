@@ -551,11 +551,13 @@ class BuildingManager:
                 mission_manager = self._get_mission_manager()
                 mission_manager.user_no = user_no
                 mission_result = await mission_manager.check_building_missions(building_idx)  # ← 기존 메서드 사용
+                
                 if mission_result.get('success'):
+                    
                     mission_update = mission_result.get('data')
             except Exception as mission_error:
                 self.logger.warning(f"Mission update failed (non-critical): {mission_error}")
-            
+                
             
             self.logger.info(f"Building upgrade finished (Redis): user={user_no}, building={building_idx}, new_level={target_level}")
             

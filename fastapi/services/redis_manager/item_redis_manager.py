@@ -12,7 +12,7 @@ class ItemRedisManager:
         # Cache Manager 컴포넌트 초기화
         self.cache_manager = BaseRedisCacheManager(redis_client, CacheType.ITEM)
         self.cache_expire_time = 3600  # 1시간
-    
+        self.redis_client = redis_client
     def validate_item_data(self, item_idx: int, quantity: Optional[int] = None) -> bool:
         """아이템 데이터 유효성 검증"""
         if not isinstance(item_idx, int) or item_idx <= 0:
@@ -109,8 +109,11 @@ class ItemRedisManager:
             )
             
             if success:
-                print(f"Updated cached item {item_idx} for user {user_no}")
-            
+
+                await self.redis_client.sadd("sync_pending:item", f"{user_no}:{item_idx}")
+                print(f"Success Updated cached item {item_idx} for user {user_no}")
+            else:
+                print(f"Fail Updated cached item {item_idx} for user {user_no}")
             return success
             
         except Exception as e:

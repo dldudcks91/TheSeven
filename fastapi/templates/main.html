@@ -535,13 +535,13 @@
                     console.log('서버 연결 확인:', message.user_no);
                     break;
                     
-                case 'unit_complete':
+                case 'unit_finish':
                     console.log("[Webosocket] unit_complete", message)
                     // 유닛 훈련 완료 → unit iframe에 전달
                     const unitFrame = document.getElementById('unitFrame');
                     if (unitFrame) {
                         unitFrame.contentWindow.postMessage({
-                            type: 'unit_complete',
+                            type: 'update_unit_ui',
                             payload: message.data.unit
                         }, '*');
                     }

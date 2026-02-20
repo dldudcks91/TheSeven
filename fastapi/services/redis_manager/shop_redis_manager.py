@@ -32,7 +32,7 @@ class ShopRedisManager:
         self.cache_expire_time = 86400  # 24시간
 
     def _get_shop_key(self, user_no: int) -> str:
-        return f"user:{user_no}:shop"
+        return self.cache_manager.get_user_data_hash_key(user_no)
 
     # ==================== 상점 데이터 ====================
 
@@ -50,8 +50,8 @@ class ShopRedisManager:
         """
         try:
             shop_key = self._get_shop_key(user_no)
-            data = await self.cache_manager.get_data(shop_key)
-            
+            #data = await self.cache_manager.get_data(shop_key)
+            data = await self.cache_manager.get_hash_field(shop_key, "shop_data")
             if data:
                 self.logger.debug(f"Shop data found for user {user_no}")
                 return data
@@ -66,9 +66,7 @@ class ShopRedisManager:
         """상점 데이터 저장"""
         try:
             shop_key = self._get_shop_key(user_no)
-            success = await self.cache_manager.set_data(
-                shop_key, shop_data, expire_time=self.cache_expire_time
-            )
+            success =await self.cache_manager.set_hash_field(shop_key, "shop_data", shop_data, expire_time=self.cache_expire_time)
             
             if success:
                 self.logger.debug(f"Shop data saved for user {user_no}")
@@ -193,7 +191,7 @@ class ShopRedisManager:
         """상점 데이터 삭제"""
         try:
             shop_key = self._get_shop_key(user_no)
-            return await self.cache_manager.delete_data(shop_key)
+            return await self.cache_manager.delete_hash_field(shop_key, "shop_data")
         except Exception as e:
             self.logger.error(f"Error invalidating shop: {e}")
             return False

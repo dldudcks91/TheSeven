@@ -34,13 +34,15 @@ class BaseRedisTaskManager(ABC):
             score = completion_time.timestamp()
             member = self._create_member_key(user_no, task_id, sub_id)
             print(f"---------add_to_queue_data to {member}--------")
-            print(metadata)
-            print("----------------------------")
+            print("meta_data:", metadata)
+            
             if metadata:
                 metadata_key = f"{self.queue_key}:metadata:{member}"
                 await self.redis_client.hmset(metadata_key, mapping=metadata)
                 await self.redis_client.expire(metadata_key, 86400)
-            
+                print("meta_data_key:", metadata_key)
+
+            print("----------------------------")
             result = await self.redis_client.zadd(self.queue_key, {member: score})
             
             return result > 0

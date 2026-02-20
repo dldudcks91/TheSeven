@@ -41,25 +41,30 @@ class MissionDBManager:
             
             for mission_idx_str, data in missions_data.items():
                 mission_idx = int(mission_idx_str)
-                is_completed = data.get('is_completed', False)
-                is_claimed = data.get('is_claimed', False)
-                
+                is_completed = data.get('is_completed', 0)
+                is_claimed = data.get('is_claimed', 0)
+                completed_at = self._parse_datetime(data.get('completed_at'))
+                claimed_at = self._parse_datetime(data.get('claimed_at'))
+
+
                 if mission_idx_str in existing_map:
+                    #UPDATE
                     m = existing_map[mission_idx_str]
-                    # completed_at: 이미 있으면 유지, 새로 완료되면 now
-                    if is_completed and not m.completed_at:
-                        m.completed_at = now
-                    # claimed_at: 이미 있으면 유지, 새로 수령하면 now
-                    if is_claimed and not m.claimed_at:
-                        m.claimed_at = now
+                    m.is_completed = is_completed
+                    m.is_claimed = is_claimed
+                    m.completed_at = completed_at
+                    m.claimed_at = claimed_at
                 else:
                     # 완료되거나 수령된 미션만 INSERT (진행중인 미션은 MySQL에 넣을 필요 없음)
                     if is_completed or is_claimed:
                         new_mission = models.UserMission(
                             user_no=user_no,
                             mission_idx=mission_idx,
-                            completed_at=now if is_completed else None,
-                            claimed_at=now if is_claimed else None
+                            is_completed=is_completed,
+                            is_claimed= is_claimed,
+                            completed_at=completed_at,
+                            claimed_at=claimed_at
+
                         )
                         self.db.add(new_mission)
             
@@ -79,6 +84,17 @@ class MissionDBManager:
                 "data": {}
             }
     
+    def _parse_datetime(self, value) -> Optional[datetime]:
+        """문자열 또는 datetime을 datetime으로 변환"""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except (ValueError, TypeError):
+            return None
+
     # ============================================
     # 기존 메서드들 (변경 없음)
     # ============================================
@@ -90,8 +106,13 @@ class MissionDBManager:
             result = {}
             for mission in missions:
                 result[mission.mission_idx] = {
+                    'user_no': user_no,
+                    'mission_idx': mission.mission_idx,
+                    'is_completed': True if mission.is_completed == 1 else False,
+                    'is_claimed': True if mission.is_claimed == 1 else False,
                     'completed_at': mission.completed_at.isoformat() if mission.completed_at else None,
                     'claimed_at': mission.claimed_at.isoformat() if mission.claimed_at else None
+
                 }
             return {"success": True, "message": f"Retrieved {len(result)} missions", "data": result}
         except Exception as e:

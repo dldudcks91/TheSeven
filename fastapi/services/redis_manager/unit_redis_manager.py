@@ -307,7 +307,7 @@ class UnitRedisManager:
     
     # ===== ✨ 워커 지원 메서드들 (추가) =====
     
-    async def get_task_metadata(self, user_no: int, task_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_metadata(self, user_no: int, task_id: str, sub_id: str = None) -> Optional[Dict[str, Any]]:
         """
         Task 상세 정보 조회 (워커용)
         
@@ -315,9 +315,10 @@ class UnitRedisManager:
         Task는 unit:task:{task_id} 형태로 저장되어 있습니다.
         """
         try:
-            
-            task_key = f"{self.task_manager.queue_key}:metadata:{user_no}:{task_id}"
-            
+            if sub_id:
+                task_key = f"{self.task_manager.queue_key}:metadata:{user_no}:{task_id}:{sub_id}"
+            else:
+                task_key = f"{self.task_manager.queue_key}:metadata:{user_no}:{task_id}"
             task_data = await self.redis_client.hgetall(task_key)
             
             if not task_data:

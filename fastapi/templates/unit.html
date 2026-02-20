@@ -746,8 +746,9 @@
                 allUnits = Object.values(units).flat();
                 
             }
-
+            
             if (event.data && event.data.type === 'update_unit_ui' && event.data.payload) {
+                
                 updateUnitUI(event.data.payload);
             }
         });
@@ -770,12 +771,23 @@
         
         
         
+        // function updateUnitUI(updatedUnits) {
+        //     console.log('🔄 유닛 UI 업데이트:', updatedUnits);
+        //     Object.assign(userUnitData, updatedUnits);
+        //     generateCurrentTable();
+        // }
         function updateUnitUI(updatedUnits) {
-            console.log('🔄 유닛 UI 업데이트:', updatedUnits);
-            Object.assign(userUnitData, updatedUnits);
+            // 배열을 unit_idx 키 객체로 변환 후 병합
+            if (Array.isArray(updatedUnits)) {
+                updatedUnits.forEach(unit => {
+                    userUnitData[unit.unit_idx] = { ...userUnitData[unit.unit_idx], ...unit };
+                });
+            } else {
+                Object.assign(userUnitData, updatedUnits);
+            }
+            console.log('[Unit.html]:', userUnitData)
             generateCurrentTable();
         }
-
         function generateCurrentTable() {
             generateUnitTables();
 

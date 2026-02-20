@@ -82,25 +82,31 @@ class MissionManager:
         try:
             mission_redis = self.redis_manager.get_mission_manager()
             cached_progress = await mission_redis.get_user_progress(user_no)
-            
+            print('[MissionManager >> get_user_mission_progress >> cached_progress]:', cached_progress)
             if cached_progress:
                 self._cached_progress = cached_progress
                 return cached_progress
+            
             
             # 캐시 미스 시 DB + 검증 후 재캐싱
             mission_db = self.db_manager.get_mission_manager()
             db_result = mission_db.get_user_missions(user_no)
             db_missions = db_result['data'] if db_result['success'] else {}
             
+
+            print('[MissionManager >> get_user_mission_progress >> db_missions]:', db_missions)
             verified_progress = await self._verify_all_missions(user_no)
             final_progress = self._merge_mission_data(db_missions, verified_progress)
             
+            print('[MissionManager >> get_user_mission_progress >> final_progress]:', final_progress)
             await mission_redis.cache_user_progress(user_no, final_progress)
             self._cached_progress = await mission_redis.get_user_progress(user_no)
+            print('[MissionManager >> get_user_mission_progress >> cached_progress]:', self._cached_progress)
             return self._cached_progress
             
         except Exception as e:
             self.logger.error(f"Error getting progress for user {user_no}: {e}")
+            print(f"Error getting progress for user {user_no}: {e}")
             return {}
 
     async def _verify_all_missions(self, user_no: int) -> Dict[int, Dict[str, Any]]:
@@ -133,12 +139,15 @@ class MissionManager:
                 "current_value": curr,
                 "target_value": target,
                 "is_completed": curr >= target,
-                "is_claimed": False
+                "is_claimed": False,
+                "completed_at": None,
+                "claimed_at": None
             }
             if m_idx in db_missions:
                 db_data = db_missions[m_idx]
-                if db_data.get('completed_at'): mission_data['is_completed'] = True
-                if db_data.get('claimed_at'): mission_data['is_claimed'] = True
+                mission_data['is_claimed'] = db_data['is_claimed']
+                mission_data['completed_at'] = db_data['completed_at']
+                mission_data['claimed_at'] = db_data['claimed_at']
             final_progress[m_idx] = mission_data
         return final_progress
 
@@ -220,7 +229,7 @@ class MissionManager:
             progress = await self.get_user_mission_progress()
             
             
-            print("[mission_test] progress:", progress, related_idxs, target_idx)
+            print("[MissionManager >> check_category_missions] progress:", progress, related_idxs, target_idx)
             
             # 연관 미션이 없어도 현재 상태 반환 (정합성)
             if target_idx and not related_idxs:
@@ -285,11 +294,11 @@ class MissionManager:
         
         if not mission or not mission.get('reward'): return
         
-        mgr = self._get_item_manager()
-        mgr.user_no = self.user_no
+        item_manager = self._get_item_manager()
+        item_manager.user_no = self.user_no
         for item_idx, qty in mission['reward'].items():
-            mgr.data = {"item_idx": int(item_idx), "quantity": qty}
-            await mgr.add_item()
+            item_manager.data = {"item_idx": int(item_idx), "quantity": qty}
+            await item_manager.add_item()
 
     async def invalidate_user_mission_cache(self, user_no: int):
         """캐시 무효화"""

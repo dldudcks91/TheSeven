@@ -8,7 +8,9 @@ from .sync_worker import (
     ResearchSyncWorker,
     UnitSyncWorker,
     ResourceSyncWorker,
+    ItemSyncWorker,
     MissionSyncWorker
+
 )
 # TaskWorker 임포트 추가
 from .task_worker import TaskWorker
@@ -54,7 +56,9 @@ class BackgroundWorkerManager:
             'research': ResearchSyncWorker(redis_manager),
             'unit': UnitSyncWorker(redis_manager),
             'resources': ResourceSyncWorker(redis_manager),
+            "item": ItemSyncWorker(redis_manager),
             'mission': MissionSyncWorker(redis_manager),
+            
             'game_task': TaskWorker(redis_manager, websocket_manager), # 새 TaskWorker 등록
         }
         
@@ -66,6 +70,7 @@ class BackgroundWorkerManager:
                 'unit_interval': 'unit',
                 'resources_interval': 'resources',
                 'mission_interval': 'mission',
+                'item_interval': 'item',
                 'task_interval': 'game_task', # 태스크 주기 설정 키 추가
             }
             for config_key, worker_name in interval_map.items():

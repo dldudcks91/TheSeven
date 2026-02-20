@@ -744,7 +744,7 @@ class UnitManager():
             
             updated_units = await self.finish_unit_internal(user_no, str(unit_type), str(unit_idx))
 
-            print('[UnitManager >> unit_finish]:', user_no, unit_type, unit_idx, completion_time, updated_units)
+            #print('[UnitManager >> unit_finish >> finish_unit_internal]:', user_no, unit_type, unit_idx, completion_time, updated_units)
             if not updated_units:
                 return {"success": False, "message": "Failed to complete unit task", "data": {}}
             
@@ -755,11 +755,13 @@ class UnitManager():
                 mission_manager = self._get_mission_manager()
                 mission_manager.user_no = user_no
                 mission_result = await mission_manager.check_unit_missions(unit_idx)
-
+                
+                
                 if mission_result.get('success'):
                     mission_update = mission_result.get('data')
             except Exception as e:
                 self.logger.error(f"Error checking unit missions: {e}")
+                
     
             
             return {
@@ -827,7 +829,7 @@ class UnitManager():
             unit_redis = self.redis_manager.get_unit_manager()
             
             # 1. Task 메타데이터 조회
-            metadata = await unit_redis.get_task_metadata(user_no, task_id)
+            metadata = await unit_redis.get_task_metadata(user_no, task_id, sub_id)
             
             if not metadata:
                 metadata = {}
@@ -841,7 +843,7 @@ class UnitManager():
             units_data = await self.get_user_units(user_no)
             #unit_data = units_data.get(str(unit_idx))
             unit_data = units_data.get(str(sub_id))
-            task_type = 0
+            #task_type = 0
             
             if not unit_data: 
                 return None

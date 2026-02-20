@@ -74,6 +74,7 @@ class Item(Base):
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     item_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     quantity: Mapped[Optional[int]] = mapped_column(Integer)
+    cached_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
 class StatNation(Base):
@@ -117,6 +118,8 @@ class UserMission(Base):
 
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     mission_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    is_completed: Mapped[Optional[int]] = mapped_column(Integer)
+    is_claimed: Mapped[Optional[int]] = mapped_column(Integer)
     completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     claimed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 

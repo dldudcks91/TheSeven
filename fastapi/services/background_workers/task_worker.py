@@ -68,7 +68,7 @@ class TaskWorker(BaseWorker):
                 
                 if result and result.get('success'):
                     self.logger.info(f"Unit task {task_id} completed for user {user_no}")
-                    await self._send_websocket_notification(user_no, 'unit_complete', result)
+                    await self._send_websocket_notification(user_no, 'unit_finish', result)
                     
         except Exception as e:
             self.logger.error(f"Error processing unit tasks: {e}")

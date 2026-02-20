@@ -179,3 +179,30 @@ class ItemDBManager:
         except Exception as e:
             self.logger.error(f"Error getting item count: {e}")
             return 0
+        
+    def bulk_upsert_item(self, user_no: int, item_idx: int, item_data: Dict[str, Any]) -> Dict[str, Any]:
+
+        
+        try:
+            existing = self.db.query(models.Item).filter(
+                models.Item.user_no == user_no,
+                models.Item.item_idx == item_idx
+            ).first()
+            
+            if existing:
+                existing.quantity = item_data.get('quantity', 0)
+                existing.cached_at = item_data.get('cached_at')
+            else:
+                new_item = models.Item(
+                    user_no=user_no,
+                    item_idx=item_idx,
+                    quantity=item_data.get('quantity', 0),
+                    cached_at=item_data.get('cached_at')
+                )
+                self.db.add(new_item)
+            
+            self.db.flush()
+            return self._format_response(True, "Item upserted successfully")
+        except SQLAlchemyError as e:
+            self.logger.error(f"Database error upserting item: {e}")
+            return self._format_response(False, f"Database error: {str(e)}")

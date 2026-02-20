@@ -152,7 +152,75 @@ class ResourceSyncWorker(BaseWorker):
         if not result['success']:
             raise Exception(result['message'])
 
+class ItemSyncWorker(BaseWorker):
+    """아이템 동기화 워커 (60초 주기) - 변경된 item_idx만 처리"""
+    
+    def __init__(self, redis_manager: RedisManager):
+        super().__init__(category='item', check_interval=60.0)
+        self.redis_manager = redis_manager
+    
+    def _create_db_session(self) -> Session:
+        return SessionLocal()
+    
+    async def _get_pending_users(self) -> set:
+        return await self.redis_manager.redis_client.smembers(self.sync_key)
+    
+    async def _remove_from_pending(self, user_no: int):
+        await self.redis_manager.redis_client.srem(self.sync_key, str(user_no))
+    
+    async def _process_pending(self):
+        pending = await self.redis_manager.redis_client.smembers(self.sync_key)
+        if not pending:
+            return
 
+        self.logger.info(f"[item] syncing {len(pending)} items")
+        db_session = self._create_db_session()
+        success = 0
+        fail = 0
+
+        try:
+            for key in pending:
+                key_str = key.decode() if isinstance(key, bytes) else key
+                try:
+                    user_no_str, item_idx_str = key_str.split(":")
+                    user_no, item_idx = int(user_no_str), int(item_idx_str)
+
+                    redis_key = f"user_data:{user_no}:item"
+                    raw = await self.redis_manager.redis_client.hget(redis_key, str(item_idx))
+                    
+                    if raw:
+                        item_data = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+                        db_manager = DBManager(db_session)
+                        result = db_manager.get_item_manager().bulk_upsert_item(user_no, item_idx, item_data)
+                        if not result['success']:
+                            raise Exception(result['message'])
+
+                    db_session.commit()
+                    await self.redis_manager.redis_client.srem(self.sync_key, key_str)
+                    success += 1
+                except Exception as e:
+                    db_session.rollback()
+                    fail += 1
+                    self.logger.error(f"[item] sync failed for {key_str}: {e}")
+        finally:
+            db_session.close()
+
+        self._sync_count += success
+        self._error_count += fail
+        self.logger.info(f"[item] sync complete: success={success}, fail={fail}")
+
+    async def _sync_user(self, user_no: int, db_session: Session):
+        redis_key = f"user_data:{user_no}:item"
+        raw_data = await self.redis_manager.redis_client.hgetall(redis_key)
+        if not raw_data:
+            return
+        db_manager = DBManager(db_session)
+        for item_idx_str, json_str in raw_data.items():
+            item_data = json.loads(json_str)
+            result = db_manager.get_item_manager().bulk_upsert_item(user_no, int(item_idx_str), item_data)
+            if not result['success']:
+                raise Exception(result['message'])
+        
 class MissionSyncWorker(BaseWorker):
     """미션 동기화 워커 (120초 주기)"""
     
@@ -178,7 +246,10 @@ class MissionSyncWorker(BaseWorker):
         
         missions_data = {}
         for mission_idx, json_str in raw_data.items():
-            missions_data[mission_idx] = json.loads(json_str)
+            data = json.loads(json_str)
+            data['is_completed'] = 1 if data.get('is_completed') else 0
+            data['is_claimed'] = 1 if data.get('is_claimed') else 0
+            missions_data[mission_idx] = data
         
         db_manager = DBManager(db_session)
         result = db_manager.get_mission_manager().bulk_upsert_missions(user_no, missions_data)
