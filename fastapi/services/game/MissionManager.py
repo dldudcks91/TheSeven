@@ -298,7 +298,7 @@ class MissionManager:
         item_manager.user_no = self.user_no
         for item_idx, qty in mission['reward'].items():
             item_manager.data = {"item_idx": int(item_idx), "quantity": qty}
-            await item_manager.add_item()
+            await item_manager.item_get()
 
     async def invalidate_user_mission_cache(self, user_no: int):
         """캐시 무효화"""

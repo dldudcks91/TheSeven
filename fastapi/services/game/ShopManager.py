@@ -273,7 +273,7 @@ class ShopManager:
             item_manager.user_no = user_no
             item_manager.data = {"item_idx": item_idx, "quantity": 1}
             
-            add_result = await item_manager.add_item()
+            add_result = await item_manager.item_get()
             
             if not add_result.get("success"):
                 return {

@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>연맹</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; padding: 0; background-color: #f5f5f5; margin: 0; }
+        
+        /* 탭 네비게이션 */
+        .ally-tabs { display: flex; border-bottom: 1px solid #ccc; background: #f9f9f9; padding: 0 10px; }
+        .ally-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 12px; border-bottom: 2px solid transparent; color: #666; }
+        .ally-tab.active { border-bottom: 2px solid #333; color: #333; font-weight: bold; }
+        .ally-tab:hover { color: #333; }
+        
+        /* 섹션 컨테이너 */
+        .ally-content { display: none; padding: 10px; }
+        .ally-content.active { display: block; }
+        
+        /* 공통 */
+        .section-title { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 14px; }
+        .ally-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .ally-table th, .ally-table td { padding: 4px 6px; text-align: center; border: 1px solid #ddd; }
+        .ally-table th { background-color: #f5f5f5; font-weight: bold; }
+        .btn { padding: 3px 8px; background: #fff; color: #333; border: 1px solid #ddd; cursor: pointer; font-size: 11px; border-radius: 2px; }
+        .btn:hover { background: #eee; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-primary { background: #333; color: #fff; border-color: #333; }
+        .btn-primary:hover { background: #555; }
+        .btn-danger { color: #d33; border-color: #d33; }
+        .btn-danger:hover { background: #fdd; }
+        
+        .result-box { margin-top: 8px; padding: 8px; border-radius: 4px; display: none; font-size: 11px; }
+        .result-box.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .result-box.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .empty-msg { text-align: center; padding: 20px; color: #999; }
+        
+        /* 연맹 정보 카드 */
+        .info-card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+        .info-label { color: #888; }
+        .info-value { font-weight: bold; }
+        
+        /* 공지사항 */
+        .notice-box { background: #fffde7; border: 1px solid #ffe082; border-radius: 4px; padding: 10px; margin-bottom: 10px; font-size: 12px; }
+        .notice-box .notice-date { color: #999; font-size: 10px; margin-top: 4px; }
+        .notice-input { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; resize: vertical; box-sizing: border-box; }
+        
+        /* 기부 */
+        .donate-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .donate-row select, .donate-row input { padding: 4px 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 12px; }
+        .donate-row input[type=number] { width: 100px; }
+        
+        /* 연구 */
+        .research-item { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-bottom: 8px; }
+        .research-item.active-research { border-color: #4caf50; background: #f1f8e9; }
+        .research-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .research-name { font-weight: bold; font-size: 13px; }
+        .research-level { color: #666; }
+        .progress-bar { background: #eee; border-radius: 3px; height: 14px; overflow: hidden; position: relative; }
+        .progress-fill { background: #4caf50; height: 100%; border-radius: 3px; transition: width 0.3s; }
+        .progress-text { position: absolute; top: 0; left: 0; right: 0; text-align: center; font-size: 10px; line-height: 14px; color: #333; }
+        .active-badge { display: inline-block; background: #4caf50; color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px; }
+        
+        /* 검색 */
+        .search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .search-row input { flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 3px; font-size: 12px; }
+        
+        /* 미가입 상태 */
+        .no-alliance { text-align: center; padding: 40px 20px; }
+        .no-alliance h3 { margin-bottom: 15px; color: #666; }
+        .no-alliance .btn { margin: 5px; padding: 8px 20px; font-size: 13px; }
+        
+        /* 가입신청 목록 */
+        .app-badge { display: inline-block; background: #ff5722; color: #fff; font-size: 10px; padding: 0 5px; border-radius: 8px; margin-left: 4px; }
+    </style>
+</head>
+<body>
+    <!-- 연맹 미가입 상태 -->
+    <div id="noAllianceView" class="no-alliance" style="display:none;">
+        <h3>소속된 연맹이 없습니다</h3>
+        <button class="btn btn-primary" onclick="showCreateModal()">연맹 생성</button>
+        <button class="btn" onclick="switchTab('search')">연맹 검색</button>
+        
+        <!-- 생성 폼 -->
+        <div id="createForm" style="display:none; margin-top:15px; text-align:left; max-width:300px; margin-left:auto; margin-right:auto;">
+            <div style="margin-bottom:8px;">
+                <label>연맹 이름:</label>
+                <input type="text" id="createName" maxlength="20" placeholder="2~20자" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:3px; box-sizing:border-box;">
+            </div>
+            <div style="margin-bottom:8px;">
+                <label>가입 방식:</label>
+                <select id="createJoinType" style="width:100%; padding:6px; border:1px solid #ddd; border-radius:3px;">
+                    <option value="free">자유가입</option>
+                    <option value="approval">승인제</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="createAlliance()">생성</button>
+            <button class="btn" onclick="hideCreateModal()">취소</button>
+        </div>
+    </div>
+    
+    <!-- 연맹 가입 상태 -->
+    <div id="allianceView" style="display:none;">
+        <!-- 탭 -->
+        <div class="ally-tabs">
+            <button class="ally-tab active" onclick="switchTab('info')">정보</button>
+            <button class="ally-tab" onclick="switchTab('members')">멤버</button>
+            <button class="ally-tab" onclick="switchTab('notice')">공지</button>
+            <button class="ally-tab" onclick="switchTab('donate')">기부</button>
+            <button class="ally-tab" onclick="switchTab('research')">연구</button>
+            <button class="ally-tab" id="tabApplications" onclick="switchTab('applications')" style="display:none;">신청<span id="appBadge" class="app-badge" style="display:none;">0</span></button>
+            <button class="ally-tab" onclick="switchTab('search')">검색</button>
+        </div>
+        
+        <!-- 정보 탭 -->
+        <div id="section-info" class="ally-content active">
+            <div class="info-card">
+                <div class="info-row"><span class="info-label">연맹명</span><span class="info-value" id="infoName">-</span></div>
+                <div class="info-row"><span class="info-label">레벨</span><span class="info-value" id="infoLevel">-</span></div>
+                <div class="info-row"><span class="info-label">경험치</span><span class="info-value" id="infoExp">-</span></div>
+                <div class="info-row"><span class="info-label">인원</span><span class="info-value" id="infoMembers">-</span></div>
+                <div class="info-row"><span class="info-label">맹주</span><span class="info-value" id="infoLeader">-</span></div>
+                <div class="info-row"><span class="info-label">가입방식</span><span class="info-value" id="infoJoinType">-</span></div>
+                <div class="info-row"><span class="info-label">내 직책</span><span class="info-value" id="infoMyPosition">-</span></div>
+                <div class="info-row"><span class="info-label">활성 연구</span><span class="info-value" id="infoActiveResearch">-</span></div>
+            </div>
+            <div id="infoActions" style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="btn" id="btnSetJoinType" onclick="toggleJoinType()" style="display:none;">가입방식 변경</button>
+                <button class="btn btn-danger" id="btnLeave" onclick="leaveAlliance()">탈퇴</button>
+                <button class="btn btn-danger" id="btnDisband" onclick="disbandAlliance()" style="display:none;">해산</button>
+            </div>
+        </div>
+        
+        <!-- 멤버 탭 -->
+        <div id="section-members" class="ally-content">
+            <h4 class="section-title">멤버 목록</h4>
+            <table class="ally-table">
+                <thead><tr><th>유저</th><th>직책</th><th>기부(EXP)</th><th>기부(코인)</th><th>관리</th></tr></thead>
+                <tbody id="memberTableBody"><tr><td colspan="5" class="empty-msg">로딩 중...</td></tr></tbody>
+            </table>
+        </div>
+        
+        <!-- 공지 탭 -->
+        <div id="section-notice" class="ally-content">
+            <h4 class="section-title">공지사항</h4>
+            <div id="noticeDisplay" class="notice-box" style="display:none;">
+                <div id="noticeContent">-</div>
+                <div class="notice-date" id="noticeDate">-</div>
+            </div>
+            <div id="noticeEmpty" class="empty-msg">등록된 공지가 없습니다.</div>
+            <div id="noticeWriteArea" style="display:none; margin-top:10px;">
+                <textarea id="noticeInput" class="notice-input" rows="3" placeholder="공지 내용을 입력하세요"></textarea>
+                <button class="btn btn-primary" onclick="writeNotice()" style="margin-top:6px;">공지 등록</button>
+            </div>
+        </div>
+        
+        <!-- 기부 탭 -->
+        <div id="section-donate" class="ally-content">
+            <h4 class="section-title">자원 기부</h4>
+            <div class="donate-row">
+                <select id="donateResource">
+                    <option value="food">🌾 식량</option>
+                    <option value="wood">🪵 목재</option>
+                    <option value="stone">🗿 석재</option>
+                    <option value="gold">💰 골드</option>
+                </select>
+                <input type="number" id="donateAmount" min="1" value="1000" placeholder="수량">
+                <button class="btn btn-primary" onclick="donate()">기부</button>
+            </div>
+            <div class="info-card" id="donateResult" style="display:none;">
+                <div class="info-row"><span class="info-label">기부 자원</span><span class="info-value" id="donateResType">-</span></div>
+                <div class="info-row"><span class="info-label">기부량</span><span class="info-value" id="donateResAmount">-</span></div>
+                <div class="info-row"><span class="info-label">획득 경험치</span><span class="info-value" id="donateExpGained">-</span></div>
+                <div class="info-row"><span class="info-label">획득 코인</span><span class="info-value" id="donateCoinGained">-</span></div>
+            </div>
+        </div>
+        
+        <!-- 연구 탭 -->
+        <div id="section-research" class="ally-content">
+            <h4 class="section-title">연맹 연구</h4>
+            <div id="researchList"><div class="empty-msg">로딩 중...</div></div>
+        </div>
+        
+        <!-- 가입신청 탭 -->
+        <div id="section-applications" class="ally-content">
+            <h4 class="section-title">가입 신청 목록</h4>
+            <table class="ally-table">
+                <thead><tr><th>유저</th><th>신청일</th><th>처리</th></tr></thead>
+                <tbody id="appTableBody"><tr><td colspan="3" class="empty-msg">로딩 중...</td></tr></tbody>
+            </table>
+        </div>
+        
+        <!-- 검색 탭 -->
+        <div id="section-search" class="ally-content">
+            <h4 class="section-title">연맹 검색</h4>
+            <div class="search-row">
+                <input type="text" id="searchKeyword" placeholder="연맹 이름 검색">
+                <button class="btn" onclick="searchAlliance()">검색</button>
+            </div>
+            <table class="ally-table">
+                <thead><tr><th>이름</th><th>레벨</th><th>인원</th><th>가입</th></tr></thead>
+                <tbody id="searchTableBody"><tr><td colspan="4" class="empty-msg">검색어를 입력하세요</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div id="result" class="result-box"></div>
+
+    <script>
+        let currentUserId = null;
+        let allianceData = null;   // 연맹 정보
+        let myPosition = null;     // 내 직책
+        let currentAllianceId = null;
+
+        // ==================== 메시지 수신 ====================
+        
+        window.addEventListener('message', async function(event) {
+            if (event.data && event.data.type === 'set_player_id') {
+                const newUserId = parseInt(event.data.userId);
+                if (currentUserId !== newUserId) {
+                    currentUserId = newUserId;
+                    await loadAllianceInfo();
+                }
+            }
+        });
+
+        function getUserNo() {
+            if (currentUserId) return currentUserId;
+            if (window.parent && window.parent.currentUserId) {
+                currentUserId = parseInt(window.parent.currentUserId);
+                return currentUserId;
+            }
+            return null;
+        }
+
+        // ==================== 탭 전환 ====================
+        
+        function switchTab(tabName) {
+            document.querySelectorAll('.ally-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.ally-content').forEach(c => c.classList.remove('active'));
+            
+            const section = document.getElementById(`section-${tabName}`);
+            if (section) section.classList.add('active');
+            
+            // 탭 버튼 활성화
+            document.querySelectorAll('.ally-tab').forEach(t => {
+                if (t.textContent.includes(getTabLabel(tabName))) t.classList.add('active');
+            });
+            
+            // 탭별 데이터 로드
+            if (tabName === 'members') loadMembers();
+            if (tabName === 'research') loadResearch();
+            if (tabName === 'applications') loadApplications();
+            if (tabName === 'search') { /* 검색은 버튼 클릭 시 */ }
+        }
+        
+        function getTabLabel(tabName) {
+            const labels = { info: '정보', members: '멤버', notice: '공지', donate: '기부', research: '연구', applications: '신청', search: '검색' };
+            return labels[tabName] || tabName;
+        }
+
+        // ==================== API 호출 공통 ====================
+        
+        async function apiCall(apiCode, data = {}) {
+            const uid = getUserNo();
+            if (!uid) return null;
+            
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: uid, api_code: apiCode, data: data })
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                return { success: false, message: error.message };
+            }
+        }
+
+        // ==================== 연맹 정보 로드 ====================
+        
+        async function loadAllianceInfo() {
+            const result = await apiCall(7001);
+            console.log("Alliance Info:", result);
+            
+            if (!result || !result.success) {
+                showNoAlliance();
+                return;
+            }
+            
+            const data = result.data;
+            
+            if (!data.has_alliance || !data.alliance) {
+                showNoAlliance();
+                return;
+            }
+            
+            allianceData = data.alliance;
+            myPosition = data.my_position;
+            currentAllianceId = allianceData.alliance_id;
+            
+            showAllianceView();
+            renderAllianceInfo(data);
+        }
+        
+        function showNoAlliance() {
+            document.getElementById('noAllianceView').style.display = 'block';
+            document.getElementById('allianceView').style.display = 'none';
+            allianceData = null;
+            myPosition = null;
+            currentAllianceId = null;
+        }
+        
+        function showAllianceView() {
+            document.getElementById('noAllianceView').style.display = 'none';
+            document.getElementById('allianceView').style.display = 'block';
+        }
+        
+        function renderAllianceInfo(data) {
+            const a = data.alliance;
+            
+            document.getElementById('infoName').textContent = a.name;
+            document.getElementById('infoLevel').textContent = `Lv.${a.level}`;
+            document.getElementById('infoExp').textContent = (a.exp || 0).toLocaleString();
+            document.getElementById('infoMembers').textContent = `${a.member_count} / ${a.max_members}`;
+            document.getElementById('infoLeader').textContent = `#${a.leader_no}`;
+            document.getElementById('infoJoinType').textContent = a.join_type === 'free' ? '자유가입' : '승인제';
+            document.getElementById('infoMyPosition').textContent = getPositionName(myPosition);
+            
+            // 활성 연구
+            if (data.active_research) {
+                document.getElementById('infoActiveResearch').textContent = `연구 #${data.active_research.research_idx}`;
+            } else {
+                document.getElementById('infoActiveResearch').textContent = '없음';
+            }
+            
+            // 공지
+            if (data.notice) {
+                document.getElementById('noticeDisplay').style.display = 'block';
+                document.getElementById('noticeEmpty').style.display = 'none';
+                document.getElementById('noticeContent').textContent = data.notice.content;
+                document.getElementById('noticeDate').textContent = data.notice.updated_at || '';
+            } else {
+                document.getElementById('noticeDisplay').style.display = 'none';
+                document.getElementById('noticeEmpty').style.display = 'block';
+            }
+            
+            // 권한별 UI
+            renderPermissionUI();
+        }
+        
+        function renderPermissionUI() {
+            const isLeader = myPosition === 1;
+            const isOfficer = myPosition <= 3;
+            
+            // 맹주 전용
+            document.getElementById('btnSetJoinType').style.display = isLeader ? 'inline-block' : 'none';
+            document.getElementById('btnDisband').style.display = isLeader ? 'inline-block' : 'none';
+            document.getElementById('btnLeave').style.display = isLeader ? 'none' : 'inline-block';
+            document.getElementById('noticeWriteArea').style.display = isLeader ? 'block' : 'none';
+            
+            // 간부 이상: 신청 탭 표시
+            document.getElementById('tabApplications').style.display = isOfficer ? 'inline-block' : 'none';
+        }
+        
+        function getPositionName(pos) {
+            switch(pos) {
+                case 1: return '맹주';
+                case 2: return '부맹주';
+                case 3: return '간부';
+                case 4: return '일반';
+                default: return '-';
+            }
+        }
+
+        // ==================== 연맹 생성 ====================
+        
+        function showCreateModal() {
+            document.getElementById('createForm').style.display = 'block';
+        }
+        
+        function hideCreateModal() {
+            document.getElementById('createForm').style.display = 'none';
+        }
+        
+        async function createAlliance() {
+            const name = document.getElementById('createName').value.trim();
+            const joinType = document.getElementById('createJoinType').value;
+            
+            if (!name || name.length < 2 || name.length > 20) {
+                showResult('연맹 이름은 2~20자여야 합니다', 'error');
+                return;
+            }
+            
+            const result = await apiCall(7002, { name: name, join_type: joinType });
+            
+            if (result.success) {
+                showResult('연맹이 생성되었습니다!', 'success');
+                hideCreateModal();
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 연맹 가입 ====================
+        
+        async function joinAlliance(allianceId) {
+            const result = await apiCall(7003, { alliance_id: allianceId });
+            
+            if (result.success) {
+                const status = result.data.status;
+                showResult(status === 'joined' ? '연맹에 가입되었습니다!' : '가입 신청 완료!', 'success');
+                if (status === 'joined') await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 연맹 탈퇴 ====================
+        
+        async function leaveAlliance() {
+            if (!confirm('정말 연맹을 탈퇴하시겠습니까?')) return;
+            
+            const result = await apiCall(7004);
+            if (result.success) {
+                showResult('연맹을 탈퇴했습니다', 'success');
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 연맹 해산 ====================
+        
+        async function disbandAlliance() {
+            if (!confirm('정말 연맹을 해산하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+            
+            const result = await apiCall(7013);
+            if (result.success) {
+                showResult('연맹이 해산되었습니다', 'success');
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 가입방식 변경 ====================
+        
+        async function toggleJoinType() {
+            const current = allianceData.join_type;
+            const newType = current === 'free' ? 'approval' : 'free';
+            
+            const result = await apiCall(7012, { join_type: newType });
+            if (result.success) {
+                showResult(`가입 방식이 ${newType === 'free' ? '자유가입' : '승인제'}(으)로 변경되었습니다`, 'success');
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 멤버 목록 ====================
+        
+        async function loadMembers() {
+            const result = await apiCall(7006);
+            if (!result || !result.success) return;
+            
+            const members = result.data.members || [];
+            const tbody = document.getElementById('memberTableBody');
+            
+            if (members.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">멤버 없음</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = members.map(m => {
+                let actions = '';
+                // 내가 간부 이상이고 대상이 나보다 하위일 때
+                if (myPosition <= 3 && m.position > myPosition && m.user_no !== currentUserId) {
+                    actions += `<button class="btn" onclick="kickMember(${m.user_no})">추방</button> `;
+                }
+                if (myPosition <= 2 && m.user_no !== currentUserId) {
+                    actions += `<button class="btn" onclick="promoteMember(${m.user_no})">직책변경</button>`;
+                }
+                
+                return `<tr>
+                    <td>#${m.user_no}</td>
+                    <td>${getPositionName(m.position)}</td>
+                    <td>${(m.donated_exp || 0).toLocaleString()}</td>
+                    <td>${(m.donated_coin || 0).toLocaleString()}</td>
+                    <td>${actions || '-'}</td>
+                </tr>`;
+            }).join('');
+        }
+        
+        async function kickMember(targetNo) {
+            if (!confirm(`유저 #${targetNo}을(를) 추방하시겠습니까?`)) return;
+            
+            const result = await apiCall(7007, { target_user_no: targetNo });
+            if (result.success) {
+                showResult('추방 완료', 'success');
+                await loadMembers();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+        
+        async function promoteMember(targetNo) {
+            const newPos = prompt('새 직책 번호 입력 (2:부맹주, 3:간부, 4:일반)');
+            if (!newPos) return;
+            
+            const result = await apiCall(7008, { target_user_no: targetNo, new_position: parseInt(newPos) });
+            if (result.success) {
+                showResult('직책 변경 완료', 'success');
+                await loadMembers();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 공지사항 ====================
+        
+        async function writeNotice() {
+            const content = document.getElementById('noticeInput').value.trim();
+            if (!content) {
+                showResult('공지 내용을 입력해주세요', 'error');
+                return;
+            }
+            
+            const result = await apiCall(7015, { content: content });
+            if (result.success) {
+                showResult('공지가 등록되었습니다', 'success');
+                document.getElementById('noticeInput').value = '';
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 기부 ====================
+        
+        async function donate() {
+            const resourceType = document.getElementById('donateResource').value;
+            const amount = parseInt(document.getElementById('donateAmount').value);
+            
+            if (!amount || amount <= 0) {
+                showResult('기부 수량을 확인해주세요', 'error');
+                return;
+            }
+            
+            const result = await apiCall(7011, { resource_type: resourceType, amount: amount });
+            
+            if (result.success) {
+                const d = result.data;
+                document.getElementById('donateResult').style.display = 'block';
+                document.getElementById('donateResType').textContent = resourceType;
+                document.getElementById('donateResAmount').textContent = d.donated_amount.toLocaleString();
+                document.getElementById('donateExpGained').textContent = d.exp_gained.toLocaleString();
+                document.getElementById('donateCoinGained').textContent = d.coin_gained.toLocaleString();
+                
+                showResult(
+                    `기부 성공! EXP +${d.exp_gained} / 코인 +${d.coin_gained}` +
+                    (d.leveled_up ? ' 🎉 연맹 레벨업!' : '') +
+                    (d.research_leveled_up ? ' 🔬 연구 레벨업!' : ''),
+                    'success'
+                );
+                
+                // 자원 갱신
+                window.parent.postMessage({ type: 'refresh_resource' }, '*');
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 연구 ====================
+        
+        async function loadResearch() {
+            const result = await apiCall(7016);
+            if (!result || !result.success) return;
+            
+            const list = result.data.research_list || [];
+            const container = document.getElementById('researchList');
+            
+            if (list.length === 0) {
+                container.innerHTML = '<div class="empty-msg">연구 항목이 없습니다</div>';
+                return;
+            }
+            
+            container.innerHTML = list.map(r => {
+                const progress = r.required_exp > 0 ? Math.min(100, (r.current_exp / r.required_exp * 100)).toFixed(1) : 100;
+                const isActive = r.is_active;
+                const isMax = r.is_max;
+                const canSelect = myPosition <= 3 && !isMax;
+                
+                return `<div class="research-item ${isActive ? 'active-research' : ''}">
+                    <div class="research-header">
+                        <span>
+                            <span class="research-name">연구 #${r.research_idx}</span>
+                            ${isActive ? '<span class="active-badge">진행중</span>' : ''}
+                        </span>
+                        <span class="research-level">${isMax ? 'MAX' : `Lv.${r.level} / ${r.max_level}`}</span>
+                    </div>
+                    ${!isMax ? `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width:${progress}%"></div>
+                            <div class="progress-text">${r.current_exp.toLocaleString()} / ${r.required_exp.toLocaleString()}</div>
+                        </div>
+                    ` : ''}
+                    ${canSelect && !isActive ? `<button class="btn" onclick="selectResearch(${r.research_idx})" style="margin-top:6px;">이 연구 활성화</button>` : ''}
+                </div>`;
+            }).join('');
+        }
+        
+        async function selectResearch(researchIdx) {
+            const result = await apiCall(7017, { research_idx: researchIdx });
+            if (result.success) {
+                showResult('연구가 활성화되었습니다', 'success');
+                await loadResearch();
+                await loadAllianceInfo();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 가입 신청 ====================
+        
+        async function loadApplications() {
+            const result = await apiCall(7009);
+            if (!result || !result.success) return;
+            
+            const apps = result.data.applications || [];
+            const tbody = document.getElementById('appTableBody');
+            
+            // 배지 업데이트
+            const badge = document.getElementById('appBadge');
+            if (apps.length > 0) {
+                badge.style.display = 'inline';
+                badge.textContent = apps.length;
+            } else {
+                badge.style.display = 'none';
+            }
+            
+            if (apps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">신청 없음</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = apps.map(a => `<tr>
+                <td>#${a.user_no}</td>
+                <td>${a.applied_at || '-'}</td>
+                <td>
+                    <button class="btn btn-primary" onclick="approveApp(${a.user_no}, true)">승인</button>
+                    <button class="btn btn-danger" onclick="approveApp(${a.user_no}, false)">거절</button>
+                </td>
+            </tr>`).join('');
+        }
+        
+        async function approveApp(targetNo, approve) {
+            const result = await apiCall(7010, { target_user_no: targetNo, approve: approve });
+            if (result.success) {
+                showResult(approve ? '승인 완료' : '거절 완료', 'success');
+                await loadApplications();
+            } else {
+                showResult(result.message, 'error');
+            }
+        }
+
+        // ==================== 연맹 검색 ====================
+        
+        async function searchAlliance() {
+            const keyword = document.getElementById('searchKeyword').value.trim();
+            const result = await apiCall(7005, { keyword: keyword });
+            
+            if (!result || !result.success) return;
+            
+            const alliances = result.data.alliances || [];
+            const tbody = document.getElementById('searchTableBody');
+            
+            if (alliances.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty-msg">검색 결과 없음</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = alliances.map(a => `<tr>
+                <td>${a.name}</td>
+                <td>Lv.${a.level}</td>
+                <td>${a.member_count} / ${a.max_members || '?'}</td>
+                <td><button class="btn" onclick="joinAlliance(${a.alliance_id})">가입</button></td>
+            </tr>`).join('');
+        }
+
+        // ==================== 결과 표시 ====================
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result-box ${type}`;
+            resultDiv.style.display = 'block';
+            setTimeout(() => { resultDiv.style.display = 'none'; }, 4000);
+        }
+
+        // ==================== 초기화 ====================
+        
+        window.onload = function() {
+            const uid = getUserNo();
+            if (uid) loadAllianceInfo();
+        };
+    </script>
+</body>
+</html>

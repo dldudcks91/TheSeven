@@ -1,7 +1,7 @@
 from typing import Optional
 import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKeyConstraint, Index, Integer, String, TIMESTAMP, text
+from sqlalchemy import BigInteger, DateTime, ForeignKeyConstraint, Index, Integer, String, TIMESTAMP, Text, text
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -22,6 +22,8 @@ class Alliance(Base):
     level: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'1'"))
     exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
     join_type: Mapped[Optional[str]] = mapped_column(String(10), server_default=text("'free'"))
+    notice: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notice_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, nullable=True)
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
 
@@ -41,7 +43,27 @@ class AllianceMember(Base):
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     position: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'4'"))
     donated_exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
+    donated_coin: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
     joined_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+
+
+class AllianceResearch(Base):
+    __tablename__ = 'alliance_research'
+
+    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
+    research_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
+    level: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
+    current_exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
+    completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, nullable=True)
+
+
+class AllianceActiveResearch(Base):
+    __tablename__ = 'alliance_active_research'
+
+    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
+    research_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    activated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
+    activated_by: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Buff(Base):

@@ -47,7 +47,9 @@ class APIManager():
         # === 아이템 API (60xx) === 
 
         6001: (ItemManager, ItemManager.item_info),
-
+        6002: (ItemManager, ItemManager.item_get),
+        6003: (ItemManager, ItemManager.item_use),
+        
         6011: (ShopManager, ShopManager.shop_info),
         6012: (ShopManager, ShopManager.shop_refresh),
         6013: (ShopManager, ShopManager.shop_buy),
@@ -65,8 +67,12 @@ class APIManager():
         7009: (AllianceManager, AllianceManager.alliance_applications),
         7010: (AllianceManager, AllianceManager.alliance_approve),
         7011: (AllianceManager, AllianceManager.alliance_donate),
-        7012: (AllianceManager, AllianceManager.alliance_set_join_type),
+        7012: (AllianceManager, AllianceManager.alliance_join_type),
         7013: (AllianceManager, AllianceManager.alliance_disband),
+        7014: (AllianceManager, AllianceManager.alliance_notice),
+        7015: (AllianceManager, AllianceManager.alliance_notice_write),
+        7016: (AllianceManager, AllianceManager.alliance_research_list),
+        7017: (AllianceManager, AllianceManager.alliance_research_select),
     }
     
     def __init__(self, db_manager, redis_manager):

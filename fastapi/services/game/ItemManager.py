@@ -9,6 +9,7 @@ class ItemManager:
     """아이템 관리자 - Redis 중심 구조 (DB 업데이트는 별도 Task 처리)"""
     
     CONFIG_TYPE = 'item'
+    RESOURCE_TYPES = {'food', 'wood', 'stone', 'gold', 'ruby'}
     
     def __init__(self, db_manager:DBManager, redis_manager: RedisManager):
         self._user_no: int = None 
@@ -111,7 +112,7 @@ class ItemManager:
             self.logger.error(f"Error getting item info: {e}")
             return {"success": False, "message": str(e), "data": {}}
     
-    async def add_item(self):
+    async def item_get(self):
         """아이템 추가 - Redis만 업데이트"""
         user_no = self.user_no
         
@@ -158,7 +159,7 @@ class ItemManager:
             self.logger.error(f"Error adding item: {e}")
             return {"success": False, "message": str(e), "data": {}}
     
-    async def use_item(self):
+    async def item_use(self):
         """아이템 사용 - Redis만 업데이트, 효과 적용 후 차감"""
         user_no = self.user_no
         
@@ -228,7 +229,14 @@ class ItemManager:
             return {"success": False, "message": str(e), "data": {}}
     
     async def _apply_item_effect(self, item_idx: int, quantity: int):
-        """아이템 효과 적용 - ResourceManager를 통해 Redis 업데이트"""
+        """
+        아이템 효과 적용 - 카테고리별 분기 처리
+        
+        item_info.csv 컬럼:
+          - category: 대분류 (resource, speedup, scroll, chest)
+          - sub_category: 세부 타입 (food/wood/stone/gold, all/building/research, ...)
+          - value: 효과 수치 (자원량, 가속 초 등)
+        """
         try:
             user_no = self.user_no
             
@@ -244,62 +252,87 @@ class ItemManager:
                 return {"success": False, "message": f"Item {item_idx} config not found"}
             
             category = item_config.get('category')
-            item_type = item_config.get('item_type')
-            target_type = item_config.get('target_type')
+            sub_category = item_config.get('sub_category')
             value = item_config.get('value', 0)
             
-            effect_data = {}
-            
             # 카테고리별 효과 적용
-            if category == 'speedup':
-                # 가속 아이템 - 추후 구현 (Building/Research 타이머 감소)
+            if category == 'resource':
+                return await self._apply_resource_effect(user_no, sub_category, value, quantity)
+                
+            elif category == 'speedup':
+                # 가속 아이템 - 추후 구현
                 total_seconds = value * quantity
-                self.logger.info(f"Speedup effect: target={target_type}, seconds={total_seconds}")
-                effect_data = {
-                    "category": "speedup",
-                    "target": target_type,
-                    "seconds": total_seconds
+                self.logger.info(f"Speedup effect: target={sub_category}, seconds={total_seconds}")
+                return {
+                    "success": True,
+                    "message": "Item effect applied",
+                    "data": {
+                        "category": "speedup",
+                        "target": sub_category,
+                        "seconds": total_seconds
+                    }
                 }
                 
-            elif category == 'resource':
-                # 자원 아이템 - Redis ResourceManager 호출
-                total_amount = value * quantity
-                
-                # ResourceManager를 통해 자원 추가 (Redis만 업데이트)
-                resource_redis = self.redis_manager.get_resource_manager()
-                
-                if target_type in ['food', 'wood', 'stone', 'gold', 'ruby']:
-                    await resource_redis.update_resource(user_no, target_type, total_amount)
-                    self.logger.info(f"Applied resource: user={user_no}, type={target_type}, amount={+total_amount}")
-                    effect_data = {
-                        "category": "resource",
-                        "resource_type": target_type,
-                        "amount": total_amount
-                    }
-                else:
-                    return {"success": False, "message": f"Unknown resource type: {target_type}"}
-                
             elif category == 'chest':
-                # 상자 아이템 - 랜덤 보상 (추후 구현)
+                # 상자 아이템 - 추후 구현
                 self.logger.info(f"Chest opened: item_idx={item_idx}, count={quantity}")
-                effect_data = {
-                    "category": "chest",
-                    "item_idx": item_idx,
-                    "count": quantity
+                return {
+                    "success": True,
+                    "message": "Item effect applied",
+                    "data": {
+                        "category": "chest",
+                        "item_idx": item_idx,
+                        "count": quantity
+                    }
                 }
             
             else:
                 return {"success": False, "message": f"Unknown item category: {category}"}
             
-            return {
-                "success": True,
-                "message": "Item effect applied",
-                "data": effect_data
-            }
-            
         except Exception as e:
             self.logger.error(f"Error applying item effect: {e}")
             return {"success": False, "message": str(e)}
+    
+    async def _apply_resource_effect(self, user_no: int, resource_type: str, value: int, quantity: int):
+        """
+        자원 아이템 효과 적용 - ResourceRedisManager 컴포넌트를 통해 Redis 업데이트
+        
+        Args:
+            resource_type: sub_category (food/wood/stone/gold/ruby)
+            value: 아이템 1개당 자원량
+            quantity: 사용 개수
+        """
+        if resource_type not in self.RESOURCE_TYPES:
+            return {"success": False, "message": f"Unknown resource type: {resource_type}"}
+        
+        total_amount = value * quantity
+        
+        try:
+            resource_redis = self.redis_manager.get_resource_manager()
+            new_amount = await resource_redis.change_resource_amount(user_no, resource_type, total_amount)
+            
+            self.logger.info(
+                f"Resource applied: user={user_no}, type={resource_type}, "
+                f"value={value} x {quantity} = +{total_amount}, new_amount={new_amount}"
+            )
+            
+            return {
+                "success": True,
+                "message": "Item effect applied",
+                "data": {
+                    "category": "resource",
+                    "resource_type": resource_type,
+                    "amount": total_amount,
+                    "new_amount": new_amount
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                f"Failed to apply resource effect: user={user_no}, "
+                f"type={resource_type}, amount={total_amount}, error={e}"
+            )
+            return {"success": False, "message": f"Resource update failed: {str(e)}"}
     
     async def get_item_detail(self):
         """특정 아이템 상세 정보 조회 (메타데이터 + Redis 보유량)"""

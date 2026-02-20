@@ -467,7 +467,22 @@
                 </div>
             </div>
         </div>
+        <!-- 연맹 탭 -->
+        <div id="tab-ally" class="tab-content">
+            
+                <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                    <iframe 
+                        id="allyFrame" 
+                        src="alliance.html" 
+                        style="width: 100%; flex-grow: 1; border: none;">
+                    </iframe>
+                </div>
+            </div>
+        </div>
     </div>
+
+    
+
 
     <script>
         let currentTab = 'api';
@@ -675,7 +690,7 @@
             connectWebSocket(userId);
             
             // 3. 모든 iframe에 플레이어 ID 전달
-            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame'];
+            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame','allyFrame'];
             
             frameIds.forEach(frameId => {
                 const frame = document.getElementById(frameId);
