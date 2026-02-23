@@ -12,11 +12,11 @@ class Base(DeclarativeBase):
 class Alliance(Base):
     __tablename__ = 'alliance'
     __table_args__ = (
-        Index('alliance_id', 'alliance_id', unique=True),
+        Index('alliance_no', 'alliance_no', unique=True),
         Index('name', 'name', unique=True)
     )
 
-    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
+    alliance_no: Mapped[int] = mapped_column(BIGINT, primary_key=True)
     name: Mapped[str] = mapped_column(String(20), nullable=False)
     leader_no: Mapped[int] = mapped_column(Integer, nullable=False)
     level: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'1'"))
@@ -31,7 +31,7 @@ class Alliance(Base):
 class AllianceApplication(Base):
     __tablename__ = 'alliance_application'
 
-    alliance_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alliance_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     applied_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
 
@@ -39,7 +39,7 @@ class AllianceApplication(Base):
 class AllianceMember(Base):
     __tablename__ = 'alliance_member'
 
-    alliance_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alliance_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
     position: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'4'"))
     donated_exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
@@ -50,20 +50,17 @@ class AllianceMember(Base):
 class AllianceResearch(Base):
     __tablename__ = 'alliance_research'
 
-    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
+    alliance_no: Mapped[int] = mapped_column(BIGINT, primary_key=True)
     research_idx: Mapped[int] = mapped_column(Integer, primary_key=True)
     level: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
     current_exp: Mapped[Optional[int]] = mapped_column(BigInteger, server_default=text("'0'"))
+    is_active: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))  # 0: 비활성, 1: 활성
+    activated_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    activated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, nullable=True)
     completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, nullable=True)
 
 
-class AllianceActiveResearch(Base):
-    __tablename__ = 'alliance_active_research'
 
-    alliance_id: Mapped[int] = mapped_column(BIGINT, primary_key=True)
-    research_idx: Mapped[int] = mapped_column(Integer, nullable=False)
-    activated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
-    activated_by: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class Buff(Base):

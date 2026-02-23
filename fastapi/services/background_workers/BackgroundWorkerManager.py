@@ -9,8 +9,8 @@ from .sync_worker import (
     UnitSyncWorker,
     ResourceSyncWorker,
     ItemSyncWorker,
-    MissionSyncWorker
-
+    MissionSyncWorker,
+    AllianceSyncWorker
 )
 # TaskWorker 임포트 추가
 from .task_worker import TaskWorker
@@ -34,6 +34,7 @@ class BackgroundWorkerManager:
         - building:  10초 (변경 빈도 낮음, 유실 영향 높음)
         - research:  10초 (변경 빈도 낮음, 유실 영향 높음)
         - unit:      30초 (변경 빈도 중간, 유실 영향 높음)
+        - alliance:  30초 (변경 빈도 낮음, 유실 영향 높음)
         - resources: 60초 (변경 빈도 높음, 유실 영향 중간)
         - mission:  120초 (변경 빈도 낮음, 유실 영향 낮음)
     """
@@ -55,6 +56,7 @@ class BackgroundWorkerManager:
             'building': BuildingSyncWorker(redis_manager),
             'research': ResearchSyncWorker(redis_manager),
             'unit': UnitSyncWorker(redis_manager),
+            'alliance': AllianceSyncWorker(redis_manager),
             'resources': ResourceSyncWorker(redis_manager),
             "item": ItemSyncWorker(redis_manager),
             'mission': MissionSyncWorker(redis_manager),
@@ -68,6 +70,7 @@ class BackgroundWorkerManager:
                 'building_interval': 'building',
                 'research_interval': 'research',
                 'unit_interval': 'unit',
+                'alliance_interval': 'alliance',
                 'resources_interval': 'resources',
                 'mission_interval': 'mission',
                 'item_interval': 'item',
@@ -78,7 +81,7 @@ class BackgroundWorkerManager:
                     self.workers[worker_name]._check_interval = config[config_key]
         
         self.is_initialized = True
-        logger.info("BackgroundWorkerManager initialized with TaskWorker") #
+        logger.info("BackgroundWorkerManager initialized with TaskWorker")
     
     async def start_all_workers(self):
         """모든 워커 시작"""

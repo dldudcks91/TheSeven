@@ -15,8 +15,7 @@ class AllianceRedisManager:
         alliance_data:{alliance_id}:members          → 멤버 목록 (Hash)
         alliance_data:{alliance_id}:applications     → 가입 신청 목록 (Hash)
         alliance_data:{alliance_id}:notice           → 공지사항 (String/JSON)
-        alliance_data:{alliance_id}:research         → 연구 진행 상태 (Hash)
-        alliance_data:{alliance_id}:active_research  → 현재 활성 연구 (String/JSON)
+        alliance_data:{alliance_id}:research         → 연구 진행 상태 (Hash, is_active로 활성 구분)
         alliance_data:name:{name}                    → 이름 → ID 매핑 (String)
         alliance_data:list                           → 전체 연맹 ID 목록 (Set)
     """
@@ -24,6 +23,7 @@ class AllianceRedisManager:
     LOCK_TIMEOUT = 10
     LOCK_RETRY_DELAY = 0.1
     LOCK_MAX_RETRIES = 50
+    SYNC_KEY = "sync_pending:alliance"
     
     def __init__(self, redis_client):
         self.redis_client = redis_client
@@ -48,9 +48,6 @@ class AllianceRedisManager:
     def _key_research(self, alliance_id: int) -> str:
         return f"alliance_data:{alliance_id}:research"
     
-    def _key_active_research(self, alliance_id: int) -> str:
-        return f"alliance_data:{alliance_id}:active_research"
-    
     def _key_name_mapping(self, name: str) -> str:
         return f"alliance_data:name:{name}"
     
@@ -62,6 +59,17 @@ class AllianceRedisManager:
     
     def _key_lock(self, alliance_id: int) -> str:
         return f"alliance_data:{alliance_id}:lock"
+
+    # ==================== Dirty Flag ====================
+    
+    async def mark_dirty(self, alliance_id: int) -> bool:
+        """동기화 대기열에 추가"""
+        try:
+            await self.redis_client.sadd(self.SYNC_KEY, str(alliance_id))
+            return True
+        except Exception as e:
+            self.logger.error(f"Error marking dirty: {e}")
+            return False
 
     # ==================== 분산 락 ====================
     
@@ -261,7 +269,7 @@ class AllianceRedisManager:
             self.logger.error(f"Error deleting notice: {e}")
             return False
 
-    # ==================== 연구 진행 상태 ====================
+    # ==================== 연구 진행 상태 (활성 연구 통합) ====================
     
     async def get_all_research(self, alliance_id: int) -> Dict[str, Dict]:
         """전체 연구 상태 조회"""
@@ -300,33 +308,43 @@ class AllianceRedisManager:
         except Exception as e:
             self.logger.error(f"Error deleting all research: {e}")
             return False
-
-    # ==================== 활성 연구 ====================
     
-    async def get_active_research(self, alliance_id: int) -> Optional[Dict[str, Any]]:
-        """현재 활성 연구 조회"""
+    async def get_active_research(self, alliance_id: int) -> Optional[Dict]:
+        """활성 연구 조회 (is_active=1인 연구)"""
         try:
-            return await self.cache_manager.get_data(self._key_active_research(alliance_id))
+            all_research = await self.get_all_research(alliance_id)
+            for idx, data in all_research.items():
+                if data.get('is_active') == 1:
+                    return {**data, "research_idx": int(idx)}
+            return None
         except Exception as e:
             self.logger.error(f"Error getting active research: {e}")
             return None
     
-    async def set_active_research(self, alliance_id: int, data: Dict[str, Any]) -> bool:
-        """활성 연구 설정"""
+    async def set_active_research(self, alliance_id: int, research_idx: int, user_no: int) -> bool:
+        """활성 연구 변경 (기존 비활성 → 새 연구 활성)"""
         try:
-            return await self.cache_manager.set_data(
-                self._key_active_research(alliance_id), data, expire_time=self.cache_expire_time
-            )
+            all_research = await self.get_all_research(alliance_id)
+            now = datetime.utcnow().isoformat()
+            
+            # 기존 활성 연구 비활성화
+            for idx, data in all_research.items():
+                if data.get('is_active') == 1:
+                    data['is_active'] = 0
+                    await self.set_research(alliance_id, int(idx), data)
+            
+            # 새 연구 활성화
+            research_data = all_research.get(str(research_idx), {
+                "level": 0, "current_exp": 0
+            })
+            research_data['is_active'] = 1
+            research_data['activated_by'] = user_no
+            research_data['activated_at'] = now
+            await self.set_research(alliance_id, research_idx, research_data)
+            
+            return True
         except Exception as e:
             self.logger.error(f"Error setting active research: {e}")
-            return False
-    
-    async def delete_active_research(self, alliance_id: int) -> bool:
-        """활성 연구 삭제"""
-        try:
-            return await self.cache_manager.delete_data(self._key_active_research(alliance_id))
-        except Exception as e:
-            self.logger.error(f"Error deleting active research: {e}")
             return False
 
     # ==================== 이름 매핑 ====================
@@ -417,7 +435,6 @@ class AllianceRedisManager:
             await self.delete_all_applications(alliance_id)
             await self.delete_notice(alliance_id)
             await self.delete_all_research(alliance_id)
-            await self.delete_active_research(alliance_id)
             await self.delete_alliance_info(alliance_id)
             await self.delete_name_mapping(alliance_name)
             await self.remove_from_list(alliance_id)

@@ -19,6 +19,10 @@ class AllianceManager:
         - 연맹 연구 (맹주/간부가 활성 연구 선택, 멤버 기부로 진행)
         - 연맹 버프 (BuffManager 연동)
     
+    DB 동기화:
+        - Redis-first, DB 저장은 AllianceSyncWorker가 주기적으로 처리
+        - 데이터 변경 시 mark_dirty(alliance_id)로 동기화 대기열에 추가
+    
     직책:
         1: 맹주
         2: 부맹주
@@ -339,11 +343,8 @@ class AllianceManager:
                 # Nation 업데이트
                 await nation_redis.set_alliance_info(user_no, alliance_id, self.POSITION_LEADER)
                 
-                # DB 저장
-                alliance_db = self.db_manager.get_alliance_manager()
-                alliance_db.create_alliance(alliance_id, name, user_no, join_type)
-                alliance_db.add_member(alliance_id, user_no, self.POSITION_LEADER, 0)
-                alliance_db.commit()
+                # Sync 대기열 추가
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 # 연맹 버프 추가
                 await self._add_alliance_buff(user_no, alliance_id, 1)
@@ -358,9 +359,6 @@ class AllianceManager:
                     }
                 }
                 
-            except Exception as e:
-                alliance_db.rollback()
-                raise e
             finally:
                 await alliance_redis.release_lock(alliance_id)
             
@@ -425,6 +423,7 @@ class AllianceManager:
                     await nation_redis.set_alliance_info(user_no, alliance_id, self.POSITION_MEMBER)
                     
                     await self._add_alliance_buff(user_no, alliance_id, alliance_info.get('level', 1))
+                    await alliance_redis.mark_dirty(alliance_id)
                     
                     return {"success": True, "data": {"status": "joined", "alliance_id": alliance_id}}
                 else:
@@ -434,6 +433,7 @@ class AllianceManager:
                     
                     app_data = {"applied_at": now}
                     await alliance_redis.add_application(alliance_id, user_no, app_data)
+                    await alliance_redis.mark_dirty(alliance_id)
                     
                     return {"success": True, "data": {"status": "applied", "alliance_id": alliance_id}}
                     
@@ -475,6 +475,7 @@ class AllianceManager:
                 await nation_redis.clear_alliance_info(user_no)
                 
                 await self._remove_alliance_buff(user_no, alliance_id)
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 return {"success": True, "data": {"left": True}}
                 
@@ -616,6 +617,7 @@ class AllianceManager:
                 await nation_redis.clear_alliance_info(target_user_no)
                 
                 await self._remove_alliance_buff(target_user_no, alliance_id)
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 return {"success": True, "data": {"kicked": True, "target_user_no": target_user_no}}
                 
@@ -689,6 +691,8 @@ class AllianceManager:
                     alliance_info['leader_no'] = target_user_no
                     await alliance_redis.set_alliance_info(alliance_id, alliance_info)
                     
+                    await alliance_redis.mark_dirty(alliance_id)
+                    
                     return {"success": True, "data": {"promoted": True, "new_leader": target_user_no}}
                     
                 finally:
@@ -705,6 +709,8 @@ class AllianceManager:
                 target_member['position'] = new_position
                 await alliance_redis.update_member(alliance_id, target_user_no, target_member)
                 await nation_redis.set_alliance_info(target_user_no, alliance_id, new_position)
+                
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 position_config = self._get_position_config(new_position)
                 
@@ -832,7 +838,10 @@ class AllianceManager:
                     await nation_redis.set_alliance_info(target_user_no, alliance_id, self.POSITION_MEMBER)
                     
                     await self._add_alliance_buff(target_user_no, alliance_id, alliance_info.get('level', 1))
-                    
+                
+                await alliance_redis.mark_dirty(alliance_id)
+                
+                if approve:
                     return {"success": True, "data": {"approved": True, "target_user_no": target_user_no}}
                 else:
                     return {"success": True, "data": {"approved": False, "target_user_no": target_user_no}}
@@ -871,9 +880,9 @@ class AllianceManager:
             if not resource_config:
                 return {"success": False, "message": "기부할 수 없는 자원입니다"}
             
-            exp_ratio = resource_config.get('exp_ratio', 100)       # 자원 N당 경험치 1
-            coin_ratio = resource_config.get('coin_ratio', 100)     # 자원 N당 코인 1
-            coin_item_idx = donate_config.get('coin_item_idx')      # 연맹코인 아이템 idx
+            exp_ratio = resource_config.get('exp_ratio', 100)
+            coin_ratio = resource_config.get('coin_ratio', 100)
+            coin_item_idx = donate_config.get('coin_item_idx')
             
             nation = await self._get_user_nation(user_no)
             if not nation or not nation.get('alliance_id'):
@@ -926,7 +935,7 @@ class AllianceManager:
                     research_data = await alliance_redis.get_research(alliance_id, research_idx)
                     
                     if not research_data:
-                        research_data = {"level": 0, "current_exp": 0}
+                        research_data = {"level": 0, "current_exp": 0, "is_active": 1}
                     
                     research_data['current_exp'] = research_data.get('current_exp', 0) + exp_gained
                     
@@ -957,6 +966,8 @@ class AllianceManager:
                     item_manager = ItemManager(self.db_manager, self.redis_manager)
                     item_manager.user_no = user_no
                     await item_manager.add_item(user_no, coin_item_idx, coin_gained)
+                
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 return {
                     "success": True,
@@ -1013,6 +1024,8 @@ class AllianceManager:
             alliance_info['join_type'] = new_join_type
             await alliance_redis.set_alliance_info(alliance_id, alliance_info)
             
+            await alliance_redis.mark_dirty(alliance_id)
+            
             return {"success": True, "data": {"join_type": new_join_type}}
             
         except Exception as e:
@@ -1059,18 +1072,11 @@ class AllianceManager:
                 # Redis 전체 삭제
                 await alliance_redis.delete_all_alliance_data(alliance_id, alliance_name)
                 
-                # DB 삭제
-                alliance_db = self.db_manager.get_alliance_manager()
-                alliance_db.delete_all_members(alliance_id)
-                alliance_db.delete_all_applications(alliance_id)
-                alliance_db.delete_alliance(alliance_id)
-                alliance_db.commit()
+                # Sync 대기열 추가 (SyncWorker가 info=None 감지 → DB에서도 삭제)
+                await alliance_redis.mark_dirty(alliance_id)
                 
                 return {"success": True, "data": {"disbanded": True}}
-            
-            except Exception as e:
-                alliance_db.rollback()
-                raise e
+                
             finally:
                 await alliance_redis.release_lock(alliance_id)
             
@@ -1147,11 +1153,13 @@ class AllianceManager:
             alliance_redis = await self._get_alliance_redis()
             await alliance_redis.set_notice(alliance_id, notice_data)
             
-            # DB 업데이트
+            # info에도 공지 반영
             alliance_info = await alliance_redis.get_alliance_info(alliance_id)
             alliance_info['notice'] = content
             alliance_info['notice_updated_at'] = now
             await alliance_redis.set_alliance_info(alliance_id, alliance_info)
+            
+            await alliance_redis.mark_dirty(alliance_id)
             
             return {
                 "success": True,
@@ -1269,20 +1277,14 @@ class AllianceManager:
             if current_level >= max_level:
                 return {"success": False, "message": "이미 최대 레벨에 도달한 연구입니다"}
             
-            now = datetime.utcnow().isoformat()
-            
-            active_data = {
-                "research_idx": research_idx,
-                "activated_at": now,
-                "activated_by": user_no
-            }
-            
-            await alliance_redis.set_active_research(alliance_id, active_data)
+            await alliance_redis.set_active_research(alliance_id, research_idx, user_no)
+            await alliance_redis.mark_dirty(alliance_id)
             
             return {
                 "success": True,
                 "data": {
-                    "active_research": active_data
+                    "research_idx": research_idx,
+                    "activated_by": user_no
                 }
             }
             

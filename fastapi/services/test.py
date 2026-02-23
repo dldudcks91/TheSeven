@@ -95,7 +95,7 @@ for key in zset_keys['hash']:
 
 #%%
 
-SET_KEY = zset_keys['set'][2]
+SET_KEY = zset_keys['set'][0]
 
 # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
 building_data = redis_client.smembers(SET_KEY)

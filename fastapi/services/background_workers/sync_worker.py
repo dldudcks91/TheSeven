@@ -256,3 +256,70 @@ class MissionSyncWorker(BaseWorker):
         
         if not result['success']:
             raise Exception(result['message'])
+        
+class AllianceSyncWorker(BaseWorker):
+    """
+    연맹 동기화 워커 (30초 주기)
+    
+    sync_pending:alliance set에 alliance_id가 들어있으면
+    해당 연맹의 info, members, applications, research를 한번에 DB 동기화.
+    
+    해산된 연맹 (Redis에 info 없음) → DB에서도 관련 데이터 전부 삭제.
+    """
+    
+    def __init__(self, redis_manager: RedisManager):
+        super().__init__(category='alliance', check_interval=30.0)
+        self.redis_manager = redis_manager
+    
+    def _create_db_session(self) -> Session:
+        return SessionLocal()
+    
+    async def _get_pending_users(self) -> set:
+        return await self.redis_manager.redis_client.smembers(self.sync_key)
+    
+    async def _remove_from_pending(self, user_no: int):
+        # BaseWorker 인터페이스상 user_no이지만 실제로는 alliance_id
+        await self.redis_manager.redis_client.srem(self.sync_key, str(user_no))
+    
+    async def _sync_user(self, user_no: int, db_session: Session):
+        """
+        alliance_id 단위로 연맹 전체 데이터 동기화
+        (BaseWorker 인터페이스상 user_no이지만 실제로는 alliance_id)
+        """
+        alliance_id = user_no
+        alliance_redis = self.redis_manager.get_alliance_manager()
+        db_manager = DBManager(db_session)
+        alliance_db = db_manager.get_alliance_db_manager()
+        
+        # 1. 연맹 기본 정보 확인
+        info = await alliance_redis.get_alliance_info(alliance_id)
+        
+        if not info:
+            # Redis에 info가 없으면 해산된 연맹 → DB에서도 삭제
+            alliance_db.delete_all_research(alliance_id)
+            alliance_db.delete_all_applications(alliance_id)
+            alliance_db.delete_all_members(alliance_id)
+            alliance_db.delete_alliance(alliance_id)
+            self.logger.info(f"[alliance] disbanded alliance {alliance_id} removed from DB")
+            return
+        
+        # 2. 연맹 기본 정보 동기화
+        alliance_db.upsert_alliance(alliance_id, info)
+        
+        # 3. 멤버 동기화 (전체 덮어쓰기)
+        members = await alliance_redis.get_members(alliance_id)
+        alliance_db.delete_all_members(alliance_id)
+        for user_no_str, member_data in members.items():
+            alliance_db.upsert_member(alliance_id, int(user_no_str), member_data)
+        
+        # 4. 가입 신청 동기화
+        applications = await alliance_redis.get_applications(alliance_id)
+        alliance_db.delete_all_applications(alliance_id)
+        for user_no_str, app_data in applications.items():
+            alliance_db.upsert_application(alliance_id, int(user_no_str), app_data)
+        
+        # 5. 연구 동기화
+        all_research = await alliance_redis.get_all_research(alliance_id)
+        if all_research:
+            for research_idx_str, research_data in all_research.items():
+                alliance_db.upsert_research(alliance_id, int(research_idx_str), research_data)
