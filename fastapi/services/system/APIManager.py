@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager
+from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -14,6 +14,8 @@ class APIManager():
         
         1002: (GameDataManager, GameDataManager.get_all_configs),
         1003: (UserInitManager, UserInitManager.create_new_user),
+
+        1009: (NationManager, NationManager.nation_info),
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         1012: (BuffManager, BuffManager.buff_info),

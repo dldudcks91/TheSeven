@@ -12,6 +12,7 @@ class DBOperation(Enum):
 
 class TableType(Enum):
     """테이블 타입 열거형"""
+    NATION = "nation"
     BUILDING = "building"
     UNIT = "unit"
     RESEARCH = "research"

@@ -8,6 +8,26 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 class Base(DeclarativeBase):
     pass
 
+class StatNation(Base):
+    __tablename__ = 'stat_nation'
+    __table_args__ = (
+        Index('idx_tb_stat_nation_user_no', 'user_no'),
+        Index('user_no_UNIQUE', 'user_no', unique=True)
+    )
+
+    account_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alliance_no: Mapped[int] = mapped_column(Integer)
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    hq_lv: Mapped[int] = mapped_column(Integer)
+    power: Mapped[int] = mapped_column(Integer)
+    cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+    building: Mapped[list['Building']] = relationship('Building', back_populates='stat_nation')
+    hero: Mapped[list['Hero']] = relationship('Hero', back_populates='stat_nation')
+    research: Mapped[list['Research']] = relationship('Research', back_populates='stat_nation')
+    resources: Mapped[list['Resources']] = relationship('Resources', back_populates='stat_nation')
 
 class Alliance(Base):
     __tablename__ = 'alliance'
@@ -96,22 +116,7 @@ class Item(Base):
     cached_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 
 
-class StatNation(Base):
-    __tablename__ = 'stat_nation'
-    __table_args__ = (
-        Index('idx_tb_stat_nation_user_no', 'user_no'),
-        Index('user_no_UNIQUE', 'user_no', unique=True)
-    )
 
-    account_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    user_no: Mapped[int] = mapped_column(Integer, primary_key=True)
-    cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-    last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
-
-    building: Mapped[list['Building']] = relationship('Building', back_populates='stat_nation')
-    hero: Mapped[list['Hero']] = relationship('Hero', back_populates='stat_nation')
-    research: Mapped[list['Research']] = relationship('Research', back_populates='stat_nation')
-    resources: Mapped[list['Resources']] = relationship('Resources', back_populates='stat_nation')
 
 
 class Unit(Base):

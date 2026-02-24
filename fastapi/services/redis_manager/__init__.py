@@ -5,6 +5,7 @@ from .base_redis_task_manager import BaseRedisTaskManager
 from .base_redis_cache_manager import BaseRedisCacheManager
 
 
+
 from .building_redis_manager import BuildingRedisManager
 from .unit_redis_manager import UnitRedisManager
 from .research_redis_manager import ResearchRedisManager
@@ -15,6 +16,8 @@ from .item_redis_manager import ItemRedisManager
 from .mission_redis_manager import MissionRedisManager
 from .shop_redis_manager import ShopRedisManager
 from .alliance_redis_manager import AllianceRedisManager
+
+from .nation_redis_manager import NationRedisManager
 
 from .RedisManager import RedisManager
 

@@ -7,6 +7,8 @@ Created on Fri Aug 29 14:06:45 2025
 
 #_init_.py
 
+from .NationManager import NationManager
+
 from .ResourceManager import ResourceManager
 from .ItemManager import ItemManager 
 

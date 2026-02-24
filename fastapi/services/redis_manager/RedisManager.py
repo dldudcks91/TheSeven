@@ -79,13 +79,15 @@ class RedisManager:
     def get_alliance_manager(self) -> AllianceRedisManager:
         """Alliance Redis 관리자 반환 (싱글톤 패턴)"""
         if self._alliance_manager is None:
-            self._allinace_manager = AllianceRedisManager(self.redis_client)
+            self._alliance_manager = AllianceRedisManager(self.redis_client)
         return self._alliance_manager
 
-    def get_nation_manager(self) -> AllianceRedisManager:
+    def get_nation_manager(self) -> NationRedisManager:
         """Nation Redis 관리자 반환 (싱글톤 패턴)"""
+        
         if self._nation_manager is None:
             self._nation_manager = NationRedisManager(self.redis_client)
+            
         return self._nation_manager
 
     

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from services.redis_manager import RedisManager
 from services.db_manager import DBManager
-from services.game import ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager , ShopManager
+from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, HeroManager , ShopManager
 
 class LoginManager:
     """
@@ -82,6 +82,7 @@ class LoginManager:
         managers = {}
         
         MANAGERS_TO_CREATE = {
+            'nation': NationManager,
             'building': BuildingManager,
             'unit': UnitManager,
             'research': ResearchManager,
@@ -106,6 +107,7 @@ class LoginManager:
         
         # 1단계: 기본 데이터 병렬 로드
         PHASE1_CONFIG = {
+            'nation': [('nation_info', 'nation')],
             'building': [('building_info', 'buildings')],
             'unit': [('unit_info', 'units')],
             'research': [('research_info', 'researches')],

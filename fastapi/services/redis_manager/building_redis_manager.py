@@ -49,7 +49,7 @@ class BuildingRedisManager:
     
     # === Hash 기반 캐싱 관리 메서드들 ===
     
-    async def cache_user_buildings_data(self, user_no: int, buildings_data: Dict[str, Any]) -> bool:
+    async def set_user_buildings(self, user_no: int, buildings_data: Dict[str, Any]) -> bool:
         """Hash 구조로 건물 데이터 캐싱"""
         if not buildings_data:
             return True
@@ -84,7 +84,7 @@ class BuildingRedisManager:
             print(f"Error caching buildings data: {e}")
             return False
     
-    async def get_cached_building(self, user_no: int, building_idx: int) -> Optional[Dict[str, Any]]:
+    async def get_user_building(self, user_no: int, building_idx: int) -> Optional[Dict[str, Any]]:
         """특정 건물 하나만 캐시에서 조회"""
         try:
             hash_key = self.cache_manager.get_user_data_hash_key(user_no)
@@ -101,7 +101,7 @@ class BuildingRedisManager:
             print(f"Error retrieving cached building {building_idx} for user {user_no}: {e}")
             return None
     
-    async def get_cached_buildings(self, user_no: int) -> Optional[Dict[str, Any]]:
+    async def get_user_buildings(self, user_no: int) -> Optional[Dict[str, Any]]:
         """모든 건물을 캐시에서 조회"""
         try:
             hash_key = self.cache_manager.get_user_data_hash_key(user_no)

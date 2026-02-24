@@ -74,7 +74,7 @@ class BuildingManager:
         try:
             # 1. Redis에서 먼저 조회
             building_redis = self.redis_manager.get_building_manager()
-            self._cached_buildings = await building_redis.get_cached_buildings(user_no)
+            self._cached_buildings = await building_redis.get_user_buildings(user_no)
             
             if self._cached_buildings:
                 self.logger.debug(f"Cache hit: Retrieved {len(self._cached_buildings)} buildings for user {user_no}")
@@ -86,7 +86,7 @@ class BuildingManager:
                 
                 if buildings_data['success'] and buildings_data['data']:
                     # Redis에 캐싱
-                    cache_success = await building_redis.cache_user_buildings_data(user_no, buildings_data['data'])
+                    cache_success = await building_redis.set_user_buildings(user_no, buildings_data['data'])
                     if cache_success:
                         self.logger.debug(f"Successfully cached {len(buildings_data['data'])} buildings from DB for user {user_no}")
                     
@@ -109,7 +109,7 @@ class BuildingManager:
         
         try:
             building_redis = self.redis_manager.get_building_manager()
-            cached_building = await building_redis.get_cached_building(user_no, building_idx)
+            cached_building = await building_redis.get_user_building(user_no, building_idx)
             
             if cached_building:
                 self.logger.debug(f"Cache hit: Retrieved building {building_idx} for user {user_no}")
