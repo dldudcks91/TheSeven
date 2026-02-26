@@ -188,7 +188,7 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 3002 - 연구 시작
 
-- **data**: `{"research_idx": 1001}`
+- **data**: `{"research_idx": 1001, "research_lv": 1}`
 - **처리**: 비용 차감 → Redis 큐에 완료 시각 등록 → Redis 상태 업데이트
 
 ---
@@ -220,7 +220,7 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 4002 - 유닛 훈련
 
-- **data**: `{"unit_idx": 401, "count": 10}`
+- **data**: `{"unit_idx": 401, "quantity": 10}`
 - **처리**: 비용 차감 → Redis Task Queue에 완료 시각 등록
 - TaskWorker가 완료 시각 도달 시 자동으로 `unit_finish()` 처리 + WebSocket 알림
 
@@ -228,7 +228,8 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 4003 - 유닛 업그레이드
 
-- **data**: `{"unit_idx": 401}`
+- **data**: `{"unit_idx": 401, "target_unit_idx": 402, "quantity": 1}`
+- **처리**: 비용 차감 → Redis Task Queue에 완료 시각 등록 → 원본 유닛 upgrading 수량 차감
 
 ---
 
@@ -290,7 +291,7 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 6013 - 상점 구매
 
-- **data**: `{"item_idx": 1001}`
+- **data**: `{"slot": 0}`
 - **처리**: 자원 차감 → 인벤토리에 아이템 추가
 
 ---
@@ -306,14 +307,14 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 7002 - 연맹 생성
 
-- **data**: `{"alliance_name": "연맹명"}`
+- **data**: `{"name": "연맹명"}`
 - **처리**: 이름 중복 확인 → Redis에 연맹 데이터 생성 → 생성자를 리더로 등록
 
 ---
 
 ### 7003 - 연맹 가입 신청
 
-- **data**: `{"alliance_id": 1}`
+- **data**: `{"alliance_no": 1}`
 - **처리**: join_type에 따라 즉시 가입 or 신청 대기
 
 ---
@@ -346,7 +347,9 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 7008 - 멤버 직위 변경
 
-- **data**: `{"target_user_no": 2, "new_role": "officer"}`
+- **data**: `{"target_user_no": 2, "new_position": 3}`
+- **직위 코드**: `1` = 맹주, `2` = 부맹주, `3` = 임원, `4` = 일반
+- **참고**: 맹주(1) 위임 시 요청자가 일반(4)으로 강등됨
 
 ---
 
@@ -365,13 +368,14 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ### 7011 - 연맹 경험치 기부
 
-- **data**: `{"amount": 100}`
+- **data**: `{"resource_type": "gold", "amount": 100}`
+- **처리**: 자원 차감 → 연맹 경험치/코인 적립 (alliance_donate config 기반 비율 적용)
 
 ---
 
 ### 7012 - 연맹 가입 방식 변경 (리더 전용)
 
-- **data**: `{"join_type": 0}` (0: 자유 가입, 1: 신청 필요)
+- **data**: `{"join_type": "free"}` (`"free"`: 자유 가입, `"approval"`: 신청 필요)
 
 ---
 

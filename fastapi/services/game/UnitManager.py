@@ -845,9 +845,11 @@ class UnitManager():
             unit_data = units_data.get(str(sub_id))
             #task_type = 0
             
-            if not unit_data: 
+            if not unit_data:
+                self.logger.warning(f"Unit data not found for user {user_no} sub_id={sub_id} - removing stale task from queue")
+                await unit_redis.remove_from_queue(user_no, int(task_id), int(sub_id))
                 return None
-    
+
             # 3. 비즈니스 로직 처리 (수치 변경)
             updated_units = []
             if task_type == self.TASK_TRAIN:
@@ -858,19 +860,22 @@ class UnitManager():
                     res = await self._handle_unit_upgrade(unit_data, target_unit_data, quantity)
                     updated_units.extend(res)
 
-            
+
             # 4. Redis 캐시 업데이트 및 Task 삭제
             if updated_units:
                 for u in updated_units:
                     u['cached_at'] = datetime.utcnow().isoformat()
                     # update_cached_unit 내부에서 sync_pending:unit 플래그를 sadd 함
                     await self._update_cached_unit(user_no, u['unit_idx'], u)
-                
-                # ✅ 모든 유닛 업데이트가 성공한 후 Task 큐에서 최종 삭제
+
+                # 모든 유닛 업데이트가 성공한 후 Task 큐에서 최종 삭제
                 await unit_redis.remove_from_queue(user_no, int(task_id), int(sub_id))
                 self.logger.info(f"Unit task {task_id} finished and state synced for user {user_no}")
                 return updated_units
-                
+
+            # task_type이 유효하지 않거나 처리 불가 (metadata 만료 등) → 큐에서 제거
+            self.logger.warning(f"No updates for task_type={task_type} user={user_no} sub_id={sub_id} - removing unprocessable task")
+            await unit_redis.remove_from_queue(user_no, int(task_id), int(sub_id))
             return None
         except Exception as e:
             self.logger.error(f"Error in finish_unit_internal: {e}")

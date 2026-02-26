@@ -1,0 +1,16 @@
+research_idx,level,required_exp,buff_idx,buff_value,english_name,korean_name
+8001,1,1000,,0,attack_boost,공격력 강화
+8001,2,2500,,0,attack_boost,공격력 강화
+8001,3,5000,,0,attack_boost,공격력 강화
+8001,4,10000,,0,attack_boost,공격력 강화
+8001,5,20000,,0,attack_boost,공격력 강화
+8002,1,1000,,0,defense_boost,방어력 강화
+8002,2,2500,,0,defense_boost,방어력 강화
+8002,3,5000,,0,defense_boost,방어력 강화
+8002,4,10000,,0,defense_boost,방어력 강화
+8002,5,20000,,0,defense_boost,방어력 강화
+8003,1,1000,,0,resource_boost,자원 생산 강화
+8003,2,2500,,0,resource_boost,자원 생산 강화
+8003,3,5000,,0,resource_boost,자원 생산 강화
+8003,4,10000,,0,resource_boost,자원 생산 강화
+8003,5,20000,,0,resource_boost,자원 생산 강화

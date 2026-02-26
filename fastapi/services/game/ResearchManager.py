@@ -710,22 +710,24 @@ class ResearchManager:
                 }
             
             # 자원 환불
-            config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE][research_idx]
-            costs = config['cost']
+            target_lv = research.get('research_lv', 0) + 1
+            lv_config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx, {}).get(target_lv, {})
+            costs = lv_config.get('cost', {})
             
             refund_resources = {}
             for resource, cost in costs.items():
                 refund_resources[resource] = int(cost * refund_percent / 100)
             
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
-            await resource_manager.add_resources(user_no, refund_resources)
+            for resource_type, amount in refund_resources.items():
+                await resource_manager.add_resource(user_no, resource_type, amount)
             
             # 연구 상태 업데이트
             research_db = self.db_manager.get_research_manager()
             research_db.update_research_status(
                 user_no,
                 research_idx,
-                self.STATUS_AVAILABLE
+                status=self.STATUS_AVAILABLE
             )
             
             self.db_manager.commit()

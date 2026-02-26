@@ -23,7 +23,7 @@ class AllianceDBManager:
         """연맹 기본 정보 upsert"""
         try:
             alliance = self.db_session.query(Alliance).filter(
-                Alliance.alliance_id == alliance_id
+                Alliance.alliance_no == alliance_id
             ).first()
             
             if alliance:
@@ -37,7 +37,7 @@ class AllianceDBManager:
                 alliance.updated_at = datetime.utcnow()
             else:
                 alliance = Alliance(
-                    alliance_id=alliance_id,
+                    alliance_no=alliance_id,
                     name=info.get('name', ''),
                     level=info.get('level', 1),
                     exp=info.get('exp', 0),
@@ -59,7 +59,7 @@ class AllianceDBManager:
         """연맹 삭제"""
         try:
             self.db_session.query(Alliance).filter(
-                Alliance.alliance_id == alliance_id
+                Alliance.alliance_no == alliance_id
             ).delete()
         except Exception as e:
             self.logger.error(f"Error deleting alliance {alliance_id}: {e}")
@@ -70,7 +70,7 @@ class AllianceDBManager:
         """멤버 upsert"""
         try:
             member = self.db_session.query(AllianceMember).filter(
-                AllianceMember.alliance_id == alliance_id,
+                AllianceMember.alliance_no == alliance_id,
                 AllianceMember.user_no == user_no
             ).first()
             
@@ -80,7 +80,7 @@ class AllianceDBManager:
                 member.donated_coin = member_data.get('donated_coin', member.donated_coin)
             else:
                 member = AllianceMember(
-                    alliance_id=alliance_id,
+                    alliance_no=alliance_id,
                     user_no=user_no,
                     position=member_data.get('position', 4),
                     donated_exp=member_data.get('donated_exp', 0),
@@ -98,7 +98,7 @@ class AllianceDBManager:
         """연맹의 모든 멤버 삭제"""
         try:
             self.db_session.query(AllianceMember).filter(
-                AllianceMember.alliance_id == alliance_id
+                AllianceMember.alliance_no == alliance_id
             ).delete()
         except Exception as e:
             self.logger.error(f"Error deleting all members for alliance {alliance_id}: {e}")
@@ -109,13 +109,13 @@ class AllianceDBManager:
         """가입 신청 upsert"""
         try:
             application = self.db_session.query(AllianceApplication).filter(
-                AllianceApplication.alliance_id == alliance_id,
+                AllianceApplication.alliance_no == alliance_id,
                 AllianceApplication.user_no == user_no
             ).first()
             
             if not application:
                 application = AllianceApplication(
-                    alliance_id=alliance_id,
+                    alliance_no=alliance_id,
                     user_no=user_no,
                     applied_at=self._parse_datetime(app_data.get('applied_at')) or datetime.utcnow()
                 )
@@ -130,7 +130,7 @@ class AllianceDBManager:
         """연맹의 모든 가입 신청 삭제"""
         try:
             self.db_session.query(AllianceApplication).filter(
-                AllianceApplication.alliance_id == alliance_id
+                AllianceApplication.alliance_no == alliance_id
             ).delete()
         except Exception as e:
             self.logger.error(f"Error deleting all applications for alliance {alliance_id}: {e}")
@@ -141,7 +141,7 @@ class AllianceDBManager:
         """연구 upsert"""
         try:
             research = self.db_session.query(AllianceResearch).filter(
-                AllianceResearch.alliance_id == alliance_id,
+                AllianceResearch.alliance_no == alliance_id,
                 AllianceResearch.research_idx == research_idx
             ).first()
             
@@ -154,7 +154,7 @@ class AllianceDBManager:
                 research.completed_at = self._parse_datetime(research_data.get('completed_at'))
             else:
                 research = AllianceResearch(
-                    alliance_id=alliance_id,
+                    alliance_no=alliance_id,
                     research_idx=research_idx,
                     level=research_data.get('level', 0),
                     current_exp=research_data.get('current_exp', 0),
@@ -174,7 +174,7 @@ class AllianceDBManager:
         """연맹의 모든 연구 삭제"""
         try:
             self.db_session.query(AllianceResearch).filter(
-                AllianceResearch.alliance_id == alliance_id
+                AllianceResearch.alliance_no == alliance_id
             ).delete()
         except Exception as e:
             self.logger.error(f"Error deleting all research for alliance {alliance_id}: {e}")

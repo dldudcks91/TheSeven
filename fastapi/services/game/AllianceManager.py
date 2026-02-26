@@ -703,7 +703,8 @@ class AllianceManager:
             
             resource_type = self._data.get('resource_type')
             amount = self._data.get('amount', 0)
-            
+            requested_research_idx = self._data.get('research_idx')
+
             if not resource_type or amount <= 0:
                 return {"success": False, "message": "자원 종류와 수량을 확인해주세요"}
             
@@ -722,11 +723,12 @@ class AllianceManager:
                 return {"success": False, "message": "연맹에 가입되어 있지 않습니다"}
             
             alliance_no = nation.get('alliance_no')
-            
-            from services.resource.ResourceManager import ResourceManager
+            my_position = nation.get('alliance_position', 4)
+
+            from services.game.ResourceManager import ResourceManager
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
             resource_manager.user_no = user_no
-            consume_result = await resource_manager.atomic_consume(user_no, resource_type, amount, f"alliance_donate:{alliance_no}")
+            consume_result = await resource_manager.consume_resources(user_no, {resource_type: amount})
             if not consume_result.get('success'):
                 return {"success": False, "message": "자원이 부족합니다"}
             
@@ -750,6 +752,15 @@ class AllianceManager:
                 await alliance_redis.set_alliance_info(alliance_no, alliance_info)
                 
                 research_leveled_up = False
+                # 특정 연구 지정 + 간부 이상인 경우 해당 연구 자동 활성화
+                if requested_research_idx and my_position <= self.POSITION_OFFICER:
+                    _rc = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE_RESEARCH, {})
+                    if requested_research_idx in _rc:
+                        _rd = await alliance_redis.get_research(alliance_no, requested_research_idx)
+                        _rl = _rd.get('level', 0) if _rd else 0
+                        _rm = max(_rc[requested_research_idx].keys()) if _rc[requested_research_idx] else 0
+                        if _rl < _rm:
+                            await alliance_redis.set_active_research(alliance_no, requested_research_idx, user_no)
                 active_research = await alliance_redis.get_active_research(alliance_no)
                 if active_research:
                     research_idx = active_research.get('research_idx')
@@ -895,7 +906,7 @@ class AllianceManager:
             if not self._data:
                 return {"success": False, "message": "Missing data"}
             
-            content = self._data.get('content', '').strip()
+            content = self._data.get('notice', '').strip()
             if not content:
                 return {"success": False, "message": "공지 내용을 입력해주세요"}
             

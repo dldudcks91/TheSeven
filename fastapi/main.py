@@ -45,7 +45,7 @@ async def startup_event():
     global redis_client, redis_pool, redis_manager, websocket_manager, worker_manager, db_manager
     
     try:
-        print("🚀 Starting Game Server...")
+        print("[START] Starting Game Server...")
         
         # 1. Redis 커넥션 풀 초기화
         redis_pool = ConnectionPool(
@@ -71,11 +71,11 @@ async def startup_event():
         
         # Redis 연결 테스트
         await redis_client.ping()
-        print(f"✅ Redis connection pool established (max_connections: {redis_pool.max_connections})")
+        print(f"[OK] Redis connection pool established (max_connections: {redis_pool.max_connections})")
         
         # RedisManager 초기화
         redis_manager = RedisManager(redis_client)
-        print("✅ Redis managers initialized")
+        print("[OK] Redis managers initialized")
         
         
         
@@ -92,21 +92,21 @@ async def startup_event():
         # WebSocket 관리자 초기화
         websocket_manager = WebsocketManager() 
         app.state.websocket_manager = websocket_manager
-        print("✅ Websocket managers initialized")
+        print("[OK] Websocket managers initialized")
 
         # 워커 관리자 초기화 및 시작
         worker_manager = BackgroundWorkerManager()
         await worker_manager.initialize(redis_manager, websocket_manager)
         await worker_manager.start_all_workers()
-        print("✅ BackGround Worker managers initialized")
+        print("[OK] BackGround Worker managers initialized")
         
         
         
         # 2. 게임 데이터를 메모리에 로드 (한번만!)
         GameDataManager.initialize()
-        print("✅ Game data loaded")
+        print("[OK] Game data loaded")
         
-        print("✅ Game Server is ready!")
+        print("[OK] Game Server is ready!")
         
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -146,13 +146,13 @@ async def shutdown_event():
     global redis_client, redis_pool, worker_manager
     
     try:
-        print("🛑 Shutting down Game Server...")
+        print("[STOP] Shutting down Game Server...")
         
         # BackGround Worker 정리
         if worker_manager:
             try:
                 await worker_manager.stop_all_workers()
-                print("✅ BackGround Worker closed")
+                print("[OK] BackGround Worker closed")
             except Exception as e:
                 logger.error(f"Error stopping background workers: {e}")
         
@@ -160,18 +160,18 @@ async def shutdown_event():
         if redis_client:
             try:
                 await redis_client.aclose()
-                print("✅ Redis client closed")
+                print("[OK] Redis client closed")
             except Exception as e:
                 logger.error(f"Error closing Redis client: {e}")
         
         if redis_pool:
             try:
                 await redis_pool.aclose()
-                print("✅ Redis connection pool closed")
+                print("[OK] Redis connection pool closed")
             except Exception as e:
                 logger.error(f"Error closing Redis pool: {e}")
         
-        print("✅ Game Server shutdown complete")
+        print("[OK] Game Server shutdown complete")
         
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
@@ -274,7 +274,7 @@ async def health_check():
             redis_status = "not_initialized"
         
         # 게임 데이터 로드 상태 확인
-        game_data_status = "ok" if GameDataManager.is_initialized() else "not_loaded"
+        game_data_status = "ok" if GameDataManager._loaded else "not_loaded"
         
         return {
             "status": "ok",

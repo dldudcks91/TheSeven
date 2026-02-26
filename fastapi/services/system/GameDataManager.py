@@ -10,6 +10,10 @@ class GameDataManager:
         'mission':{},
         'mission_index':{},  # 🔥 미션 인덱스 추가
         'shop':{},
+        'alliance_level':{},
+        'alliance_position':{},
+        'alliance_research':{},
+        'alliance_donate':{},
         }
     _loaded = False
     
@@ -24,11 +28,15 @@ class GameDataManager:
         cls._load_research_data()
         cls._load_unit_data()
         cls._load_buff_data()
-        
+
         cls._load_item_data()
         cls._load_mission_data()
         cls._build_mission_index()  # 🔥 미션 인덱스 자동 생성
         cls._load_shop_data()
+        cls._load_alliance_level_data()
+        cls._load_alliance_position_data()
+        cls._load_alliance_research_data()
+        cls._load_alliance_donate_data()
         cls._loaded = True
         print("Game data loaded successfully!")
     
@@ -252,7 +260,7 @@ class GameDataManager:
             target_idx = mission.get('target_idx')
             
             if not category or target_idx is None:
-                print(f"⚠️  Warning: Mission {mission_idx} has no category or target_idx")
+                print(f"[WARN] Mission {mission_idx} has no category or target_idx")
                 continue
             
             # 카테고리가 없으면 추가
@@ -273,7 +281,7 @@ class GameDataManager:
             mission_count += 1
         
         # 통계 출력
-        print(f"✅ Mission index built successfully!")
+        print(f"[OK] Mission index built successfully!")
         print(f"   Total missions indexed: {mission_count}")
         for category, targets in mission_index.items():
             if targets:
@@ -300,6 +308,72 @@ class GameDataManager:
                         
         return requires
     
+    @classmethod
+    def _load_alliance_level_data(cls):
+        df = pd.read_csv('./meta_data/alliance_level.csv', encoding='utf-8').fillna("")
+        level_configs = cls.REQUIRE_CONFIGS['alliance_level']
+
+        for _, row in df.iterrows():
+            level = int(row['level'])
+            buff_idx = int(row['buff_idx']) if str(row['buff_idx']).strip() else None
+            level_configs[level] = {
+                'required_exp': int(row['required_exp']),
+                'max_members': int(row['max_members']),
+                'buff_idx': buff_idx,
+                'buff_value': float(row['buff_value']) if str(row['buff_value']).strip() else 0,
+            }
+
+    @classmethod
+    def _load_alliance_position_data(cls):
+        df = pd.read_csv('./meta_data/alliance_position.csv', encoding='utf-8').fillna("")
+        position_configs = cls.REQUIRE_CONFIGS['alliance_position']
+
+        for _, row in df.iterrows():
+            position = int(row['position'])
+            position_configs[position] = {
+                'name': row['name'],
+                'can_kick': bool(int(row['can_kick'])),
+                'can_promote': bool(int(row['can_promote'])),
+                'can_invite': bool(int(row['can_invite'])),
+                'can_set_join_type': bool(int(row['can_set_join_type'])),
+                'can_disband': bool(int(row['can_disband'])),
+                'can_notice': bool(int(row['can_notice'])),
+            }
+
+    @classmethod
+    def _load_alliance_research_data(cls):
+        df = pd.read_csv('./meta_data/alliance_research.csv', encoding='utf-8').fillna("")
+        research_configs = cls.REQUIRE_CONFIGS['alliance_research']
+
+        for _, row in df.iterrows():
+            research_idx = int(row['research_idx'])
+            level = int(row['level'])
+            if research_idx not in research_configs:
+                research_configs[research_idx] = {}
+            buff_idx = int(row['buff_idx']) if str(row['buff_idx']).strip() else None
+            research_configs[research_idx][level] = {
+                'required_exp': int(row['required_exp']),
+                'buff_idx': buff_idx,
+                'buff_value': float(row['buff_value']) if str(row['buff_value']).strip() else 0,
+                'english_name': row['english_name'],
+                'korean_name': row['korean_name'],
+            }
+
+    @classmethod
+    def _load_alliance_donate_data(cls):
+        df = pd.read_csv('./meta_data/alliance_donate.csv', encoding='utf-8').fillna("")
+        donate_configs = cls.REQUIRE_CONFIGS['alliance_donate']
+
+        for _, row in df.iterrows():
+            resource_type = row['resource_type']
+            donate_configs[resource_type] = {
+                'exp_ratio': int(row['exp_ratio']),
+                'coin_ratio': int(row['coin_ratio']),
+            }
+            coin_item_idx_val = int(row['coin_item_idx']) if str(row['coin_item_idx']).strip() else 0
+            if coin_item_idx_val and 'coin_item_idx' not in donate_configs:
+                donate_configs['coin_item_idx'] = coin_item_idx_val
+
     @classmethod
     def get_upgrade_requirements(cls, building_idx, current_level):
         """메모리에서 즉시 조회 (I/O 없음!)"""

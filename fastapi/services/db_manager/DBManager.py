@@ -91,7 +91,7 @@ class DBManager:
             self._user_init_manager = UserInitDBManager(self.db_session)
         return self._user_init_manager
 
-    def get_aliiance_manager(self) -> AllianceDBManager:
+    def get_alliance_db_manager(self) -> AllianceDBManager:
         """연맹 DB 관리자 반환 (싱글톤 패턴)"""
         if self._alliance_manager is None:
             self._alliance_manager = AllianceDBManager(self.db_session)

@@ -1,0 +1,6 @@
+resource_type,exp_ratio,coin_ratio,coin_item_idx
+food,100,500,0
+wood,100,500,0
+stone,100,500,0
+gold,50,250,0
+ruby,10,50,0

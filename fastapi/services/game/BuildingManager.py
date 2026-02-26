@@ -782,7 +782,7 @@ class BuildingManager:
             
             if status == 1:
                 # 건설 중이면 Redis에서 삭제
-                await building_redis.delete_cached_building(user_no, building_idx)
+                await building_redis.remove_cached_building(user_no, building_idx)
                 action = "deleted"
             else:
                 # 업그레이드 중이면 상태만 복구
