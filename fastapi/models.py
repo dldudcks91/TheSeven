@@ -103,8 +103,6 @@ class IDCounter(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     counter_type: Mapped[str] = mapped_column(String(50, 'utf8mb4_unicode_ci'), nullable=False)
     current_value: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'0'"))
-    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'))
-    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'))
 
 
 class Item(Base):

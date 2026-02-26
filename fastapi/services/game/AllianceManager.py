@@ -323,7 +323,9 @@ class AllianceManager:
             
             nation_manager = self._get_nation_manager()
             nation = await nation_manager.get_nation(user_no)
-            if nation and nation.get('alliance_no'):
+            if not nation:
+                return {"success": False, "message": "존재하지 않는 유저입니다"}
+            if nation.get('alliance_no'):
                 return {"success": False, "message": "이미 연맹에 가입되어 있습니다"}
             
             alliance_redis = self._get_alliance_redis()
@@ -668,7 +670,9 @@ class AllianceManager:
                         return {"success": False, "message": "연맹 인원이 가득 찼습니다"}
                     
                     target_nation = await nation_manager.get_nation(target_user_no)
-                    if target_nation and target_nation.get('alliance_no'):
+                    if not target_nation:
+                        return {"success": False, "message": "존재하지 않는 유저입니다"}
+                    if target_nation.get('alliance_no'):
                         return {"success": False, "message": "해당 유저가 이미 다른 연맹에 가입되어 있습니다"}
                     
                     now = datetime.utcnow().isoformat()
@@ -703,27 +707,44 @@ class AllianceManager:
             
             resource_type = self._data.get('resource_type')
             amount = self._data.get('amount', 0)
-            requested_research_idx = self._data.get('research_idx')
+            research_idx = self._data.get('research_idx')
 
             if not resource_type or amount <= 0:
                 return {"success": False, "message": "자원 종류와 수량을 확인해주세요"}
-            
+
+            if not research_idx:
+                return {"success": False, "message": "research_idx가 필요합니다"}
+
+            research_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE_RESEARCH, {})
+            if research_idx not in research_configs:
+                return {"success": False, "message": "존재하지 않는 연구입니다"}
+
+            level_configs = research_configs[research_idx]
+            max_level = max(level_configs.keys()) if level_configs else 0
+
             donate_config = self._get_donate_config()
             resource_config = donate_config.get(resource_type)
             if not resource_config:
                 return {"success": False, "message": "기부할 수 없는 자원입니다"}
-            
+
             exp_ratio = resource_config.get('exp_ratio', 100)
             coin_ratio = resource_config.get('coin_ratio', 100)
             coin_item_idx = donate_config.get('coin_item_idx')
-            
+
             nation_manager = self._get_nation_manager()
             nation = await nation_manager.get_nation(user_no)
             if not nation or not nation.get('alliance_no'):
                 return {"success": False, "message": "연맹에 가입되어 있지 않습니다"}
-            
+
             alliance_no = nation.get('alliance_no')
             my_position = nation.get('alliance_position', 4)
+
+            alliance_redis = self._get_alliance_redis()
+
+            # 만렙 체크 (자원 소모 전 조기 반환)
+            pre_data = await alliance_redis.get_research(alliance_no, research_idx)
+            if (pre_data or {}).get('level', 0) >= max_level:
+                return {"success": False, "message": "최대 레벨에 도달한 연구입니다"}
 
             from services.game.ResourceManager import ResourceManager
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
@@ -731,12 +752,10 @@ class AllianceManager:
             consume_result = await resource_manager.consume_resources(user_no, {resource_type: amount})
             if not consume_result.get('success'):
                 return {"success": False, "message": "자원이 부족합니다"}
-            
+
             exp_gained = amount // exp_ratio
             coin_gained = amount // coin_ratio
-            
-            alliance_redis = self._get_alliance_redis()
-            
+
             if not await alliance_redis.acquire_lock(alliance_no):
                 await resource_manager.add_resource(user_no, resource_type, amount)
                 return {"success": False, "message": "잠시 후 다시 시도해주세요"}
@@ -751,30 +770,11 @@ class AllianceManager:
                 alliance_info['level'] = new_level
                 await alliance_redis.set_alliance_info(alliance_no, alliance_info)
                 
-                research_leveled_up = False
-                # 특정 연구 지정 + 간부 이상인 경우 해당 연구 자동 활성화
-                if requested_research_idx and my_position <= self.POSITION_OFFICER:
-                    _rc = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE_RESEARCH, {})
-                    if requested_research_idx in _rc:
-                        _rd = await alliance_redis.get_research(alliance_no, requested_research_idx)
-                        _rl = _rd.get('level', 0) if _rd else 0
-                        _rm = max(_rc[requested_research_idx].keys()) if _rc[requested_research_idx] else 0
-                        if _rl < _rm:
-                            await alliance_redis.set_active_research(alliance_no, requested_research_idx, user_no)
-                active_research = await alliance_redis.get_active_research(alliance_no)
-                if active_research:
-                    research_idx = active_research.get('research_idx')
-                    research_data = await alliance_redis.get_research(alliance_no, research_idx)
-                    if not research_data:
-                        research_data = {"level": 0, "current_exp": 0, "is_active": 1}
-                    research_data['current_exp'] = research_data.get('current_exp', 0) + exp_gained
-                    result = await self._check_research_level_up(alliance_no, research_idx, research_data['current_exp'], research_data.get('level', 0))
-                    if result['new_level'] > research_data.get('level', 0):
-                        research_leveled_up = True
-                        research_data['completed_at'] = datetime.utcnow().isoformat()
-                    research_data['level'] = result['new_level']
-                    research_data['current_exp'] = result['remaining_exp']
-                    await alliance_redis.set_research(alliance_no, research_idx, research_data)
+                # 지정 연구에 경험치 적립 (자동 레벨업 없음 — 연맹장이 연구 시작 버튼으로 직접 실행)
+                research_data = await alliance_redis.get_research(alliance_no, research_idx)
+                research_data = research_data or {}
+                research_data['current_exp'] = research_data.get('current_exp', 0) + exp_gained
+                await alliance_redis.set_research(alliance_no, research_idx, research_data)
                 
                 member_data = await alliance_redis.get_member(alliance_no, user_no)
                 member_data['donated_exp'] = member_data.get('donated_exp', 0) + exp_gained
@@ -791,6 +791,7 @@ class AllianceManager:
                 return {
                     "success": True,
                     "data": {
+                        "research_idx": research_idx,
                         "resource_type": resource_type,
                         "donated_amount": amount,
                         "exp_gained": exp_gained,
@@ -798,7 +799,6 @@ class AllianceManager:
                         "alliance_exp": new_exp,
                         "alliance_level": new_level,
                         "leveled_up": new_level > current_level,
-                        "research_leveled_up": research_leveled_up
                     }
                 }
             finally:
@@ -1006,14 +1006,47 @@ class AllianceManager:
             alliance_redis = self._get_alliance_redis()
             research_data = await alliance_redis.get_research(alliance_no, research_idx)
             current_level = research_data.get('level', 0) if research_data else 0
+            current_exp = research_data.get('current_exp', 0) if research_data else 0
             max_level = max(research_configs[research_idx].keys()) if research_configs[research_idx] else 0
-            
+
             if current_level >= max_level:
                 return {"success": False, "message": "이미 최대 레벨에 도달한 연구입니다"}
-            
-            await alliance_redis.set_active_research(alliance_no, research_idx, user_no)
-            await alliance_redis.mark_dirty(alliance_no)
-            return {"success": True, "data": {"research_idx": research_idx, "activated_by": user_no}}
+
+            next_config = self._get_research_config(research_idx, current_level + 1)
+            required_exp = next_config.get('required_exp', 0) if next_config else 0
+
+            if current_exp >= required_exp:
+                # 경험치 충족 → 연구 레벨업 실행
+                result = await self._check_research_level_up(alliance_no, research_idx, current_exp, current_level)
+                research_data = research_data or {}
+                research_data['level'] = result['new_level']
+                research_data['current_exp'] = result['remaining_exp']
+                research_data['completed_at'] = datetime.utcnow().isoformat()
+                await alliance_redis.set_research(alliance_no, research_idx, research_data)
+                await alliance_redis.mark_dirty(alliance_no)
+                return {
+                    "success": True,
+                    "data": {
+                        "research_idx": research_idx,
+                        "level": result['new_level'],
+                        "activated_by": user_no,
+                        "leveled_up": True
+                    }
+                }
+            else:
+                # 경험치 미충족 → 활성 연구로만 지정
+                await alliance_redis.set_active_research(alliance_no, research_idx, user_no)
+                await alliance_redis.mark_dirty(alliance_no)
+                return {
+                    "success": True,
+                    "data": {
+                        "research_idx": research_idx,
+                        "activated_by": user_no,
+                        "leveled_up": False,
+                        "current_exp": current_exp,
+                        "required_exp": required_exp
+                    }
+                }
         except Exception as e:
             self.logger.error(f"Error in alliance_research_select: {e}")
             return {"success": False, "message": str(e)}

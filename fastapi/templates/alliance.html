@@ -8,15 +8,38 @@
         body { font-family: Arial, sans-serif; font-size: 12px; padding: 8px; background: white; margin: 0; }
 
         /* ===== 격자 레이아웃 ===== */
-        .panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .col-stack  { display: flex; flex-direction: column; gap: 8px; }
+        .panel-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
 
-        /* ===== 섹션 패널 ===== */
-        .game-section { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: #fff; }
-        .game-section h3 { margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #eee; font-size: 13px; }
+        /* ===== 섹션 패널 (고정 크기) ===== */
+        .game-section {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px;
+            background: #fff;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .game-section h3 {
+            margin: 0 0 6px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
 
-        /* ===== 스크롤 ===== */
-        .scrollable { max-height: 210px; overflow-y: auto; }
+        /* 카드 높이 고정 */
+        .card-h1 { height: 220px; }   /* 연맹 정보, 공지사항 */
+        .card-h2 { height: 275px; }   /* 연맹 연구, 멤버목록 */
+        .card-h3 { height: 220px; }   /* 연맹 검색, 연맹관리 */
+
+        /* ===== 스크롤 영역 (flex 자식으로 남은 공간 차지) ===== */
+        .scrollable { flex: 1; overflow-y: auto; min-height: 0; }
 
         /* ===== 버튼 ===== */
         .btn { padding: 3px 8px; background: #fff; color: #333; border: 1px solid #ddd; cursor: pointer; font-size: 11px; border-radius: 2px; }
@@ -40,26 +63,29 @@
         .ally-table th { background: #f5f5f5; font-weight: bold; }
 
         /* ===== 정보 카드 ===== */
-        .info-row   { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; }
+        .info-row   { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; flex-shrink: 0; }
         .info-label { color: #888; }
         .info-value { font-weight: bold; }
-        .action-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+        .action-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; flex-shrink: 0; }
 
         /* ===== 공지 ===== */
-        .notice-box   { background: #fffde7; border: 1px solid #ffe082; border-radius: 4px; padding: 8px; font-size: 11px; }
+        .notice-box   { background: #fffde7; border: 1px solid #ffe082; border-radius: 4px; padding: 8px; font-size: 11px; flex-shrink: 0; }
         .notice-date  { color: #999; font-size: 10px; margin-top: 3px; }
-        .notice-input { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; resize: vertical; box-sizing: border-box; }
+        .notice-input { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; resize: none; box-sizing: border-box; }
 
         /* ===== 연구 카드 ===== */
-        .research-card { border: 1px solid #ddd; border-radius: 4px; padding: 7px; margin-bottom: 6px; background: #fff; }
-        .research-card.active-research { border-color: #4caf50; background: #f1f8e9; }
+        .research-card { border: 1px solid #ddd; border-radius: 4px; padding: 7px; margin-bottom: 6px; background: #fff; flex-shrink: 0; }
+        .research-card.recommended-research { border-color: #ff9800; background: #fff3e0; }
+        .research-card.ready-research  { border-color: #2196f3; background: #e3f2fd; }
         .rc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .rc-name   { font-weight: bold; font-size: 11px; }
         .rc-level  { color: #666; font-size: 10px; }
         .progress-bar  { background: #eee; border-radius: 3px; height: 13px; overflow: hidden; position: relative; margin-bottom: 5px; }
         .progress-fill { background: #4caf50; height: 100%; }
+        .progress-fill.progress-full { background: #2196f3; }
         .progress-text { position: absolute; top: 0; left: 0; right: 0; text-align: center; font-size: 9px; line-height: 13px; color: #333; }
-        .active-badge  { display: inline-block; background: #4caf50; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; margin-left: 3px; }
+        .recommend-badge { display: inline-block; background: #ff9800; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; margin-left: 3px; }
+        .ready-badge   { display: inline-block; background: #2196f3; color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; margin-left: 3px; }
         .app-badge     { display: inline-block; background: #ff5722; color: #fff; font-size: 9px; padding: 0 4px; border-radius: 8px; margin-left: 3px; }
 
         /* ===== 연구별 기부 인라인 ===== */
@@ -69,17 +95,25 @@
         .rc-actions { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
 
         /* ===== 검색 ===== */
-        .search-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .search-row { display: flex; gap: 6px; margin-bottom: 6px; flex-shrink: 0; }
         .search-row input { flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; }
 
         /* ===== 생성 폼 ===== */
-        .form-group { margin-bottom: 6px; }
+        .form-group { margin-bottom: 6px; flex-shrink: 0; }
         .form-group label  { display: block; font-size: 11px; color: #666; margin-bottom: 2px; }
         .form-group input, .form-group select { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; box-sizing: border-box; }
 
         /* ===== 미가입 헤더 ===== */
         .no-ally-header { text-align: center; padding: 10px 8px 8px; margin-bottom: 8px; background: #f5f5f5; border-radius: 4px; }
         .no-ally-header p { margin: 0; color: #666; font-size: 12px; }
+
+        /* ===== 권한 없음 ===== */
+        .no-permission { display: flex; align-items: center; justify-content: center; flex: 1; color: #bbb; font-size: 12px; }
+
+        /* ===== 연맹관리 ===== */
+        .manage-inner { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+        .manage-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; flex-shrink: 0; }
+        .manage-label   { font-size: 11px; color: #666; margin-bottom: 4px; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -90,7 +124,7 @@
         <div class="panel-grid">
 
             <!-- 연맹 생성 -->
-            <div class="game-section">
+            <div class="game-section card-h1">
                 <h3>연맹 생성</h3>
                 <div id="createFormFields" style="display:none;">
                     <div class="form-group">
@@ -113,7 +147,7 @@
             </div>
 
             <!-- 연맹 검색 (미가입) -->
-            <div class="game-section">
+            <div class="game-section card-h1">
                 <h3>연맹 검색</h3>
                 <div class="search-row">
                     <input type="text" id="searchKeywordNoAlliance" placeholder="이름 검색">
@@ -126,70 +160,85 @@
                     </table>
                 </div>
             </div>
+
         </div>
     </div>
 
     <!-- ====== 가입 상태 ====== -->
     <div id="allianceView" style="display:none;">
-
-        <!-- 멤버 목록 (전체 너비) -->
-        <div class="game-section" style="margin-bottom:8px;">
-            <h3>멤버 목록</h3>
-            <div class="scrollable">
-                <table class="ally-table">
-                    <thead><tr><th>유저</th><th>직책</th><th>EXP기부</th><th>코인기부</th><th>관리</th></tr></thead>
-                    <tbody id="memberTableBody"><tr><td colspan="5" class="empty-msg">로딩 중...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- 2열 격자 -->
         <div class="panel-grid">
 
-            <!-- 왼쪽: 연맹 정보 + 연맹 연구(기부 포함) -->
-            <div class="col-stack">
-
-                <div class="game-section">
-                    <h3>연맹 정보</h3>
-                    <div class="info-row"><span class="info-label">연맹명</span><span class="info-value" id="infoName">-</span></div>
-                    <div class="info-row"><span class="info-label">레벨</span><span class="info-value" id="infoLevel">-</span></div>
-                    <div class="info-row"><span class="info-label">경험치</span><span class="info-value" id="infoExp">-</span></div>
-                    <div class="info-row"><span class="info-label">인원</span><span class="info-value" id="infoMembers">-</span></div>
-                    <div class="info-row"><span class="info-label">맹주</span><span class="info-value" id="infoLeader">-</span></div>
-                    <div class="info-row"><span class="info-label">가입방식</span><span class="info-value" id="infoJoinType">-</span></div>
-                    <div class="info-row"><span class="info-label">내 직책</span><span class="info-value" id="infoMyPosition">-</span></div>
-                    <div class="action-row">
-                        <button class="btn btn-sm" id="btnSetJoinType" onclick="toggleJoinType()" style="display:none;">가입방식 변경</button>
-                        <button class="btn btn-sm btn-danger" id="btnLeave" onclick="leaveAlliance()">탈퇴</button>
-                        <button class="btn btn-sm btn-danger" id="btnDisband" onclick="disbandAlliance()" style="display:none;">해산</button>
-                    </div>
+            <!-- ① 연맹 정보 -->
+            <div class="game-section card-h1">
+                <h3>연맹 정보</h3>
+                <div class="info-row"><span class="info-label">연맹명</span><span class="info-value" id="infoName">-</span></div>
+                <div class="info-row"><span class="info-label">레벨</span><span class="info-value" id="infoLevel">-</span></div>
+                <div class="info-row"><span class="info-label">경험치</span><span class="info-value" id="infoExp">-</span></div>
+                <div class="info-row"><span class="info-label">인원</span><span class="info-value" id="infoMembers">-</span></div>
+                <div class="info-row"><span class="info-label">가입방식</span><span class="info-value" id="infoJoinType">-</span></div>
+                <div class="info-row"><span class="info-label">맹주</span><span class="info-value" id="infoLeader">-</span></div>
+                <div class="info-row"><span class="info-label">내 직책</span><span class="info-value" id="infoMyPosition">-</span></div>
+                <div class="action-row">
+                    <button class="btn btn-sm btn-danger" id="btnLeave" onclick="leaveAlliance()">탈퇴</button>
                 </div>
-
-                <div class="game-section">
-                    <h3>연맹 연구</h3>
-                    <div id="researchList" class="scrollable"><div class="empty-msg">로딩 중...</div></div>
-                </div>
-
             </div>
 
-            <!-- 오른쪽: 공지사항 + 가입 신청 + 연맹 검색 -->
-            <div class="col-stack">
-
-                <div class="game-section">
-                    <h3>공지사항</h3>
-                    <div id="noticeDisplay" class="notice-box" style="display:none;">
-                        <div id="noticeContent">-</div>
-                        <div class="notice-date" id="noticeDate">-</div>
-                    </div>
-                    <div id="noticeEmpty" class="empty-msg" style="padding:8px;">등록된 공지 없음</div>
-                    <div id="noticeWriteArea" style="display:none; margin-top:6px;">
-                        <textarea id="noticeInput" class="notice-input" rows="2" placeholder="공지 내용"></textarea>
-                        <button class="btn btn-primary btn-sm" onclick="writeNotice()" style="margin-top:4px;">공지 등록</button>
-                    </div>
+            <!-- ② 공지사항 -->
+            <div class="game-section card-h1">
+                <h3>공지사항</h3>
+                <div id="noticeDisplay" class="notice-box" style="display:none;">
+                    <div id="noticeContent">-</div>
+                    <div class="notice-date" id="noticeDate">-</div>
                 </div>
+                <div id="noticeEmpty" class="empty-msg" style="padding:4px; flex-shrink:0;">등록된 공지 없음</div>
+                <div id="noticeWriteArea" style="display:none; margin-top:6px; flex-shrink:0;">
+                    <textarea id="noticeInput" class="notice-input" rows="2" placeholder="공지 내용"></textarea>
+                    <button class="btn btn-primary btn-sm" onclick="writeNotice()" style="margin-top:4px;">공지 등록</button>
+                </div>
+            </div>
 
-                <div class="game-section" id="sectionApplications" style="display:none;">
-                    <h3>가입 신청 <span id="appBadge" class="app-badge" style="display:none;">0</span></h3>
+            <!-- ③ 연맹 연구 -->
+            <div class="game-section card-h2">
+                <h3>연맹 연구</h3>
+                <div id="researchList" class="scrollable"><div class="empty-msg">로딩 중...</div></div>
+            </div>
+
+            <!-- ④ 멤버목록 -->
+            <div class="game-section card-h2">
+                <h3>멤버목록</h3>
+                <div class="scrollable">
+                    <table class="ally-table">
+                        <thead><tr><th>유저</th><th>직책</th><th>EXP기부</th><th>코인기부</th><th>관리</th></tr></thead>
+                        <tbody id="memberTableBody"><tr><td colspan="5" class="empty-msg">로딩 중...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ⑤ 연맹 검색 -->
+            <div class="game-section card-h3">
+                <h3>연맹 검색</h3>
+                <div class="search-row">
+                    <input type="text" id="searchKeyword" placeholder="이름 검색">
+                    <button class="btn btn-sm" onclick="searchAlliance('main')">검색</button>
+                </div>
+                <div class="scrollable">
+                    <table class="ally-table">
+                        <thead><tr><th>이름</th><th>레벨</th><th>인원</th><th>가입</th></tr></thead>
+                        <tbody id="searchTableBody"><tr><td colspan="4" class="empty-msg">검색어 입력</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ⑥ 연맹관리 -->
+            <div class="game-section card-h3">
+                <h3>연맹관리</h3>
+                <!-- 권한 있음 (간부 이상) -->
+                <div id="manageAllowed" class="manage-inner" style="display:none;">
+                    <div class="manage-actions">
+                        <button class="btn btn-sm" id="btnSetJoinType" onclick="toggleJoinType()" style="display:none;">가입방식 변경</button>
+                        <button class="btn btn-sm btn-danger" id="btnDisband" onclick="disbandAlliance()" style="display:none;">해산</button>
+                    </div>
+                    <div class="manage-label">가입 신청 <span id="appBadge" class="app-badge" style="display:none;">0</span></div>
                     <div class="scrollable">
                         <table class="ally-table">
                             <thead><tr><th>유저</th><th>신청일</th><th>처리</th></tr></thead>
@@ -197,22 +246,10 @@
                         </table>
                     </div>
                 </div>
-
-                <div class="game-section">
-                    <h3>연맹 검색</h3>
-                    <div class="search-row">
-                        <input type="text" id="searchKeyword" placeholder="이름 검색">
-                        <button class="btn btn-sm" onclick="searchAlliance('main')">검색</button>
-                    </div>
-                    <div class="scrollable">
-                        <table class="ally-table">
-                            <thead><tr><th>이름</th><th>레벨</th><th>인원</th><th>가입</th></tr></thead>
-                            <tbody id="searchTableBody"><tr><td colspan="4" class="empty-msg">검색어 입력</td></tr></tbody>
-                        </table>
-                    </div>
-                </div>
-
+                <!-- 권한 없음 -->
+                <div id="manageNoPermission" class="no-permission">권한이 없습니다</div>
             </div>
+
         </div>
     </div>
 
@@ -297,8 +334,8 @@
             document.getElementById('infoLevel').textContent     = `Lv.${a.level}`;
             document.getElementById('infoExp').textContent       = (a.exp || 0).toLocaleString();
             document.getElementById('infoMembers').textContent   = `${a.member_count} / ${a.max_members}`;
-            document.getElementById('infoLeader').textContent    = `#${a.leader_no}`;
             document.getElementById('infoJoinType').textContent  = a.join_type === 'free' ? '자유가입' : '승인제';
+            document.getElementById('infoLeader').textContent    = `#${a.leader_no}`;
             document.getElementById('infoMyPosition').textContent = getPositionName(myPosition);
 
             if (data.notice && data.notice.content) {
@@ -316,11 +353,23 @@
         function renderPermissionUI() {
             const isLeader  = myPosition === 1;
             const isOfficer = myPosition <= 3;
-            document.getElementById('btnSetJoinType').style.display      = isLeader  ? 'inline-block' : 'none';
-            document.getElementById('btnDisband').style.display          = isLeader  ? 'inline-block' : 'none';
-            document.getElementById('btnLeave').style.display            = isLeader  ? 'none' : 'inline-block';
-            document.getElementById('noticeWriteArea').style.display     = isLeader  ? 'block' : 'none';
-            document.getElementById('sectionApplications').style.display = isOfficer ? 'block' : 'none';
+
+            // 탈퇴 (리더는 불가)
+            document.getElementById('btnLeave').style.display = isLeader ? 'none' : 'inline-block';
+
+            // 공지 작성 (리더만)
+            document.getElementById('noticeWriteArea').style.display = isLeader ? 'block' : 'none';
+
+            // 연맹관리 카드
+            if (isOfficer) {
+                document.getElementById('manageAllowed').style.display    = 'flex';
+                document.getElementById('manageNoPermission').style.display = 'none';
+                document.getElementById('btnSetJoinType').style.display   = isLeader ? 'inline-block' : 'none';
+                document.getElementById('btnDisband').style.display       = isLeader ? 'inline-block' : 'none';
+            } else {
+                document.getElementById('manageAllowed').style.display    = 'none';
+                document.getElementById('manageNoPermission').style.display = 'flex';
+            }
         }
 
         function getPositionName(pos) {
@@ -453,17 +502,21 @@
             container.innerHTML = list.map(r => {
                 const pct = r.required_exp > 0
                     ? Math.min(100, r.current_exp / r.required_exp * 100).toFixed(1) : 100;
-                // 간부 이상은 모든 미완 연구에 기부 가능 (자동 활성화),
-                // 일반 멤버는 현재 활성 연구에만 기부 가능
-                const canDonate   = !r.is_max && (r.is_active || myPosition <= 3);
-                const canActivate = myPosition <= 3 && !r.is_max && !r.is_active;
-                return `<div class="research-card${r.is_active ? ' active-research' : ''}">
+                const isReady      = !r.is_max && r.current_exp >= r.required_exp;
+                const canDonate    = !r.is_max;
+                const canRecommend = myPosition <= 3 && !r.is_max && !r.is_active && !isReady;
+                const canStart     = myPosition <= 3 && isReady;
+                const cardClass    = r.is_active ? ' recommended-research' : (isReady ? ' ready-research' : '');
+                return `<div class="research-card${cardClass}" data-research-idx="${r.research_idx}">
                     <div class="rc-header">
-                        <span class="rc-name">연구 #${r.research_idx}${r.is_active ? '<span class="active-badge">진행중</span>' : ''}</span>
+                        <span class="rc-name">연구 #${r.research_idx}
+                            ${r.is_active ? '<span class="recommend-badge">추천</span>' : ''}
+                            ${isReady    ? '<span class="ready-badge">시작 가능</span>' : ''}
+                        </span>
                         <span class="rc-level">${r.is_max ? 'MAX' : `Lv.${r.level}/${r.max_level}`}</span>
                     </div>
                     ${!r.is_max ? `<div class="progress-bar">
-                        <div class="progress-fill" style="width:${pct}%"></div>
+                        <div class="progress-fill${isReady ? ' progress-full' : ''}" style="width:${pct}%"></div>
                         <div class="progress-text">${r.current_exp.toLocaleString()} / ${r.required_exp.toLocaleString()}</div>
                     </div>` : ''}
                     <div class="rc-actions">
@@ -475,25 +528,26 @@
                                 <option value="gold">골드</option>
                             </select>
                             <input type="number" class="donate-amt" value="1000" min="1">
-                            <button class="btn btn-primary btn-sm" onclick="donateToResearch(this,${r.research_idx})">기부</button>
+                            <button class="btn btn-primary btn-sm" onclick="donateToResearch(this)">기부</button>
                         </div>` : ''}
-                        ${canActivate ? `<button class="btn btn-sm" onclick="selectResearch(${r.research_idx})">활성화</button>` : ''}
+                        ${canRecommend ? `<button class="btn btn-sm" onclick="selectResearch(${r.research_idx})">추천</button>` : ''}
+                        ${canStart     ? `<button class="btn btn-primary btn-sm" onclick="selectResearch(${r.research_idx})">연구 시작</button>` : ''}
                     </div>
                 </div>`;
             }).join('');
         }
 
-        async function donateToResearch(btn, researchIdx) {
+        async function donateToResearch(btn) {
             const card         = btn.closest('.research-card');
+            const researchIdx  = parseInt(card.dataset.researchIdx);
             const resourceType = card.querySelector('.donate-res').value;
             const amount       = parseInt(card.querySelector('.donate-amt').value);
             if (!amount || amount <= 0) { showResult('기부 수량을 확인해주세요', 'error'); return; }
-            const result = await apiCall(7011, { resource_type: resourceType, amount, research_idx: researchIdx });
+            const result = await apiCall(7011, { research_idx: researchIdx, resource_type: resourceType, amount });
             if (result.success) {
                 const d = result.data;
                 showResult(
                     `기부 완료! EXP +${d.exp_gained} / 코인 +${d.coin_gained}` +
-                    (d.research_leveled_up ? ' [연구 레벨업!]' : '') +
                     (d.leveled_up ? ' [연맹 레벨업!]' : ''),
                     'success'
                 );
@@ -506,7 +560,10 @@
         async function selectResearch(researchIdx) {
             const result = await apiCall(7017, { research_idx: researchIdx });
             if (result.success) {
-                showResult('연구가 활성화되었습니다', 'success');
+                const msg = result.data.leveled_up
+                    ? `연구 시작! Lv.${result.data.level} 달성`
+                    : '추천 연구로 설정되었습니다';
+                showResult(msg, 'success');
                 await loadResearch();
                 await loadAllianceInfo();
             } else showResult(result.message, 'error');

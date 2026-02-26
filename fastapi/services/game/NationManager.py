@@ -72,24 +72,23 @@ class NationManager:
     async def get_nation(self, user_no: int) -> Optional[Dict[str, Any]]:
         """
         유저 프로필 조회 (Redis 우선, 없으면 DB → Redis 캐싱)
+        Returns: 유저 데이터 dict or None (유저 없음)
         """
-        
+
         nation_redis = self.redis_manager.get_nation_manager()
-        
-        
+
         # Redis 조회
         redis_data = await nation_redis.get_cached_nation(user_no)
         if redis_data:
             return redis_data
-        
-        
+
         # DB에서 로드 → Redis 캐싱
         db_data = self._load_from_db(user_no)
-        if db_data['success'] == True:
+        if db_data['success']:
             await nation_redis.cache_user_nation_data(user_no, db_data['data'])
-        
-        
-        return db_data
+            return db_data['data']
+
+        return None
     
     def _load_from_db(self, user_no: int) -> Optional[Dict[str, Any]]:
         """DB에서 유저 프로필 로드"""
