@@ -18,7 +18,9 @@ from .mission_db_manager import MissionDBManager
 from .shop_db_manager import ShopDBManager
 
 from .user_init_db_manager import UserInitDBManager
-
+from .hero_db_manager import HeroDBManager
+from .march_db_manager import MarchDBManager
+from .battle_db_manager import BattleDBManager
 
 
 from .DBManager import DBManager
@@ -31,7 +33,7 @@ __all__ = [
 
     'NationDBManager',
     'BuildingDBManager',
-    'UnitDBManager', 
+    'UnitDBManager',
     'ResearchDBManager',
     'ResourceDBManager',
     'BuffDBManager',
@@ -41,6 +43,7 @@ __all__ = [
     'MissionDBManager',
     'ItemDBManager',
     'UserInitDBManager',
-
-    
+    'HeroDBManager',
+    'MarchDBManager',
+    'BattleDBManager',
 ]

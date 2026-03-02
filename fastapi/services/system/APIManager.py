@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager
+from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager, MapManager, MarchManager, BattleManager, NpcManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -75,6 +75,22 @@ class APIManager():
         7015: (AllianceManager, AllianceManager.alliance_notice_write),
         7016: (AllianceManager, AllianceManager.alliance_research_list),
         7017: (AllianceManager, AllianceManager.alliance_research_select),
+
+        # === 영웅 API (8xxx) ===
+        8001: (HeroManager, HeroManager.hero_list),
+        8002: (HeroManager, HeroManager.hero_grant),
+
+        # === 전투/행군/맵 API (9xxx) ===
+        9001: (MapManager, MapManager.my_position),
+        9002: (MapManager, MapManager.map_info),
+        9003: (NpcManager, NpcManager.npc_list),
+
+        9011: (MarchManager, MarchManager.march_list),
+        9012: (MarchManager, MarchManager.march_create),
+        9013: (MarchManager, MarchManager.march_cancel),
+
+        9021: (BattleManager, BattleManager.battle_info),
+        9022: (BattleManager, BattleManager.battle_report),
     }
     
     def __init__(self, db_manager, redis_manager):

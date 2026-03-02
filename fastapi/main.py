@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import models, schemas, database
 
 from services.system import APIManager, GameDataManager, WebsocketManager
+from services.game.NpcManager import NpcManager
 from services.db_manager import DBManager 
 from services.redis_manager import RedisManager
 from services.background_workers import BackgroundWorkerManager
@@ -105,6 +106,10 @@ async def startup_event():
         # 2. 게임 데이터를 메모리에 로드 (한번만!)
         GameDataManager.initialize()
         print("[OK] Game data loaded")
+
+        # 3. NPC 초기화 (Redis에 NPC 인스턴스 배치)
+        await NpcManager.initialize_npcs(redis_manager)
+        print("[OK] NPC instances initialized")
         
         print("[OK] Game Server is ready!")
         

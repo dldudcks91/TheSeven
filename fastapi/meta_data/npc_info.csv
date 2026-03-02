@@ -1,0 +1,6 @@
+npc_id,korean_name,english_name,tier,units,exp_reward,respawn_minutes,map_x,map_y
+1,고블린 부족,Goblin Tribe,1,1:20,50,5,15,25
+2,오크 전사,Orc Warrior,2,1:30|2:10,120,10,45,60
+3,트롤 군주,Troll Lord,3,2:20|3:5,300,20,80,30
+4,스켈레톤 군단,Skeleton Legion,1,1:15,40,5,30,10
+5,늑대인간 무리,Werewolf Pack,2,2:15|1:10,150,10,70,75

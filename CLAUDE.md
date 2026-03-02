@@ -137,6 +137,12 @@ fastapi/
 - [ ] api_code를 `APIManager` 라우팅 테이블에 등록했다
 - [ ] API.md에 명세를 추가/수정했다
 
+**문서 업데이트 체크** ← 구현 완료 후 반드시 수행
+- [ ] `API.md`: 신규/변경 API 명세 반영
+- [ ] `BACKEND.md`: Manager, DB 스키마, Redis 키, Worker 변경사항 반영
+- [ ] `COMBAT.md`: 전투 관련 변경 시 반영 (NPC, 행군, 전투 규칙)
+- [ ] `버전관리.md`: 해당 버전 항목에 변경사항 추가
+
 **에러 처리 체크**
 - [ ] 존재하지 않는 데이터 접근 시 명확한 실패 메시지 반환
 - [ ] 자원 부족 등 비즈니스 로직 실패를 예외가 아닌 `success: false`로 반환
@@ -168,6 +174,8 @@ fastapi/
 | 60xx | 아이템 |
 | 601x | 상점 |
 | 7xxx | 연맹 |
+| 8xxx | 영웅 |
+| 9xxx | 전투 (맵, 행군, NPC 사냥) |
 
 새 API 추가 시 기존 범위 체계를 따른다. 새 도메인이 필요하면 Human Review에서 범위 결정.
 
@@ -251,6 +259,9 @@ df = pd.read_csv("meta_data/building_info.csv")
 | `fastapi/API.md` | 전체 API 명세 |
 | `fastapi/models.py` | DB 스키마 |
 | `fastapi/services/system/` | APIManager 라우팅 테이블 |
+| `fastapi/BACKEND.md` | Manager 목록, Redis 키, Worker 구조 |
+| `fastapi/COMBAT.md` | 전투/NPC 시스템 상세 |
+| `fastapi/버전관리.md` | 버전별 구현 내역 |
 
 작업 중이던 파일이 있으면 해당 파일을 우선 읽고 맥락 파악 후 재개.
 

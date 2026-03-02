@@ -22,6 +22,10 @@ from .UnitManager import UnitManager
 from .HeroManager import HeroManager 
 from .ShopManager import ShopManager 
 from .AllianceManager import AllianceManager
+from .MapManager import MapManager
+from .MarchManager import MarchManager
+from .BattleManager import BattleManager
+from .NpcManager import NpcManager
 
 __all__ = [
     "UserInitManager",
@@ -34,6 +38,9 @@ __all__ = [
     "ResearchManager",
     "UnitManager",
     "HeroManager",
-    "AllianceManager"
-
+    "AllianceManager",
+    "MapManager",
+    "MarchManager",
+    "BattleManager",
+    "NpcManager",
 ]

@@ -114,3 +114,40 @@
 | ~~P2~~ | ~~BUG-001 (2005 건물 취소 메서드 없음)~~ | ✅ 수정 완료 |
 | ~~P3~~ | ~~BUG-005 (alliance_research.csv 생성)~~ | ✅ 수정 완료 |
 | ~~P3~~ | ~~WARN-001 (health 엔드포인트)~~ | ✅ 수정 완료 |
+| ~~P2~~ | ~~WARN-005 (AVAILABLE_BUILDINGS 불일치)~~ | ✅ 수정 완료 |
+| P3 | WARN-006 (alliance_research buff_idx 공란) | 연맹 연구 효과 미적용 |
+| P4 | WARN-007 (CodexManager 취소 코드 잔존) | 코드 정리 필요 |
+
+---
+
+## 문서 작성 중 발견 이슈 (2026-03-01)
+
+### WARN-005 | AVAILABLE_BUILDINGS 불일치 ✅ 수정 완료
+
+- **위치**: `services/game/BuildingManager.py`
+- **증상**: 농장(501), 제재소(502), 채석장(503) 건물을 생성/업그레이드할 수 없음
+- **수정**: 하드코딩된 `AVAILABLE_BUILDINGS` 클래스 변수 제거
+  - `building_create()` 내 체크를 `GameDataManager.REQUIRE_CONFIGS.get(CONFIG_TYPE, {})` 직접 참조로 교체
+  - CSV 기준 자동으로 사용 가능한 건물 목록이 결정됨 (현재: 201, 301, 401, 501, 502, 503)
+- **상태**: ✅ 수정 완료
+
+---
+
+### WARN-006 | alliance_research.csv buff_idx 공란 (미수정)
+
+- **위치**: `meta_data/alliance_research.csv`
+- **증상**: 연맹 연구 레벨업 완료 시 연맹 멤버에게 버프가 적용되지 않음
+- **원인**: alliance_research.csv의 `buff_idx` 컬럼이 모두 비어있음
+  - 연맹 연구 8001(공격력 강화), 8002(방어력 강화), 8003(자원 생산 강화) 모두 buff 미연결
+- **수정 방향**: 버프 시스템 설계 후 buff_idx 값 채우기 (전투 시스템 구현 이후 작업 예정)
+- **상태**: ⚠️ 미수정 (의도적 보류)
+
+---
+
+### WARN-007 | CodexManager 코드 잔존 (미수정)
+
+- **위치**: `services/game/CodexManager.py` (추정)
+- **증상**: 도감 시스템 취소로 사용되지 않는 코드가 남아있음
+- **원인**: 기획 취소
+- **수정 방향**: CodexManager.py 파일 및 관련 api_map 등록 제거
+- **상태**: ⚠️ 미수정 (낮은 우선순위)

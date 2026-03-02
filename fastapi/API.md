@@ -42,6 +42,8 @@
 | 60xx | 아이템 |
 | 601x | 상점 |
 | 7xxx | 연맹 |
+| 8xxx | 영웅 |
+| 9xxx | 전투 (맵, 행군, NPC 사냥) |
 
 ---
 
@@ -409,6 +411,192 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 ### 7017 - 연맹 연구 진행
 
 - **data**: `{"research_idx": 8001}`
+
+---
+
+## 영웅 API (8xxx)
+
+### 8001 - 영웅 목록 조회
+
+전체 영웅 도감 + 보유 여부 반환.
+
+- **data**: `{}`
+- **응답 data**:
+```json
+{
+    "heroes": [
+        {
+            "hero_idx": 1,
+            "korean_name": "아서",
+            "hero_lv": 5,
+            "exp": 1200,
+            "owned": true
+        }
+    ]
+}
+```
+
+---
+
+### 8002 - 영웅 지급 (테스트/포트폴리오용)
+
+특정 영웅을 유저에게 지급.
+
+- **data**: `{"hero_idx": 1}`
+- **응답 data**: 지급 결과
+
+---
+
+## 전투 API (9xxx)
+
+행군 상태값: `marching` (이동 중), `battling` (전투 중), `returning` (귀환 중), `completed` (완료)
+
+행군 대상: `target_type = "user"` (유저 공격) | `"npc"` (NPC 사냥)
+
+### 9001 - 내 맵 좌표 조회
+
+맵에서 나의 현재 위치 반환.
+
+- **data**: `{}`
+- **응답 data**: `{"x": 42, "y": 17}`
+
+---
+
+### 9002 - 맵 정보 조회
+
+주변 유저, NPC 위치, 내 행군 목록 포함.
+
+- **data**: `{}`
+- **응답 data**:
+```json
+{
+    "my_position": {"x": 42, "y": 17},
+    "map_size": 100,
+    "nearby_users": [{"user_no": 2, "x": 50, "y": 30}],
+    "npcs": [{"npc_id": "uuid", "npc_idx": 101, "x": 20, "y": 80, "alive": true, "tier": 1, "korean_name": "고블린"}],
+    "marches": [...]
+}
+```
+
+---
+
+### 9003 - NPC 목록 조회
+
+현재 맵의 모든 NPC 상태 반환.
+
+- **data**: `{}`
+- **응답 data**:
+```json
+{
+    "npcs": [
+        {
+            "npc_id": "uuid",
+            "npc_idx": 101,
+            "x": 20, "y": 80,
+            "alive": true,
+            "tier": 1,
+            "korean_name": "고블린 부족",
+            "exp_reward": 50
+        }
+    ]
+}
+```
+
+---
+
+### 9011 - 행군 목록 조회
+
+현재 진행 중인 내 행군 목록.
+
+- **data**: `{}`
+- **응답 data**:
+```json
+{
+    "marches": [
+        {
+            "march_id": "uuid",
+            "status": "marching",
+            "target_type": "npc",
+            "from_x": 42, "from_y": 17,
+            "to_x": 20, "to_y": 80,
+            "departure_time": "2026-03-01T12:00:00",
+            "arrival_time": "2026-03-01T12:05:00",
+            "return_time": null,
+            "units": {"401": 100},
+            "hero_idx": 1
+        }
+    ]
+}
+```
+
+---
+
+### 9012 - 행군 생성 (출진)
+
+유저 공격 또는 NPC 사냥 출진.
+
+- **data**:
+```json
+{
+    "target_type": "npc",
+    "npc_id": "uuid",
+    "units": {"401": 100},
+    "hero_idx": 1
+}
+```
+또는 유저 공격:
+```json
+{
+    "target_type": "user",
+    "target_user_no": 2,
+    "units": {"401": 100},
+    "hero_idx": 1
+}
+```
+- **제약**:
+  - 동시 행군 최대 3개
+  - 유닛 ready 수량 초과 불가
+  - hero_idx는 선택값
+- **응답 data**: `{"march_id": "uuid", "arrival_time": "..."}`
+
+---
+
+### 9013 - 행군 취소
+
+이동 중인 행군만 취소 가능 (battling 상태 취소 불가).
+
+- **data**: `{"march_id": "uuid"}`
+- **처리**: 행군 삭제 → 유닛 반환
+- **응답 data**: `{}`
+
+---
+
+### 9021 - 전투 정보 조회
+
+진행 중인 전투 상세 정보.
+
+- **data**: `{"battle_id": "uuid"}`
+- **응답 data**: 전투 상태, 라운드, 병력 현황
+
+---
+
+### 9022 - 전투 보고서 조회
+
+완료된 전투 결과 조회.
+
+- **data**: `{"battle_id": "uuid"}`
+- **응답 data**:
+```json
+{
+    "battle_id": "uuid",
+    "attacker_win": true,
+    "rounds": 12,
+    "attacker_losses": {"401": 10},
+    "defender_losses": {"401": 50},
+    "loot": {"food": 200, "wood": 100},
+    "hero_exp": 150
+}
+```
 
 ---
 

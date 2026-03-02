@@ -53,3 +53,7 @@ async def get_hero(request: Request):
 @router.get("/alliance.html")
 async def get_hero(request: Request):
     return templates.TemplateResponse("alliance.html", {"request": request})
+
+@router.get("/battle.html")
+async def get_battle(request: Request):
+    return templates.TemplateResponse("battle.html", {"request": request})

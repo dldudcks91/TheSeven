@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>영웅</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f5f5f5; font-size: 13px; }
+    h3 { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    button { padding: 4px 10px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px; font-size: 12px; }
+    button:hover { background: #eee; }
+    button.primary { background: #333; color: white; border-color: #333; }
+    button.primary:hover { background: #555; }
+
+    .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .hero-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.1);
+        padding: 12px;
+        border: 2px solid #eee;
+        transition: border-color 0.2s;
+    }
+
+    .hero-card.owned {
+        border-color: #4caf50;
+    }
+
+    .hero-card.not-owned {
+        opacity: 0.55;
+        filter: grayscale(60%);
+    }
+
+    .hero-name {
+        font-size: 15px;
+        font-weight: bold;
+        margin-bottom: 2px;
+    }
+
+    .hero-name-en {
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 8px;
+    }
+
+    .hero-stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 3px;
+        color: #555;
+    }
+
+    .hero-stat-row span:last-child {
+        font-weight: bold;
+        color: #333;
+    }
+
+    .hero-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        margin-top: 6px;
+    }
+    .badge-owned   { background: #e8f5e9; color: #2e7d32; }
+    .badge-locked  { background: #f5f5f5; color: #9e9e9e; }
+
+    .hero-lv {
+        font-size: 13px;
+        font-weight: bold;
+        color: #1565c0;
+        margin-top: 6px;
+    }
+
+    .hero-exp {
+        font-size: 10px;
+        color: #888;
+        margin-top: 2px;
+    }
+
+    .atk-bonus {
+        font-size: 11px;
+        color: #e53935;
+        margin-top: 3px;
+    }
+
+    .header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .grant-form {
+        background: white;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.1);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+    }
+
+    .grant-form input {
+        padding: 4px 6px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 12px;
+        width: 90px;
+    }
+
+    #statusMsg {
+        font-size: 12px;
+        color: #555;
+        margin-left: 8px;
+    }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+    <h3>⚔️ 영웅 도감</h3>
+    <button onclick="loadHeroes()">새로고침</button>
+</div>
+
+<!-- 테스트용 영웅 지급 폼 -->
+<div class="grant-form">
+    <span>영웅 지급 (테스트):</span>
+    <input id="grantIdx" type="number" placeholder="hero_idx">
+    <button class="primary" onclick="grantHero()">지급</button>
+    <span id="statusMsg"></span>
+</div>
+
+<div id="heroGrid" class="hero-grid">
+    <div style="color:#aaa; font-size:12px;">데이터를 로드하세요</div>
+</div>
+
+<script>
+let currentUserId = null;
+
+function getUserNo() {
+    return currentUserId;
+}
+
+async function apiCall(apiCode, data = {}) {
+    const uid = getUserNo();
+    if (!uid) return null;
+    try {
+        const res = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_no: uid, api_code: apiCode, data })
+        });
+        return await res.json();
+    } catch(e) {
+        return { success: false, message: e.message };
+    }
+}
+
+function calcAtkBonus(heroLv) {
+    return heroLv > 0 ? `+${(heroLv * 5).toFixed(0)}% 공격력` : '';
+}
+
+async function loadHeroes() {
+    const res = await apiCall(8001);
+    if (!res || !res.success) {
+        document.getElementById('heroGrid').innerHTML =
+            `<div style="color:#e53935">로드 실패: ${res?.message || '서버 오류'}</div>`;
+        return;
+    }
+
+    const heroes = res.data.heroes || [];
+    if (!heroes.length) {
+        document.getElementById('heroGrid').innerHTML =
+            '<div style="color:#aaa">등록된 영웅이 없습니다</div>';
+        return;
+    }
+
+    document.getElementById('heroGrid').innerHTML = heroes.map(h => {
+        const owned = h.owned;
+        const atkBonus = owned ? calcAtkBonus(h.hero_lv) : '';
+        return `
+        <div class="hero-card ${owned ? 'owned' : 'not-owned'}">
+            <div class="hero-name">${h.korean_name}</div>
+            <div class="hero-name-en">${h.english_name}</div>
+            <div class="hero-stat-row"><span>기본 공격</span><span>${h.base_attack}</span></div>
+            <div class="hero-stat-row"><span>기본 방어</span><span>${h.base_defense}</span></div>
+            <div class="hero-stat-row"><span>기본 체력</span><span>${h.base_health}</span></div>
+            <div class="hero-stat-row"><span>공/방/체 성장</span>
+                <span>+${h.atk_growth}/+${h.def_growth}/+${h.hp_growth}</span></div>
+            ${owned
+                ? `<div class="hero-lv">Lv ${h.hero_lv}</div>
+                   <div class="hero-exp">EXP ${h.exp}</div>
+                   ${atkBonus ? `<div class="atk-bonus">${atkBonus}</div>` : ''}`
+                : ''}
+            <span class="hero-badge ${owned ? 'badge-owned' : 'badge-locked'}">
+                ${owned ? '보유' : '미보유'}
+            </span>
+        </div>`;
+    }).join('');
+}
+
+async function grantHero() {
+    const idx = parseInt(document.getElementById('grantIdx').value);
+    const msg = document.getElementById('statusMsg');
+    if (!idx) { msg.textContent = 'hero_idx를 입력하세요'; return; }
+
+    const res = await apiCall(8002, { hero_idx: idx });
+    if (res && res.success) {
+        msg.style.color = '#2e7d32';
+        msg.textContent = `영웅 ${idx} 지급 완료!`;
+        loadHeroes();
+    } else {
+        msg.style.color = '#e53935';
+        msg.textContent = res?.message || '지급 실패';
+    }
+}
+
+// postMessage 수신
+window.addEventListener('message', async function(event) {
+    const msg = event.data;
+    if (!msg || !msg.type) return;
+    if (msg.type === 'set_player_id') {
+        const newId = parseInt(msg.userId);
+        if (currentUserId !== newId) {
+            currentUserId = newId;
+            await loadHeroes();
+        }
+    }
+});
+</script>
+</body>
+</html>

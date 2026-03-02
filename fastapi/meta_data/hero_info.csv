@@ -1,0 +1,3 @@
+hero_idx,korean_name,english_name,base_attack,base_defense,base_health,atk_growth,def_growth,hp_growth
+1001,아서,Arthur,100,80,1200,10,8,50
+1002,메를린,Merlin,60,50,900,6,5,40

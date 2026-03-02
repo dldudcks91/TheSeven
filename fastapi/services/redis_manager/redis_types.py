@@ -24,4 +24,6 @@ class TaskType(Enum):
     UNIT_TRAINING = "unit_training"
     RESEARCH = "research"
     BUFF = "buff"
+    MARCH = "march"
+    MARCH_RETURN = "march_return"
 

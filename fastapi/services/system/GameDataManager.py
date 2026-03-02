@@ -14,6 +14,9 @@ class GameDataManager:
         'alliance_position':{},
         'alliance_research':{},
         'alliance_donate':{},
+        'hero':{},
+        'hero_skill':{},
+        'npc':{},
         }
     _loaded = False
     
@@ -37,6 +40,9 @@ class GameDataManager:
         cls._load_alliance_position_data()
         cls._load_alliance_research_data()
         cls._load_alliance_donate_data()
+        cls._load_hero_data()
+        cls._load_hero_skill_data()
+        cls._load_npc_data()
         cls._loaded = True
         print("Game data loaded successfully!")
     
@@ -373,6 +379,70 @@ class GameDataManager:
             coin_item_idx_val = int(row['coin_item_idx']) if str(row['coin_item_idx']).strip() else 0
             if coin_item_idx_val and 'coin_item_idx' not in donate_configs:
                 donate_configs['coin_item_idx'] = coin_item_idx_val
+
+    @classmethod
+    def _load_hero_data(cls):
+        df = pd.read_csv('./meta_data/hero_info.csv', encoding='utf-8').fillna("")
+        hero_configs = cls.REQUIRE_CONFIGS['hero']
+
+        for _, row in df.iterrows():
+            hero_idx = int(row['hero_idx'])
+            hero_configs[hero_idx] = {
+                'hero_idx': hero_idx,
+                'korean_name': row['korean_name'],
+                'english_name': row['english_name'],
+                'base_attack': int(row['base_attack']),
+                'base_defense': int(row['base_defense']),
+                'base_health': int(row['base_health']),
+                'atk_growth': int(row['atk_growth']),
+                'def_growth': int(row['def_growth']),
+                'hp_growth': int(row['hp_growth']),
+            }
+
+    @classmethod
+    def _load_hero_skill_data(cls):
+        df = pd.read_csv('./meta_data/hero_skill.csv', encoding='utf-8').fillna("")
+        skill_configs = cls.REQUIRE_CONFIGS['hero_skill']
+
+        for _, row in df.iterrows():
+            skill_idx = int(row['skill_idx'])
+            skill_configs[skill_idx] = {
+                'skill_idx': skill_idx,
+                'hero_idx': int(row['hero_idx']),
+                'korean_name': row['korean_name'],
+                'english_name': row['english_name'],
+                'trigger_type': row['trigger_type'],
+                'trigger_value': int(row['trigger_value']),
+                'effect_type': row['effect_type'],
+                'value': float(row['value']),
+            }
+
+    @classmethod
+    def _load_npc_data(cls):
+        df = pd.read_csv('./meta_data/npc_info.csv', encoding='utf-8').fillna("")
+        npc_configs = cls.REQUIRE_CONFIGS['npc']
+
+        for _, row in df.iterrows():
+            npc_id = int(row['npc_id'])
+            # units 파싱: "1:20|2:10" → {1: 20, 2: 10}
+            units = {}
+            units_str = str(row['units']).strip()
+            if units_str:
+                for pair in units_str.split('|'):
+                    if ':' in pair:
+                        uid, cnt = pair.strip().split(':')
+                        units[int(uid)] = int(cnt)
+            npc_configs[npc_id] = {
+                'npc_id': npc_id,
+                'korean_name': row['korean_name'],
+                'english_name': row['english_name'],
+                'tier': int(row['tier']),
+                'units': units,
+                'exp_reward': int(row['exp_reward']),
+                'respawn_minutes': int(row['respawn_minutes']),
+                'map_x': int(row['map_x']),
+                'map_y': int(row['map_y']),
+            }
 
     @classmethod
     def get_upgrade_requirements(cls, building_idx, current_level):

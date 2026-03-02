@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from .base_worker import BaseWorker
 from services.game.UnitManager import UnitManager
 from services.game.BuildingManager import BuildingManager  # 예시: 나중을 위해
+from services.game.BattleManager import BattleManager
 from services.db_manager import DBManager
 from database import SessionLocal
 
@@ -30,14 +31,16 @@ class TaskWorker(BaseWorker):
         
         try:
             # 1. 유닛 태스크 처리
-            
             await self._handle_unit_tasks(db_manager)
-            
-            # 2. 건물 태스크 처리 (추후 확장 시 추가)
-            # await self._handle_building_tasks(db_manager)
-            
-            # 3. 연구 태스크 처리 (추후 확장 시 추가)
-            # await self._handle_research_tasks(db_manager)
+
+            # 2. 행군 도착 처리
+            await self._handle_march_arrivals(db_manager)
+
+            # 3. 행군 귀환 처리
+            await self._handle_march_returns(db_manager)
+
+            # 4. NPC 리스폰 처리
+            await self._handle_npc_respawns()
             
         except Exception as e:
             self.logger.error(f"[{self.category}] Error in TaskWorker loop: {e}", exc_info=True)
@@ -73,6 +76,90 @@ class TaskWorker(BaseWorker):
         except Exception as e:
             self.logger.error(f"Error processing unit tasks: {e}")
 
+
+    async def _handle_march_arrivals(self, db_manager):
+        """도착 시간이 지난 행군 처리 → target_type에 따라 NPC/유저 전투 분기"""
+        try:
+            combat_rm = self.redis_manager.get_combat_manager()
+            march_ids = await combat_rm.get_pending_march_arrivals()
+            if not march_ids:
+                return
+
+            battle_manager = BattleManager(db_manager, self.redis_manager)
+            for march_id in march_ids:
+                metadata = await combat_rm.get_march_metadata(march_id)
+                target_type = metadata.get("target_type", "user") if metadata else "user"
+
+                if target_type == "npc":
+                    npc_id = int(metadata.get("npc_id", 0)) if metadata else 0
+                    result = await battle_manager.npc_battle_start(march_id, npc_id)
+                    if result["success"]:
+                        battle_id = result["data"].get("battle_id")
+                        attacker_no = metadata["user_no"]
+                        await self._send_websocket_notification(
+                            attacker_no, "battle_start",
+                            {"battle_id": battle_id, "battle_type": "npc", "npc_id": npc_id}
+                        )
+                else:
+                    result = await battle_manager.battle_start(march_id)
+                    if result["success"]:
+                        battle_id = result["data"].get("battle_id")
+                        march_info = db_manager.get_march_manager().get_march(march_id)
+                        if march_info:
+                            await self._send_websocket_notification(
+                                march_info["user_no"], "battle_start",
+                                {"battle_id": battle_id}
+                            )
+                            if march_info.get("target_user_no"):
+                                await self._send_websocket_notification(
+                                    march_info["target_user_no"], "battle_incoming",
+                                    {"battle_id": battle_id}
+                                )
+
+                # 큐에서 제거 (battle_start에서 처리되지 않았을 경우 방어)
+                await combat_rm.remove_march_from_queue(march_id)
+        except Exception as e:
+            self.logger.error(f"Error processing march arrivals: {e}")
+
+    async def _handle_march_returns(self, db_manager):
+        """귀환 시간이 지난 행군 처리"""
+        try:
+            combat_rm = self.redis_manager.get_combat_manager()
+            march_ids = await combat_rm.get_pending_march_returns()
+            if not march_ids:
+                return
+
+            march_dm = db_manager.get_march_manager()
+            for march_id in march_ids:
+                march = march_dm.get_march(march_id)
+                if not march:
+                    await combat_rm.remove_march_return_from_queue(march_id)
+                    continue
+                march_dm.update_march_status(march_id, "completed")
+                db_manager.commit()
+                await combat_rm.remove_march_return_from_queue(march_id)
+                await combat_rm.delete_march_metadata(march_id)
+                await combat_rm.invalidate_user_marches(march["user_no"])
+                await self._send_websocket_notification(
+                    march["user_no"], "march_return",
+                    {"march_id": march_id}
+                )
+        except Exception as e:
+            self.logger.error(f"Error processing march returns: {e}")
+
+    async def _handle_npc_respawns(self):
+        """리스폰 시간이 지난 NPC를 alive=true로 복구"""
+        try:
+            combat_rm = self.redis_manager.get_combat_manager()
+            npc_ids = await combat_rm.get_pending_npc_respawns()
+            if not npc_ids:
+                return
+            for npc_id in npc_ids:
+                await combat_rm.set_npc_alive(npc_id, True)
+                await combat_rm.remove_npc_respawn_from_queue(npc_id)
+                self.logger.info(f"NPC {npc_id} respawned")
+        except Exception as e:
+            self.logger.error(f"Error processing NPC respawns: {e}")
 
     async def _send_websocket_notification(self, user_no: int, message_type:str, result: dict):
         """WebSocket으로 완료 알림 전송"""

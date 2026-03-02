@@ -7,3 +7,5 @@ from .sync_worker import (
     ResourceSyncWorker,
     MissionSyncWorker
 )
+from .task_worker import TaskWorker
+from .battle_worker import BattleWorker

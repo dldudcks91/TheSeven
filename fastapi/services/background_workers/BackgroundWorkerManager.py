@@ -14,6 +14,7 @@ from .sync_worker import (
 )
 # TaskWorker 임포트 추가
 from .task_worker import TaskWorker
+from .battle_worker import BattleWorker
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ class BackgroundWorkerManager:
             "item": ItemSyncWorker(redis_manager),
             'mission': MissionSyncWorker(redis_manager),
             
-            'game_task': TaskWorker(redis_manager, websocket_manager), # 새 TaskWorker 등록
+            'game_task': TaskWorker(redis_manager, websocket_manager),
+            'battle': BattleWorker(redis_manager, websocket_manager),
         }
         
         # 커스텀 주기 적용

@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>전투</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f5f5f5; font-size: 13px; }
+    h3 { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 10px; }
+    .card { background: white; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    .card.full { grid-column: 1 / -1; }
+    button { padding: 4px 10px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px; font-size: 12px; }
+    button:hover { background: #eee; }
+    button.primary { background: #333; color: white; border-color: #333; }
+    input, select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 4px 6px; border-bottom: 1px solid #eee; text-align: left; }
+    th { background: #f8f8f8; font-weight: bold; }
+    .log { font-family: monospace; font-size: 11px; max-height: 200px; overflow-y: auto;
+           background: #1e1e1e; color: #d4d4d4; padding: 8px; border-radius: 4px; }
+    .log .info  { color: #9cdcfe; }
+    .log .warn  { color: #dcdcaa; }
+    .log .success { color: #4ec9b0; }
+    .log .error { color: #f44747; }
+
+    /* 미니맵 */
+    #mapCanvas { border: 1px solid #ccc; background: #e8f5e9; display: block; cursor: crosshair; }
+    .map-legend { font-size: 11px; margin-top: 4px; }
+    .map-legend span { margin-right: 10px; }
+
+    /* NPC 팝업 */
+    .map-card { position: relative; }
+    .npc-popup {
+        position: absolute; z-index: 10;
+        background: white; border: 1px solid #ccc;
+        border-radius: 6px; padding: 10px 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        min-width: 170px; font-size: 12px;
+        display: none;
+    }
+    .npc-popup.visible { display: block; }
+    .npc-popup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .npc-popup-title { font-weight: bold; font-size: 13px; }
+    .npc-popup-close { cursor: pointer; color: #aaa; font-size: 14px; line-height: 1; }
+    .npc-popup-close:hover { color: #333; }
+    .npc-popup-info { margin-bottom: 8px; color: #555; line-height: 1.7; }
+    .npc-popup hr { border: none; border-top: 1px solid #eee; margin: 6px 0; }
+    .npc-popup-form { display: flex; flex-direction: column; gap: 4px; }
+    .npc-popup-form input, .npc-popup-form select { width: 100%; box-sizing: border-box; }
+    .npc-popup-msg { font-size: 11px; margin-top: 4px; }
+
+    /* 행군 상태 배지 */
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 11px; }
+    .badge-marching  { background: #fff3cd; color: #856404; }
+    .badge-battling  { background: #f8d7da; color: #721c24; }
+    .badge-returning { background: #d1ecf1; color: #0c5460; }
+    .badge-completed { background: #d4edda; color: #155724; }
+    .badge-cancelled { background: #e2e3e5; color: #383d41; }
+</style>
+</head>
+<body>
+
+<div class="grid">
+
+    <!-- 맵 -->
+    <div class="card map-card full">
+        <h3>🗺️ 맵 <button onclick="loadMapInfo()" style="float:right">새로고침</button></h3>
+        <canvas id="mapCanvas" width="600" height="600"></canvas>
+        <div class="map-legend">
+            <span>🔵 나</span>
+            <span>🔴 적</span>
+            <span style="color:#ff6f00">▲ NPC (클릭)</span>
+            <span style="color:#e65100">● 출진중</span>
+            <span style="color:#1565c0">● 귀환중</span>
+            <span style="color:#b71c1c">● 전투중</span>
+        </div>
+        <div id="myPosInfo" style="margin-top:4px; font-size:11px; color:#666;"></div>
+
+        <!-- NPC 클릭 팝업 -->
+        <div id="npcPopup" class="npc-popup">
+            <div class="npc-popup-header">
+                <span class="npc-popup-title" id="popupTitle"></span>
+                <span class="npc-popup-close" onclick="closeNpcPopup()">✕</span>
+            </div>
+            <div class="npc-popup-info" id="popupInfo"></div>
+            <div id="popupFormWrap">
+                <hr>
+                <div class="npc-popup-form">
+                    <select id="popupUnitSelect"><option value="">유닛 로딩 중...</option></select>
+                    <input id="popupUnitCnt" type="number" placeholder="수량" value="10">
+                    <select id="popupHeroSelect"><option value="">영웅 없음 (선택 안함)</option></select>
+                    <button class="primary" onclick="attackNpcFromPopup()">⚔️ 출진!</button>
+                    <div id="popupMsg" class="npc-popup-msg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 출진 -->
+    <div class="card">
+        <h3>⚔️ 출진</h3>
+        <div style="margin-bottom:8px;">
+            <label>대상 유저 No: <input id="marchTarget" type="number" style="width:80px"></label>
+        </div>
+        <div id="unitSelectors" style="margin-bottom:8px;">
+            <!-- 동적으로 유닛 선택 폼 생성 -->
+            <div style="color:#888; font-size:11px;">유닛 선택 (unit_idx: count)</div>
+            <div style="margin-top:4px;">
+                <input id="marchUnit1Idx" type="number" placeholder="unit_idx" style="width:70px">
+                <input id="marchUnit1Cnt" type="number" placeholder="count" style="width:60px" value="10">
+            </div>
+        </div>
+        <div style="margin-bottom:8px;">
+            <label>영웅 idx (선택): <input id="marchHero" type="number" style="width:80px"></label>
+        </div>
+        <button class="primary" onclick="sendMarch()">출진</button>
+        <div id="marchResult" style="margin-top:6px; font-size:11px; color:#666;"></div>
+    </div>
+
+    <!-- 행군 목록 -->
+    <div class="card">
+        <h3>🚶 행군 목록 <button onclick="loadMarches()" style="float:right">새로고침</button></h3>
+        <table id="marchTable">
+            <thead><tr><th>ID</th><th>대상</th><th>상태</th><th>도착</th><th>취소</th></tr></thead>
+            <tbody id="marchBody"><tr><td colspan="5" style="color:#aaa">데이터 없음</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- 전투 보고서 -->
+    <div class="card">
+        <h3>📋 전투 보고서 <button onclick="loadReports()" style="float:right">새로고침</button></h3>
+        <table id="reportTable">
+            <thead><tr><th>ID</th><th>상대</th><th>결과</th><th>전리품</th><th>라운드</th></tr></thead>
+            <tbody id="reportBody"><tr><td colspan="5" style="color:#aaa">데이터 없음</td></tr></tbody>
+        </table>
+    </div>
+
+    <!-- 전투 로그 (실시간 WebSocket) -->
+    <div class="card full">
+        <h3>📡 실시간 전투 로그 <button onclick="clearLog()" style="float:right">지우기</button></h3>
+        <div id="battleLog" class="log"></div>
+    </div>
+
+</div>
+
+<script>
+let currentUserId = null;
+
+// ─────────────────────────────── API 헬퍼 ───────────────────────────────
+function getUserNo() {
+    return currentUserId || (window.parent && window.parent.currentUserId) || null;
+}
+
+async function apiCall(apiCode, data = {}) {
+    const uid = getUserNo();
+    if (!uid) return null;
+    try {
+        const res = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_no: uid, api_code: apiCode, data })
+        });
+        return await res.json();
+    } catch(e) {
+        return { success: false, message: e.message };
+    }
+}
+
+// ─────────────────────────────── 로그 ───────────────────────────────
+function log(msg, cls = 'info') {
+    const el = document.getElementById('battleLog');
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('battleLog').innerHTML = ''; }
+
+// ─────────────────────────────── 맵 ───────────────────────────────
+let mapData = null;
+
+async function loadMapInfo() {
+    const res = await apiCall(9002, { radius: 50 });
+    if (!res || !res.success) { log('맵 로드 실패', 'error'); return; }
+    mapData = res.data;
+    drawMap(mapData, npcList);
+    document.getElementById('myPosInfo').textContent =
+        `내 위치: (${mapData.my_position.x}, ${mapData.my_position.y})`;
+}
+
+function drawMap(data, npcs = []) {
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const MAP_SIZE = data.map_size || 100;
+    const scale = W / MAP_SIZE;
+
+    // 크기 상수 (캔버스 해상도에 비례)
+    const triH  = Math.max(8,  scale * 0.9);
+    const triW  = triH * 0.75;
+    const dotR  = Math.max(5,  scale * 0.55);
+    const meR   = Math.max(7,  scale * 0.85);
+    const mchR  = Math.max(5,  scale * 0.6);
+    const font  = `${Math.max(9, Math.round(scale * 0.85))}px Arial`;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // ── 격자 ──
+    ctx.strokeStyle = '#c8e6c9';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= MAP_SIZE; i += 10) {
+        ctx.beginPath(); ctx.moveTo(i * scale, 0); ctx.lineTo(i * scale, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * scale); ctx.lineTo(W, i * scale); ctx.stroke();
+    }
+
+    // ── 행군 경로 (점선) ──
+    marches.forEach(m => {
+        const pos = getMarchCurrentPos(m);
+        if (!pos) return;
+        const destX = m.status === 'returning' ? m.from_x : m.to_x;
+        const destY = m.status === 'returning' ? m.from_y : m.to_y;
+        const color = m.status === 'returning' ? '#42a5f5' : m.status === 'battling' ? '#ef5350' : '#ffa726';
+        ctx.strokeStyle = color + 'aa';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pos.x * scale, pos.y * scale);
+        ctx.lineTo(destX * scale, destY * scale);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    // ── NPC (▲, 처치 시 회색) ──
+    npcs.forEach(n => {
+        ctx.fillStyle = n.alive ? '#ff6f00' : '#bdbdbd';
+        const px = n.x * scale, py = n.y * scale;
+        ctx.beginPath();
+        ctx.moveTo(px, py - triH);
+        ctx.lineTo(px + triW, py + triW * 0.5);
+        ctx.lineTo(px - triW, py + triW * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = n.alive ? '#bf360c' : '#9e9e9e';
+        ctx.font = font;
+        ctx.fillText(`N${n.npc_id}`, px + triW + 2, py - triH * 0.2);
+    });
+
+    // ── 주변 유저 (빨강 원) ──
+    (data.nearby || []).forEach(p => {
+        ctx.fillStyle = '#e53935';
+        ctx.beginPath();
+        ctx.arc(p.x * scale, p.y * scale, dotR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = '#555';
+        ctx.font = font;
+        ctx.fillText(p.user_no, p.x * scale + dotR + 2, p.y * scale - 2);
+    });
+
+    // ── 행군 병력 (현재 위치) ──
+    marches.forEach(m => {
+        const pos = getMarchCurrentPos(m);
+        if (!pos) return;
+        const color = m.status === 'returning' ? '#1565c0'
+                    : m.status === 'battling'  ? '#b71c1c'
+                    :                            '#e65100';
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pos.x * scale, pos.y * scale, mchR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.font = `bold ${font}`;
+        ctx.fillText(`M${m.march_id}`, pos.x * scale + mchR + 2, pos.y * scale - 2);
+    });
+
+    // ── 나 (파랑 원, 최상단) ──
+    const me = data.my_position;
+    ctx.fillStyle = '#1565c0';
+    ctx.beginPath();
+    ctx.arc(me.x * scale, me.y * scale, meR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+// ─────────────────────────────── 맵 애니메이션 ───────────────────────────────
+function parseDT(s) {
+    if (!s) return 0;
+    if (!s.endsWith('Z') && !s.match(/[+\-]\d{2}:\d{2}$/)) s += 'Z';
+    return new Date(s).getTime();
+}
+
+function getMarchCurrentPos(march) {
+    const now = Date.now();
+    if (march.status === 'marching') {
+        const dep = parseDT(march.departure_time);
+        const arr = parseDT(march.arrival_time);
+        const total = arr - dep;
+        if (total <= 0) return { x: march.to_x, y: march.to_y };
+        const t = Math.min(1, Math.max(0, (now - dep) / total));
+        return {
+            x: march.from_x + (march.to_x - march.from_x) * t,
+            y: march.from_y + (march.to_y - march.from_y) * t
+        };
+    } else if (march.status === 'returning') {
+        const arr = parseDT(march.arrival_time);
+        const ret = parseDT(march.return_time);
+        const total = ret - arr;
+        if (total <= 0) return { x: march.from_x, y: march.from_y };
+        const t = Math.min(1, Math.max(0, (now - arr) / total));
+        return {
+            x: march.to_x + (march.from_x - march.to_x) * t,
+            y: march.to_y + (march.from_y - march.to_y) * t
+        };
+    } else if (march.status === 'battling') {
+        return { x: march.to_x, y: march.to_y };
+    }
+    return null;
+}
+
+let _mapLoopRunning = false;
+
+function startMapLoop() {
+    if (_mapLoopRunning) return;
+    _mapLoopRunning = true;
+    let lastTime = 0;
+    function loop(ts) {
+        if (!_mapLoopRunning) return;
+        requestAnimationFrame(loop);
+        if (ts - lastTime < 100) return; // ~10fps
+        lastTime = ts;
+        if (mapData) drawMap(mapData, npcList);
+    }
+    requestAnimationFrame(loop);
+}
+
+// ─────────────────────────────── 행군 ───────────────────────────────
+let marches = [];
+
+async function loadMarches() {
+    const res = await apiCall(9011);
+    if (!res || !res.success) { log('행군 목록 로드 실패', 'error'); return; }
+    marches = res.data.marches || [];
+    const tbody = document.getElementById('marchBody');
+    if (!marches.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:#aaa">행군 없음</td></tr>';
+        return;
+    }
+    tbody.innerHTML = marches.map(m => `
+        <tr>
+            <td>${m.march_id}</td>
+            <td>${m.target_user_no}</td>
+            <td><span class="badge badge-${m.status}">${m.status}</span></td>
+            <td style="font-size:10px">${m.arrival_time ? m.arrival_time.slice(11,19) : '-'}</td>
+            <td>${m.status === 'marching'
+                ? `<button onclick="cancelMarch(${m.march_id})">취소</button>`
+                : ''}</td>
+        </tr>`).join('');
+}
+
+async function sendMarch() {
+    const target = parseInt(document.getElementById('marchTarget').value);
+    const unitIdx = parseInt(document.getElementById('marchUnit1Idx').value);
+    const unitCnt = parseInt(document.getElementById('marchUnit1Cnt').value);
+    const heroVal = document.getElementById('marchHero').value;
+
+    if (!target || !unitIdx || !unitCnt) {
+        document.getElementById('marchResult').textContent = '대상 유저와 유닛 정보를 입력하세요.';
+        return;
+    }
+
+    const data = {
+        target_user_no: target,
+        units: { [unitIdx]: unitCnt }
+    };
+    if (heroVal) data.hero_idx = parseInt(heroVal);
+
+    const res = await apiCall(9012, data);
+    if (res && res.success) {
+        document.getElementById('marchResult').textContent =
+            `출진 성공! march_id=${res.data.march_id}, 도착: ${res.data.arrival_time?.slice(11,19)}`;
+        log(`출진 완료 → march_id=${res.data.march_id}`, 'success');
+        loadMarches();
+    } else {
+        document.getElementById('marchResult').textContent = res?.message || '출진 실패';
+        log(`출진 실패: ${res?.message}`, 'error');
+    }
+}
+
+async function cancelMarch(marchId) {
+    const res = await apiCall(9013, { march_id: marchId });
+    if (res && res.success) {
+        log(`행군 취소 완료: ${marchId}`, 'success');
+        loadMarches();
+    } else {
+        log(`행군 취소 실패: ${res?.message}`, 'error');
+    }
+}
+
+// ─────────────────────────────── NPC ───────────────────────────────
+let npcList = [];
+
+async function loadNpcs() {
+    const res = await apiCall(9003);
+    if (!res || !res.success) { log('NPC 목록 로드 실패', 'error'); return; }
+    npcList = res.data.npcs || [];
+}
+
+// ─────────────────────────────── NPC 팝업 ───────────────────────────────
+let _popupNpc = null;
+
+async function showNpcPopup(npc, px, py) {
+    _popupNpc = npc;
+    document.getElementById('popupTitle').textContent =
+        `${npc.alive ? '👹' : '💀'} ${npc.korean_name}  T${npc.tier}`;
+    document.getElementById('popupInfo').innerHTML =
+        `보상 EXP: ${npc.exp_reward}<br>상태: ${npc.alive
+            ? '<span style="color:#2e7d32">● 생존</span>'
+            : '<span style="color:#9e9e9e">○ 처치됨</span>'}`;
+    document.getElementById('popupFormWrap').style.display = npc.alive ? '' : 'none';
+    document.getElementById('popupMsg').textContent = '';
+
+    if (npc.alive) await populatePopupDropdowns();
+
+    const popup = document.getElementById('npcPopup');
+    const mapCard = popup.parentElement;
+    const canvas = document.getElementById('mapCanvas');
+
+    let left = canvas.offsetLeft + px + 12;
+    let top  = canvas.offsetTop  + py - 20;
+
+    popup.classList.add('visible');
+
+    const popupW = popup.offsetWidth  || 190;
+    const popupH = popup.offsetHeight || 200;
+    const cardW  = mapCard.offsetWidth;
+    const cardH  = mapCard.offsetHeight;
+
+    if (left + popupW > cardW - 10) left = canvas.offsetLeft + px - popupW - 12;
+    if (top  + popupH > cardH - 10) top  = cardH - popupH - 10;
+    if (top  < 5) top  = 5;
+    if (left < 5) left = 5;
+
+    popup.style.left = left + 'px';
+    popup.style.top  = top  + 'px';
+}
+
+async function populatePopupDropdowns() {
+    const [unitRes, heroRes] = await Promise.all([apiCall(4001), apiCall(8001)]);
+
+    // 유닛 select
+    const unitSel = document.getElementById('popupUnitSelect');
+    unitSel.innerHTML = '<option value="">유닛 선택</option>';
+    if (unitRes && unitRes.success) {
+        Object.entries(unitRes.data)
+            .filter(([, u]) => (u.ready || 0) > 0)
+            .forEach(([idx, u]) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = `[${idx}] 준비: ${u.ready}명`;
+                unitSel.appendChild(opt);
+            });
+    }
+    if (unitSel.options.length === 1) {
+        unitSel.innerHTML = '<option value="">출전 가능한 유닛 없음</option>';
+    }
+
+    // 영웅 select
+    const heroSel = document.getElementById('popupHeroSelect');
+    heroSel.innerHTML = '<option value="">영웅 없음 (선택 안함)</option>';
+    if (heroRes && heroRes.success) {
+        (heroRes.data.heroes || [])
+            .filter(h => h.owned)
+            .forEach(h => {
+                const opt = document.createElement('option');
+                opt.value = h.hero_idx;
+                opt.textContent = `${h.korean_name} Lv.${h.hero_lv}`;
+                heroSel.appendChild(opt);
+            });
+    }
+}
+
+function showNpcPopupById(npcId) {
+    const npc = npcList.find(n => n.npc_id === npcId);
+    if (!npc) return;
+    const canvas = document.getElementById('mapCanvas');
+    const MAP_SIZE = (mapData && mapData.map_size) || 100;
+    const scale = canvas.width / MAP_SIZE;
+    showNpcPopup(npc, npc.x * scale, npc.y * scale);
+}
+
+function closeNpcPopup() {
+    document.getElementById('npcPopup').classList.remove('visible');
+    _popupNpc = null;
+}
+
+async function attackNpcFromPopup() {
+    if (!_popupNpc) return;
+    const unitIdx = parseInt(document.getElementById('popupUnitSelect').value);
+    const unitCnt = parseInt(document.getElementById('popupUnitCnt').value);
+    const heroVal = document.getElementById('popupHeroSelect').value;
+    const msg = document.getElementById('popupMsg');
+
+    if (!unitIdx || !unitCnt) {
+        msg.style.color = '#e53935';
+        msg.textContent = '유닛을 선택하고 수량을 입력하세요.';
+        return;
+    }
+
+    const data = { target_type: 'npc', npc_id: _popupNpc.npc_id, units: { [unitIdx]: unitCnt } };
+    if (heroVal) data.hero_idx = parseInt(heroVal);
+
+    msg.style.color = '#888';
+    msg.textContent = '출진 중...';
+
+    const res = await apiCall(9012, data);
+    if (res && res.success) {
+        msg.style.color = '#2e7d32';
+        msg.textContent = `성공! march_id=${res.data.march_id}`;
+        log(`NPC 출진 완료 → npc_id=${_popupNpc.npc_id}, march_id=${res.data.march_id}`, 'success');
+        loadMarches();
+        loadNpcs();
+    } else {
+        msg.style.color = '#e53935';
+        msg.textContent = res?.message || '출진 실패';
+        log(`NPC 출진 실패: ${res?.message}`, 'error');
+    }
+}
+
+// ─────────────────────────────── 전투 보고서 ───────────────────────────────
+async function loadReports() {
+    const res = await apiCall(9022, { limit: 10 });
+    if (!res || !res.success) { log('보고서 로드 실패', 'error'); return; }
+    const tbody = document.getElementById('reportBody');
+    const reports = res.data.reports || [];
+    if (!reports.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:#aaa">보고서 없음</td></tr>';
+        return;
+    }
+    const me = getUserNo();
+    tbody.innerHTML = reports.map(r => {
+        const isAtk = r.attacker_user_no == me;
+        const opponent = isAtk ? r.defender_user_no : r.attacker_user_no;
+        const loot = r.loot ? Object.entries(r.loot).map(([k,v]) => `${k}:${v}`).join(' ') : '-';
+        return `<tr>
+            <td>${r.battle_id}</td>
+            <td>${opponent}</td>
+            <td>${r.result || '-'}</td>
+            <td style="font-size:10px">${loot}</td>
+            <td>${r.total_rounds ?? '-'}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ─────────────────────────────── WebSocket 이벤트 수신 ───────────────────────────────
+window.addEventListener('message', async function(event) {
+    const msg = event.data;
+    if (!msg || !msg.type) return;
+
+    switch (msg.type) {
+        case 'set_player_id':
+            const newId = parseInt(msg.userId);
+            if (currentUserId !== newId) {
+                currentUserId = newId;
+                await loadData();
+            }
+            break;
+
+        case 'battle_incoming':
+            log(`⚠️ 적 병력 접근 중! battle_id=${msg.data?.battle_id}`, 'warn');
+            break;
+
+        case 'battle_start':
+            log(`⚔️ 전투 시작! battle_id=${msg.data?.battle_id}`, 'warn');
+            break;
+
+        case 'battle_tick':
+            const d = msg.data;
+            const atkAlive = Object.values(d?.atk_units || {}).reduce((a,b) => a + b, 0);
+            const defAlive = Object.values(d?.def_units || {}).reduce((a,b) => a + b, 0);
+            log(`⚔️ Round ${d?.round} | 공격측: ${atkAlive}명 / 방어측: ${defAlive}명`, 'info');
+            break;
+
+        case 'battle_end':
+            log(`🏁 전투 종료! result=${msg.data?.result}`, 'success');
+            loadReports();
+            loadMarches();
+            loadNpcs();
+            break;
+
+        case 'march_return':
+            log(`🏠 병력 귀환! march_id=${msg.data?.march_id}`, 'success');
+            loadMarches();
+            break;
+    }
+});
+
+// ─────────────────────────────── 이벤트 핸들러 ───────────────────────────────
+document.getElementById('mapCanvas').addEventListener('click', function(e) {
+    const MAP_SIZE = (mapData && mapData.map_size) || 100;
+    const scale = this.width / MAP_SIZE;
+    const HIT_RADIUS = 10;
+    for (const npc of npcList) {
+        const dx = e.offsetX - npc.x * scale;
+        const dy = e.offsetY - npc.y * scale;
+        if (Math.sqrt(dx * dx + dy * dy) < HIT_RADIUS) {
+            showNpcPopup(npc, e.offsetX, e.offsetY);
+            return;
+        }
+    }
+    closeNpcPopup();
+});
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#npcPopup') && !e.target.closest('#mapCanvas'))
+        closeNpcPopup();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeNpcPopup();
+});
+
+// ─────────────────────────────── 초기화 ───────────────────────────────
+async function loadData() {
+    if (!getUserNo()) return;
+    await Promise.all([loadNpcs(), loadMapInfo(), loadMarches(), loadReports()]);
+    startMapLoop();
+}
+</script>
+</body>
+</html>

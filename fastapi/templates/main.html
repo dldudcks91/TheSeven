@@ -348,8 +348,9 @@
     <div class="tabs">
         <button class="tab-button active" onclick="showTab('api')">API 테스트</button>
         <button class="tab-button" onclick="showTab('game')">게임</button>
-        <button class="tab-button" onclick="showTab('hero')">영웅</button>
+        <button class="tab-button" onclick="showTab('hero')">⚔️ 영웅</button>
         <button class="tab-button" onclick="showTab('ally')">연맹</button>
+        <button class="tab-button" onclick="showTab('battle')">전투</button>
     </div>
     
     <!-- 자원 탭 -->
@@ -467,16 +468,36 @@
                 </div>
             </div>
         </div>
+        <!-- 영웅 탭 -->
+        <div id="tab-hero" class="tab-content">
+            <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                <iframe
+                    id="heroFrame"
+                    src="hero.html"
+                    style="width: 100%; flex-grow: 1; border: none;">
+                </iframe>
+            </div>
+        </div>
+
         <!-- 연맹 탭 -->
         <div id="tab-ally" class="tab-content">
-            
-                <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
-                    <iframe 
-                        id="allyFrame" 
-                        src="alliance.html" 
-                        style="width: 100%; flex-grow: 1; border: none;">
-                    </iframe>
-                </div>
+            <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                <iframe
+                    id="allyFrame"
+                    src="alliance.html"
+                    style="width: 100%; flex-grow: 1; border: none;">
+                </iframe>
+            </div>
+        </div>
+
+        <!-- 전투 탭 -->
+        <div id="tab-battle" class="tab-content">
+            <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                <iframe
+                    id="battleFrame"
+                    src="battle.html"
+                    style="width: 100%; flex-grow: 1; border: none;">
+                </iframe>
             </div>
         </div>
     </div>
@@ -561,7 +582,7 @@
                         }, '*');
                     }
                     showToast(`유닛 훈련 완료!`, 'success');
-                    
+
                     // 미션 업데이트
                     if (message.data?.mission_update) {
                         const missionFrame = document.getElementById('missionFrame');
@@ -573,6 +594,37 @@
                         }
                     }
                     break;
+
+                case 'battle_incoming':
+                    showToast('적 병력이 접근 중입니다!', 'warning', '전투 경보');
+                    forwardToBattleFrame({ type: 'battle_incoming', data: message.data });
+                    break;
+
+                case 'battle_start':
+                    showToast('전투가 시작되었습니다!', 'info', '전투');
+                    forwardToBattleFrame({ type: 'battle_start', data: message.data });
+                    break;
+
+                case 'battle_tick':
+                    forwardToBattleFrame({ type: 'battle_tick', data: message.data });
+                    break;
+
+                case 'battle_end':
+                    showToast('전투가 종료되었습니다!', 'info', '전투 결과');
+                    forwardToBattleFrame({ type: 'battle_end', data: message.data });
+                    break;
+
+                case 'march_return':
+                    showToast('병력이 귀환했습니다.', 'success', '귀환');
+                    forwardToBattleFrame({ type: 'march_return', data: message.data });
+                    break;
+            }
+        }
+
+        function forwardToBattleFrame(msg) {
+            const battleFrame = document.getElementById('battleFrame');
+            if (battleFrame) {
+                battleFrame.contentWindow.postMessage(msg, '*');
             }
         }
 
@@ -690,7 +742,7 @@
             connectWebSocket(userId);
             
             // 3. 모든 iframe에 플레이어 ID 전달
-            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame','allyFrame'];
+            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame','heroFrame','allyFrame','battleFrame'];
             
             frameIds.forEach(frameId => {
                 const frame = document.getElementById(frameId);

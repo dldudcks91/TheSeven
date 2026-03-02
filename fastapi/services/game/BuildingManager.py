@@ -11,7 +11,6 @@ class BuildingManager:
     
     MAX_LEVEL = 10
     CONFIG_TYPE = 'building'
-    AVAILABLE_BUILDINGS = [101, 201, 301, 401]
     
     def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         """
@@ -228,14 +227,14 @@ class BuildingManager:
             
             building_idx = self.data.get('building_idx')
             
-            # 1. 건물이 생성 가능한 목록에 있는지 확인
-            if building_idx not in self.AVAILABLE_BUILDINGS:
+            # 1. 건물이 생성 가능한 목록에 있는지 확인 (GameDataManager CSV 기준)
+            if building_idx not in GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE, {}):
                 return {
                     "success": False,
                     "message": f"Building {building_idx} is not available for creation",
                     "data": {}
                 }
-            
+
             # 2. 이미 존재하는지 확인 (Redis)
             buildings_data = await self.get_user_buildings()
             if str(building_idx) in buildings_data:

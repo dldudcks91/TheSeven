@@ -18,6 +18,7 @@ from .shop_redis_manager import ShopRedisManager
 from .alliance_redis_manager import AllianceRedisManager
 
 from .nation_redis_manager import NationRedisManager
+from .combat_redis_manager import CombatRedisManager
 
 from .RedisManager import RedisManager
 
