@@ -106,6 +106,15 @@ class MarchDBManager:
     # UPDATE
     # ─────────────────────────────────────────────
 
+    def get_all_active_marches(self) -> List[Dict[str, Any]]:
+        """전체 유저 활성 행군 목록 (맵 렌더링용)"""
+        rows = (
+            self.db.query(models.March)
+            .filter(models.March.status.in_(["marching", "battling", "returning"]))
+            .all()
+        )
+        return [self._serialize(m) for m in rows]
+
     def update_march_status(self, march_id: int, status: str,
                             battle_id: Optional[int] = None,
                             return_time: Optional[datetime] = None) -> bool:

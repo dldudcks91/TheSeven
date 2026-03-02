@@ -92,6 +92,10 @@ class MarchManager:
         if target_type == "npc":
             return await self._march_create_npc(user_no, units, hero_idx)
 
+        # ── 위치 이동 분기 ─────────────────────────────
+        if target_type == "location":
+            return await self._march_create_location(user_no, units, hero_idx)
+
         # ── PvP 타겟 ──────────────────────────────────
         target_user_no = int(self.data.get("target_user_no", 0))
         if not target_user_no:
@@ -105,6 +109,11 @@ class MarchManager:
         active_cnt = sum(1 for m in active if m["status"] in ("marching", "battling", "returning"))
         if active_cnt >= self.MAX_MARCHES:
             return self._format(False, f"최대 {self.MAX_MARCHES}개 행군만 가능합니다")
+        if hero_idx and any(
+            int(m.get("hero_idx") or 0) == int(hero_idx)
+            for m in active if m["status"] in ("marching", "battling", "returning")
+        ):
+            return self._format(False, "해당 영웅은 이미 출전 중입니다")
 
         # 2. 병력 검증
         unit_rm = self.redis_manager.get_unit_manager()
@@ -178,6 +187,21 @@ class MarchManager:
         })
         await combat_rm.invalidate_user_marches(user_no)
 
+        ws = getattr(self, 'websocket_manager', None)
+        if ws:
+            await ws.broadcast_message({
+                "type": "map_march_start",
+                "data": {
+                    "march_id": march_id, "user_no": user_no,
+                    "target_type": "user",
+                    "from_x": my_pos["x"], "from_y": my_pos["y"],
+                    "to_x": target_pos["x"], "to_y": target_pos["y"],
+                    "departure_time": now.isoformat(),
+                    "arrival_time": arrival_time.isoformat(),
+                    "return_time": None, "status": "marching",
+                }
+            })
+
         return self._format(True, "출진 완료", {
             "march_id": march_id,
             "arrival_time": arrival_time.isoformat(),
@@ -208,6 +232,11 @@ class MarchManager:
         active_cnt = sum(1 for m in active if m["status"] in ("marching", "battling", "returning"))
         if active_cnt >= self.MAX_MARCHES:
             return self._format(False, f"최대 {self.MAX_MARCHES}개 행군만 가능합니다")
+        if hero_idx and any(
+            int(m.get("hero_idx") or 0) == int(hero_idx)
+            for m in active if m["status"] in ("marching", "battling", "returning")
+        ):
+            return self._format(False, "해당 영웅은 이미 출전 중입니다")
 
         # 병력 검증
         unit_rm = self.redis_manager.get_unit_manager()
@@ -280,11 +309,130 @@ class MarchManager:
         })
         await combat_rm.invalidate_user_marches(user_no)
 
+        ws = getattr(self, 'websocket_manager', None)
+        if ws:
+            await ws.broadcast_message({
+                "type": "map_march_start",
+                "data": {
+                    "march_id": march_id, "user_no": user_no,
+                    "target_type": "npc",
+                    "from_x": my_pos["x"], "from_y": my_pos["y"],
+                    "to_x": target_pos["x"], "to_y": target_pos["y"],
+                    "departure_time": now.isoformat(),
+                    "arrival_time": arrival_time.isoformat(),
+                    "return_time": None, "status": "marching",
+                }
+            })
+
         return self._format(True, "NPC 출진 완료", {
             "march_id": march_id,
             "npc_id": npc_id,
             "arrival_time": arrival_time.isoformat(),
             "march_speed": march_speed,
+            "distance": round(distance, 2),
+        })
+
+    async def _march_create_location(self, user_no: int, units: Dict[int, int], hero_idx) -> Dict:
+        """위치 이동 행군 생성 — 빈 좌표로 이동 후 자동 귀환"""
+        MAP_SIZE = 100
+        to_x = self.data.get("to_x")
+        to_y = self.data.get("to_y")
+        if to_x is None or to_y is None:
+            return self._format(False, "to_x, to_y는 필수입니다")
+        to_x, to_y = int(to_x), int(to_y)
+        if not (0 <= to_x <= MAP_SIZE and 0 <= to_y <= MAP_SIZE):
+            return self._format(False, f"좌표 범위 초과 (0~{MAP_SIZE})")
+
+        march_dm = self.db_manager.get_march_manager()
+        active = march_dm.get_user_marches(user_no, status=None)
+        active_cnt = sum(1 for m in active if m["status"] in ("marching", "battling", "returning"))
+        if active_cnt >= self.MAX_MARCHES:
+            return self._format(False, f"최대 {self.MAX_MARCHES}개 행군만 가능합니다")
+        if hero_idx and any(
+            int(m.get("hero_idx") or 0) == int(hero_idx)
+            for m in active if m["status"] in ("marching", "battling", "returning")
+        ):
+            return self._format(False, "해당 영웅은 이미 출전 중입니다")
+
+        unit_rm = self.redis_manager.get_unit_manager()
+        for unit_idx, count in units.items():
+            cached = await unit_rm.get_cached_unit(user_no, unit_idx)
+            if not cached:
+                return self._format(False, f"유닛 {unit_idx} 정보를 찾을 수 없습니다")
+            ready = int(cached.get("ready", 0))
+            if ready < count:
+                return self._format(False, f"유닛 {unit_idx} 병력 부족 (보유: {ready}, 요청: {count})")
+
+        my_pos = await self._get_position(user_no)
+        if not my_pos:
+            return self._format(False, "위치 정보를 찾을 수 없습니다")
+
+        march_speed = self._calc_march_speed(units)
+        distance = self._calc_distance(my_pos["x"], my_pos["y"], to_x, to_y)
+        travel_minutes = distance / march_speed if march_speed > 0 else 1
+        now = datetime.utcnow()
+        arrival_time = now + timedelta(minutes=travel_minutes)
+        return_time  = arrival_time + timedelta(minutes=travel_minutes)
+
+        for unit_idx, count in units.items():
+            cached = await unit_rm.get_cached_unit(user_no, unit_idx)
+            cached["ready"] = int(cached["ready"]) - count
+            cached["field"] = int(cached.get("field", 0)) + count
+            await unit_rm.update_cached_unit(user_no, unit_idx, cached)
+
+        march_data = {
+            "user_no": user_no,
+            "target_type": "location",
+            "target_user_no": None,
+            "from_x": my_pos["x"], "from_y": my_pos["y"],
+            "to_x": to_x, "to_y": to_y,
+            "units": units,
+            "hero_idx": hero_idx,
+            "march_speed": march_speed,
+            "departure_time": now,
+            "arrival_time": arrival_time,
+        }
+        result = march_dm.create_march(march_data)
+        if not result["success"]:
+            return self._format(False, "행군 생성 실패")
+
+        march_id = result["data"]["march_id"]
+        self.db_manager.commit()
+
+        combat_rm = self.redis_manager.get_combat_manager()
+        await combat_rm.add_march_to_queue(march_id, arrival_time)
+        await combat_rm.set_march_metadata(march_id, {
+            "march_id": march_id,
+            "user_no": user_no,
+            "target_type": "location",
+            "units": {str(k): v for k, v in units.items()},
+            "hero_idx": hero_idx,
+            "from_x": my_pos["x"], "from_y": my_pos["y"],
+            "to_x": to_x, "to_y": to_y,
+            "arrival_time": arrival_time.isoformat(),
+            "return_time":  return_time.isoformat(),
+        })
+        await combat_rm.invalidate_user_marches(user_no)
+
+        ws = getattr(self, 'websocket_manager', None)
+        if ws:
+            await ws.broadcast_message({
+                "type": "map_march_start",
+                "data": {
+                    "march_id": march_id, "user_no": user_no,
+                    "target_type": "location",
+                    "from_x": my_pos["x"], "from_y": my_pos["y"],
+                    "to_x": to_x, "to_y": to_y,
+                    "departure_time": now.isoformat(),
+                    "arrival_time": arrival_time.isoformat(),
+                    "return_time": return_time.isoformat(), "status": "marching",
+                }
+            })
+
+        return self._format(True, "위치 이동 출진 완료", {
+            "march_id": march_id,
+            "arrival_time": arrival_time.isoformat(),
+            "return_time":  return_time.isoformat(),
             "distance": round(distance, 2),
         })
 
@@ -322,5 +470,12 @@ class MarchManager:
         march_dm.update_march_status(march_id, "cancelled")
         self.db_manager.commit()
         await combat_rm.invalidate_user_marches(user_no)
+
+        ws = getattr(self, 'websocket_manager', None)
+        if ws:
+            await ws.broadcast_message({
+                "type": "map_march_complete",
+                "data": {"march_id": march_id}
+            })
 
         return self._format(True, "행군 취소됨")

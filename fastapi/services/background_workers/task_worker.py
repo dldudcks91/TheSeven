@@ -1,6 +1,7 @@
 import logging
 import json
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timezone, timedelta
 from .base_worker import BaseWorker
 from services.game.UnitManager import UnitManager
 from services.game.BuildingManager import BuildingManager  # 예시: 나중을 위해
@@ -100,6 +101,30 @@ class TaskWorker(BaseWorker):
                             attacker_no, "battle_start",
                             {"battle_id": battle_id, "battle_type": "npc", "npc_id": npc_id}
                         )
+                        if self.websocket_manager:
+                            await self.websocket_manager.broadcast_message({
+                                "type": "map_march_update",
+                                "data": {"march_id": march_id, "status": "battling", "return_time": None}
+                            })
+                elif target_type == "location":
+                    # 전투 없이 즉시 귀환 처리
+                    user_no = int(metadata.get("user_no", 0)) if metadata else 0
+                    return_time_str = metadata.get("return_time") if metadata else None
+                    if return_time_str and user_no:
+                        return_time = datetime.fromisoformat(return_time_str)
+                        march_dm = db_manager.get_march_manager()
+                        march_dm.update_march_status(march_id, "returning", return_time=return_time)
+                        db_manager.commit()
+                        await combat_rm.add_march_return_to_queue(march_id, return_time)
+                        await combat_rm.invalidate_user_marches(user_no)
+                        await self._send_websocket_notification(
+                            user_no, "march_arrive", {"march_id": march_id}
+                        )
+                        if self.websocket_manager:
+                            await self.websocket_manager.broadcast_message({
+                                "type": "map_march_update",
+                                "data": {"march_id": march_id, "status": "returning", "return_time": return_time_str}
+                            })
                 else:
                     result = await battle_manager.battle_start(march_id)
                     if result["success"]:
@@ -115,6 +140,11 @@ class TaskWorker(BaseWorker):
                                     march_info["target_user_no"], "battle_incoming",
                                     {"battle_id": battle_id}
                                 )
+                        if self.websocket_manager:
+                            await self.websocket_manager.broadcast_message({
+                                "type": "map_march_update",
+                                "data": {"march_id": march_id, "status": "battling", "return_time": None}
+                            })
 
                 # 큐에서 제거 (battle_start에서 처리되지 않았을 경우 방어)
                 await combat_rm.remove_march_from_queue(march_id)
@@ -144,6 +174,11 @@ class TaskWorker(BaseWorker):
                     march["user_no"], "march_return",
                     {"march_id": march_id}
                 )
+                if self.websocket_manager:
+                    await self.websocket_manager.broadcast_message({
+                        "type": "map_march_complete",
+                        "data": {"march_id": march_id}
+                    })
         except Exception as e:
             self.logger.error(f"Error processing march returns: {e}")
 

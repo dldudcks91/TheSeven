@@ -24,7 +24,7 @@
     .log .error { color: #f44747; }
 
     /* 미니맵 */
-    #mapCanvas { border: 1px solid #ccc; background: #e8f5e9; display: block; cursor: crosshair; }
+    #mapCanvas { border: 1px solid #ccc; background: #e8f5e9; display: block; cursor: default; }
     .map-legend { font-size: 11px; margin-top: 4px; }
     .map-legend span { margin-right: 10px; }
 
@@ -68,11 +68,13 @@
         <canvas id="mapCanvas" width="600" height="600"></canvas>
         <div class="map-legend">
             <span>🔵 나</span>
-            <span>🔴 적</span>
-            <span style="color:#ff6f00">▲ NPC (클릭)</span>
-            <span style="color:#e65100">● 출진중</span>
+            <span>🔴 적 (클릭→공격)</span>
+            <span style="color:#ff6f00">▲ NPC (클릭→사냥)</span>
+            <span style="color:#e65100">● 내 출진</span>
+            <span style="color:#8e24aa">● 타 유저 행군</span>
             <span style="color:#1565c0">● 귀환중</span>
             <span style="color:#b71c1c">● 전투중</span>
+            <span style="color:#555">📍 빈칸 클릭→이동</span>
         </div>
         <div id="myPosInfo" style="margin-top:4px; font-size:11px; color:#666;"></div>
 
@@ -92,6 +94,39 @@
                     <button class="primary" onclick="attackNpcFromPopup()">⚔️ 출진!</button>
                     <div id="popupMsg" class="npc-popup-msg"></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 유저 공격 팝업 -->
+        <div id="userPopup" class="npc-popup">
+            <div class="npc-popup-header">
+                <span class="npc-popup-title" id="userPopupTitle"></span>
+                <span class="npc-popup-close" onclick="closeUserPopup()">✕</span>
+            </div>
+            <hr>
+            <div class="npc-popup-form">
+                <select id="userPopupUnitSelect"><option value="">유닛 로딩 중...</option></select>
+                <input id="userPopupUnitCnt" type="number" placeholder="수량" value="10">
+                <select id="userPopupHeroSelect"><option value="">영웅 없음 (선택 안함)</option></select>
+                <button class="primary" onclick="attackUserFromPopup()">⚔️ 공격!</button>
+                <div id="userPopupMsg" class="npc-popup-msg"></div>
+            </div>
+        </div>
+
+        <!-- 위치 이동 팝업 -->
+        <div id="locationPopup" class="npc-popup">
+            <div class="npc-popup-header">
+                <span class="npc-popup-title">📍 이동</span>
+                <span class="npc-popup-close" onclick="closeLocationPopup()">✕</span>
+            </div>
+            <div class="npc-popup-info" id="locationPopupInfo"></div>
+            <hr>
+            <div class="npc-popup-form">
+                <select id="locationPopupUnitSelect"><option value="">유닛 로딩 중...</option></select>
+                <input id="locationPopupUnitCnt" type="number" placeholder="수량" value="10">
+                <select id="locationPopupHeroSelect"><option value="">영웅 없음 (선택 안함)</option></select>
+                <button class="primary" onclick="marchToLocation()">🚶 이동!</button>
+                <div id="locationPopupMsg" class="npc-popup-msg"></div>
             </div>
         </div>
     </div>
@@ -179,11 +214,15 @@ function clearLog() { document.getElementById('battleLog').innerHTML = ''; }
 
 // ─────────────────────────────── 맵 ───────────────────────────────
 let mapData = null;
+let globalMarches = {};  // {march_id: march_data} — 전체 유저 활성 행군
 
 async function loadMapInfo() {
     const res = await apiCall(9002, { radius: 50 });
     if (!res || !res.success) { log('맵 로드 실패', 'error'); return; }
     mapData = res.data;
+    // 서버에서 받은 전체 활성 행군으로 globalMarches 초기화
+    globalMarches = {};
+    (res.data.all_marches || []).forEach(m => { globalMarches[m.march_id] = m; });
     drawMap(mapData, npcList);
     document.getElementById('myPosInfo').textContent =
         `내 위치: (${mapData.my_position.x}, ${mapData.my_position.y})`;
@@ -214,13 +253,15 @@ function drawMap(data, npcs = []) {
         ctx.beginPath(); ctx.moveTo(0, i * scale); ctx.lineTo(W, i * scale); ctx.stroke();
     }
 
-    // ── 행군 경로 (점선) ──
-    marches.forEach(m => {
+    // ── 행군 경로 (점선) — globalMarches 기준 (전체 유저) ──
+    const myUid = getUserNo();
+    Object.values(globalMarches).forEach(m => {
         const pos = getMarchCurrentPos(m);
         if (!pos) return;
         const destX = m.status === 'returning' ? m.from_x : m.to_x;
         const destY = m.status === 'returning' ? m.from_y : m.to_y;
-        const color = m.status === 'returning' ? '#42a5f5' : m.status === 'battling' ? '#ef5350' : '#ffa726';
+        const isOwn = String(m.user_no) === String(myUid);
+        const color = m.status === 'returning' ? '#42a5f5' : m.status === 'battling' ? '#ef5350' : (isOwn ? '#ffa726' : '#ab47bc');
         ctx.strokeStyle = color + 'aa';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 4]);
@@ -260,13 +301,15 @@ function drawMap(data, npcs = []) {
         ctx.fillText(p.user_no, p.x * scale + dotR + 2, p.y * scale - 2);
     });
 
-    // ── 행군 병력 (현재 위치) ──
-    marches.forEach(m => {
+    // ── 행군 병력 (현재 위치) — globalMarches 기준 (전체 유저) ──
+    Object.values(globalMarches).forEach(m => {
         const pos = getMarchCurrentPos(m);
         if (!pos) return;
+        const isOwn = String(m.user_no) === String(myUid);
         const color = m.status === 'returning' ? '#1565c0'
                     : m.status === 'battling'  ? '#b71c1c'
-                    :                            '#e65100';
+                    : isOwn                    ? '#e65100'
+                    :                            '#8e24aa';
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(pos.x * scale, pos.y * scale, mchR, 0, Math.PI * 2);
@@ -276,7 +319,7 @@ function drawMap(data, npcs = []) {
         ctx.stroke();
         ctx.fillStyle = color;
         ctx.font = `bold ${font}`;
-        ctx.fillText(`M${m.march_id}`, pos.x * scale + mchR + 2, pos.y * scale - 2);
+        ctx.fillText(isOwn ? `M${m.march_id}` : `U${m.user_no}`, pos.x * scale + mchR + 2, pos.y * scale - 2);
     });
 
     // ── 나 (파랑 원, 최상단) ──
@@ -288,6 +331,16 @@ function drawMap(data, npcs = []) {
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    // ── 호버 타일 하이라이트 ──
+    if (_hoverTile) {
+        const { tx, ty } = _hoverTile;
+        ctx.fillStyle = 'rgba(255, 255, 180, 0.25)';
+        ctx.fillRect(tx * scale, ty * scale, scale, scale);
+        ctx.strokeStyle = 'rgba(80, 80, 80, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(tx * scale + 0.5, ty * scale + 0.5, scale - 1, scale - 1);
+    }
 }
 
 // ─────────────────────────────── 맵 애니메이션 ───────────────────────────────
@@ -356,7 +409,9 @@ async function loadMarches() {
     tbody.innerHTML = marches.map(m => `
         <tr>
             <td>${m.march_id}</td>
-            <td>${m.target_user_no}</td>
+            <td>${m.target_type === 'npc'      ? 'NPC'
+               : m.target_type === 'location' ? `(${m.to_x},${m.to_y})`
+               : `유저#${m.target_user_no}`}</td>
             <td><span class="badge badge-${m.status}">${m.status}</span></td>
             <td style="font-size:10px">${m.arrival_time ? m.arrival_time.slice(11,19) : '-'}</td>
             <td>${m.status === 'marching'
@@ -413,50 +468,11 @@ async function loadNpcs() {
     npcList = res.data.npcs || [];
 }
 
-// ─────────────────────────────── NPC 팝업 ───────────────────────────────
-let _popupNpc = null;
-
-async function showNpcPopup(npc, px, py) {
-    _popupNpc = npc;
-    document.getElementById('popupTitle').textContent =
-        `${npc.alive ? '👹' : '💀'} ${npc.korean_name}  T${npc.tier}`;
-    document.getElementById('popupInfo').innerHTML =
-        `보상 EXP: ${npc.exp_reward}<br>상태: ${npc.alive
-            ? '<span style="color:#2e7d32">● 생존</span>'
-            : '<span style="color:#9e9e9e">○ 처치됨</span>'}`;
-    document.getElementById('popupFormWrap').style.display = npc.alive ? '' : 'none';
-    document.getElementById('popupMsg').textContent = '';
-
-    if (npc.alive) await populatePopupDropdowns();
-
-    const popup = document.getElementById('npcPopup');
-    const mapCard = popup.parentElement;
-    const canvas = document.getElementById('mapCanvas');
-
-    let left = canvas.offsetLeft + px + 12;
-    let top  = canvas.offsetTop  + py - 20;
-
-    popup.classList.add('visible');
-
-    const popupW = popup.offsetWidth  || 190;
-    const popupH = popup.offsetHeight || 200;
-    const cardW  = mapCard.offsetWidth;
-    const cardH  = mapCard.offsetHeight;
-
-    if (left + popupW > cardW - 10) left = canvas.offsetLeft + px - popupW - 12;
-    if (top  + popupH > cardH - 10) top  = cardH - popupH - 10;
-    if (top  < 5) top  = 5;
-    if (left < 5) left = 5;
-
-    popup.style.left = left + 'px';
-    popup.style.top  = top  + 'px';
-}
-
-async function populatePopupDropdowns() {
+// ─────────────────────────────── 팝업 공통 헬퍼 ───────────────────────────────
+async function populateDropdownsFor(unitSelId, heroSelId) {
     const [unitRes, heroRes] = await Promise.all([apiCall(4001), apiCall(8001)]);
 
-    // 유닛 select
-    const unitSel = document.getElementById('popupUnitSelect');
+    const unitSel = document.getElementById(unitSelId);
     unitSel.innerHTML = '<option value="">유닛 선택</option>';
     if (unitRes && unitRes.success) {
         Object.entries(unitRes.data)
@@ -468,23 +484,60 @@ async function populatePopupDropdowns() {
                 unitSel.appendChild(opt);
             });
     }
-    if (unitSel.options.length === 1) {
-        unitSel.innerHTML = '<option value="">출전 가능한 유닛 없음</option>';
-    }
+    if (unitSel.options.length === 1) unitSel.innerHTML = '<option value="">출전 가능한 유닛 없음</option>';
 
-    // 영웅 select
-    const heroSel = document.getElementById('popupHeroSelect');
+    const heroSel = document.getElementById(heroSelId);
     heroSel.innerHTML = '<option value="">영웅 없음 (선택 안함)</option>';
     if (heroRes && heroRes.success) {
-        (heroRes.data.heroes || [])
-            .filter(h => h.owned)
-            .forEach(h => {
-                const opt = document.createElement('option');
-                opt.value = h.hero_idx;
-                opt.textContent = `${h.korean_name} Lv.${h.hero_lv}`;
-                heroSel.appendChild(opt);
-            });
+        (heroRes.data.heroes || []).filter(h => h.owned).forEach(h => {
+            const opt = document.createElement('option');
+            opt.value = h.hero_idx;
+            opt.textContent = `${h.korean_name} Lv.${h.hero_lv}`;
+            heroSel.appendChild(opt);
+        });
     }
+}
+
+function positionPopup(popup, px, py) {
+    const canvas = document.getElementById('mapCanvas');
+    const mapCard = canvas.closest('.map-card');
+    let left = canvas.offsetLeft + px + 12;
+    let top  = canvas.offsetTop  + py - 20;
+    popup.classList.add('visible');
+    const popupW = popup.offsetWidth  || 190;
+    const popupH = popup.offsetHeight || 200;
+    const cardW  = mapCard.offsetWidth;
+    const cardH  = mapCard.offsetHeight;
+    if (left + popupW > cardW - 10) left = canvas.offsetLeft + px - popupW - 12;
+    if (top  + popupH > cardH - 10) top  = cardH - popupH - 10;
+    if (top  < 5) top  = 5;
+    if (left < 5) left = 5;
+    popup.style.left = left + 'px';
+    popup.style.top  = top  + 'px';
+}
+
+function closeAllPopups() {
+    closeNpcPopup();
+    closeUserPopup();
+    closeLocationPopup();
+}
+
+// ─────────────────────────────── NPC 팝업 ───────────────────────────────
+let _popupNpc = null;
+
+async function showNpcPopup(npc, px, py) {
+    closeAllPopups();
+    _popupNpc = npc;
+    document.getElementById('popupTitle').textContent =
+        `${npc.alive ? '👹' : '💀'} ${npc.korean_name}  T${npc.tier}`;
+    document.getElementById('popupInfo').innerHTML =
+        `보상 EXP: ${npc.exp_reward}<br>상태: ${npc.alive
+            ? '<span style="color:#2e7d32">● 생존</span>'
+            : '<span style="color:#9e9e9e">○ 처치됨</span>'}`;
+    document.getElementById('popupFormWrap').style.display = npc.alive ? '' : 'none';
+    document.getElementById('popupMsg').textContent = '';
+    if (npc.alive) await populateDropdownsFor('popupUnitSelect', 'popupHeroSelect');
+    positionPopup(document.getElementById('npcPopup'), px, py);
 }
 
 function showNpcPopupById(npcId) {
@@ -513,24 +566,103 @@ async function attackNpcFromPopup() {
         msg.textContent = '유닛을 선택하고 수량을 입력하세요.';
         return;
     }
-
     const data = { target_type: 'npc', npc_id: _popupNpc.npc_id, units: { [unitIdx]: unitCnt } };
     if (heroVal) data.hero_idx = parseInt(heroVal);
-
     msg.style.color = '#888';
     msg.textContent = '출진 중...';
-
     const res = await apiCall(9012, data);
     if (res && res.success) {
         msg.style.color = '#2e7d32';
         msg.textContent = `성공! march_id=${res.data.march_id}`;
         log(`NPC 출진 완료 → npc_id=${_popupNpc.npc_id}, march_id=${res.data.march_id}`, 'success');
-        loadMarches();
-        loadNpcs();
+        loadMarches(); loadNpcs();
     } else {
         msg.style.color = '#e53935';
         msg.textContent = res?.message || '출진 실패';
         log(`NPC 출진 실패: ${res?.message}`, 'error');
+    }
+}
+
+// ─────────────────────────────── 유저 공격 팝업 ───────────────────────────────
+let _popupUser = null;
+
+async function showUserPopup(user, px, py) {
+    closeAllPopups();
+    _popupUser = user;
+    document.getElementById('userPopupTitle').textContent = `⚔️ 유저 #${user.user_no} 공격`;
+    document.getElementById('userPopupMsg').textContent = '';
+    await populateDropdownsFor('userPopupUnitSelect', 'userPopupHeroSelect');
+    positionPopup(document.getElementById('userPopup'), px, py);
+}
+
+function closeUserPopup() {
+    document.getElementById('userPopup').classList.remove('visible');
+    _popupUser = null;
+}
+
+async function attackUserFromPopup() {
+    if (!_popupUser) return;
+    const unitIdx = parseInt(document.getElementById('userPopupUnitSelect').value);
+    const unitCnt = parseInt(document.getElementById('userPopupUnitCnt').value);
+    const heroVal = document.getElementById('userPopupHeroSelect').value;
+    const msg = document.getElementById('userPopupMsg');
+
+    if (!unitIdx || !unitCnt) { msg.style.color = '#e53935'; msg.textContent = '유닛을 선택하세요.'; return; }
+    const data = { target_type: 'user', target_user_no: _popupUser.user_no, units: { [unitIdx]: unitCnt } };
+    if (heroVal) data.hero_idx = parseInt(heroVal);
+    msg.style.color = '#888'; msg.textContent = '출진 중...';
+    const res = await apiCall(9012, data);
+    if (res && res.success) {
+        msg.style.color = '#2e7d32';
+        msg.textContent = `성공! march_id=${res.data.march_id}`;
+        log(`유저 공격 출진 → user_no=${_popupUser.user_no}, march_id=${res.data.march_id}`, 'success');
+        loadMarches();
+    } else {
+        msg.style.color = '#e53935';
+        msg.textContent = res?.message || '출진 실패';
+        log(`유저 공격 실패: ${res?.message}`, 'error');
+    }
+}
+
+// ─────────────────────────────── 위치 이동 팝업 ───────────────────────────────
+let _locationTarget = null;
+
+async function showLocationPopup(px, py, mapX, mapY) {
+    closeAllPopups();
+    _locationTarget = { mapX, mapY };
+    document.getElementById('locationPopupInfo').textContent = `좌표: (${mapX}, ${mapY})`;
+    document.getElementById('locationPopupMsg').textContent = '';
+    await populateDropdownsFor('locationPopupUnitSelect', 'locationPopupHeroSelect');
+    positionPopup(document.getElementById('locationPopup'), px, py);
+}
+
+function closeLocationPopup() {
+    document.getElementById('locationPopup').classList.remove('visible');
+    _locationTarget = null;
+}
+
+async function marchToLocation() {
+    if (!_locationTarget) return;
+    const unitIdx = parseInt(document.getElementById('locationPopupUnitSelect').value);
+    const unitCnt = parseInt(document.getElementById('locationPopupUnitCnt').value);
+    const heroVal = document.getElementById('locationPopupHeroSelect').value;
+    const msg = document.getElementById('locationPopupMsg');
+
+    if (!unitIdx || !unitCnt) { msg.style.color = '#e53935'; msg.textContent = '유닛을 선택하세요.'; return; }
+    const data = { target_type: 'location', to_x: _locationTarget.mapX, to_y: _locationTarget.mapY, units: { [unitIdx]: unitCnt } };
+    if (heroVal) data.hero_idx = parseInt(heroVal);
+    msg.style.color = '#888'; msg.textContent = '이동 중...';
+    const res = await apiCall(9012, data);
+    if (res && res.success) {
+        msg.style.color = '#2e7d32';
+        msg.textContent = `성공! march_id=${res.data.march_id}`;
+        log(`위치 이동 출진 → (${_locationTarget.mapX},${_locationTarget.mapY}), march_id=${res.data.march_id}`, 'success');
+        loadMarches();
+        setTimeout(closeLocationPopup, 1000);
+    } else {
+        msg.style.color = '#e53935';
+        msg.textContent = res?.message || '이동 실패';
+        log(`위치 이동 실패: ${res?.message}`, 'error');
     }
 }
 
@@ -599,14 +731,55 @@ window.addEventListener('message', async function(event) {
             log(`🏠 병력 귀환! march_id=${msg.data?.march_id}`, 'success');
             loadMarches();
             break;
+
+        case 'map_march_start':
+            // 다른 유저(또는 자신)의 행군 출발 — globalMarches에 추가
+            if (msg.data?.march_id != null) {
+                globalMarches[msg.data.march_id] = msg.data;
+            }
+            break;
+
+        case 'map_march_update':
+            // 행군 상태 변경 (marching→battling/returning)
+            if (msg.data?.march_id != null) {
+                if (globalMarches[msg.data.march_id]) {
+                    Object.assign(globalMarches[msg.data.march_id], msg.data);
+                }
+            }
+            break;
+
+        case 'map_march_complete':
+            // 행군 완료/취소 — globalMarches에서 제거
+            if (msg.data?.march_id != null) {
+                const mid = msg.data.march_id;
+                if (globalMarches[mid] && String(globalMarches[mid].user_no) === String(getUserNo())) {
+                    loadMarches();  // 내 행군 테이블 갱신
+                }
+                delete globalMarches[mid];
+            }
+            break;
     }
 });
 
 // ─────────────────────────────── 이벤트 핸들러 ───────────────────────────────
+let _hoverTile = null;
+
+document.getElementById('mapCanvas').addEventListener('mousemove', function(e) {
+    const MAP_SIZE = (mapData && mapData.map_size) || 100;
+    const scale = this.width / MAP_SIZE;
+    _hoverTile = { tx: Math.floor(e.offsetX / scale), ty: Math.floor(e.offsetY / scale) };
+});
+
+document.getElementById('mapCanvas').addEventListener('mouseleave', function() {
+    _hoverTile = null;
+});
+
 document.getElementById('mapCanvas').addEventListener('click', function(e) {
     const MAP_SIZE = (mapData && mapData.map_size) || 100;
     const scale = this.width / MAP_SIZE;
     const HIT_RADIUS = 10;
+
+    // 1. NPC 클릭
     for (const npc of npcList) {
         const dx = e.offsetX - npc.x * scale;
         const dy = e.offsetY - npc.y * scale;
@@ -615,16 +788,32 @@ document.getElementById('mapCanvas').addEventListener('click', function(e) {
             return;
         }
     }
-    closeNpcPopup();
+
+    // 2. 유저 클릭
+    const nearby = (mapData && mapData.nearby) || [];
+    for (const user of nearby) {
+        const dx = e.offsetX - user.x * scale;
+        const dy = e.offsetY - user.y * scale;
+        if (Math.sqrt(dx * dx + dy * dy) < HIT_RADIUS) {
+            showUserPopup(user, e.offsetX, e.offsetY);
+            return;
+        }
+    }
+
+    // 3. 빈 공간 클릭 → 위치 이동 팝업
+    const mapX = Math.round(e.offsetX / scale);
+    const mapY = Math.round(e.offsetY / scale);
+    showLocationPopup(e.offsetX, e.offsetY, mapX, mapY);
 });
 
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('#npcPopup') && !e.target.closest('#mapCanvas'))
-        closeNpcPopup();
+    if (!e.target.closest('#npcPopup') && !e.target.closest('#userPopup') &&
+        !e.target.closest('#locationPopup') && !e.target.closest('#mapCanvas'))
+        closeAllPopups();
 });
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') closeNpcPopup();
+    if (e.key === 'Escape') closeAllPopups();
 });
 
 // ─────────────────────────────── 초기화 ───────────────────────────────

@@ -53,6 +53,24 @@ class BattleWorker(BaseWorker):
                         }
                         await self._notify(attacker_no, "battle_end", finish_data)
                         await self._notify(defender_no, "battle_end", finish_data)
+
+                        # 맵 브로드캐스트: 전투 → 귀환 중으로 상태 갱신
+                        if self.websocket_manager:
+                            march_id = state.get("march_id")
+                            if march_id:
+                                march = db_manager.get_march_manager().get_march(int(march_id))
+                                return_time_str = None
+                                if march and march.get("return_time"):
+                                    rt = march["return_time"]
+                                    return_time_str = rt.isoformat() if hasattr(rt, "isoformat") else str(rt)
+                                await self.websocket_manager.broadcast_message({
+                                    "type": "map_march_update",
+                                    "data": {
+                                        "march_id": int(march_id),
+                                        "status": "returning",
+                                        "return_time": return_time_str,
+                                    }
+                                })
                     else:
                         # 라운드 틱 알림 (현재 상태)
                         tick_data = {

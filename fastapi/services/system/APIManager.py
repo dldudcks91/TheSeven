@@ -93,9 +93,10 @@ class APIManager():
         9022: (BattleManager, BattleManager.battle_report),
     }
     
-    def __init__(self, db_manager, redis_manager):
+    def __init__(self, db_manager, redis_manager, websocket_manager=None):
         self.db_manager = db_manager
         self.redis_manager = redis_manager
+        self.websocket_manager = websocket_manager
         return
     
     async def process_request(self, user_no, api_code, data):
@@ -120,9 +121,10 @@ class APIManager():
         
         
         service_instance = ServiceClass(self.db_manager, self.redis_manager)
-        
+
         service_instance.user_no = user_no
         service_instance.data = data
+        service_instance.websocket_manager = self.websocket_manager
         
         
         return await method(service_instance)

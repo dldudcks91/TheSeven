@@ -618,6 +618,12 @@
                     showToast('병력이 귀환했습니다.', 'success', '귀환');
                     forwardToBattleFrame({ type: 'march_return', data: message.data });
                     break;
+
+                case 'map_march_start':
+                case 'map_march_update':
+                case 'map_march_complete':
+                    forwardToBattleFrame({ type: message.type, data: message.data });
+                    break;
             }
         }
 

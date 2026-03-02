@@ -140,10 +140,11 @@ def get_websocket_manager() -> WebsocketManager:
 
 async def get_api_manager(
     db_manager: DBManager = Depends(get_db_manager),
-    redis_manager: RedisManager = Depends(get_redis_manager)
+    redis_manager: RedisManager = Depends(get_redis_manager),
+    ws_manager: WebsocketManager = Depends(get_websocket_manager)
 ) -> APIManager:
     """APIManager를 주입하기 위한 의존성 함수"""
-    return APIManager(db_manager, redis_manager)
+    return APIManager(db_manager, redis_manager, ws_manager)
 
 @app.on_event("shutdown")
 async def shutdown_event():

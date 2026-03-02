@@ -1,7 +1,7 @@
 # COMBAT.md - 전투 시스템 기획 & 설계 문서
 
 > **프로젝트**: TheSeven
-> **최종 수정**: 2026-03-02
+> **최종 수정**: 2026-03-03
 > **상태**: 구현 완료 (Python 1차)
 
 ---
@@ -413,6 +413,7 @@ Hero 테이블이 최소 구조. 스킬 시스템은 별도 설계 필요.
 
 - 행군 시 영웅 1명 선택 동행 (optional)
 - 영웅은 `hero_idx` + `hero_lv`만으로 전투 보정 적용 (단순 레벨 기반)
+- **동일 영웅 중복 출전 불가**: `march_create` 시 활성 행군의 `hero_idx` 충돌 체크 → `"해당 영웅은 이미 출전 중입니다"`
 - 스킬 시스템은 Hero DB 설계 확정 후 추가
 
 ### 6.3 영웅 스킬 설계 방향 (예정)
@@ -525,7 +526,9 @@ npc_id: str       # nullable — NPC 공격 시 UUID
 |--------|------|------|
 | `TaskWorker` | 확장 | `completion_queue:march` 감지 → `battle_start()` 연결 |
 | `TaskWorker` | 확장 | `completion_queue:march_return` 감지 → 귀환 처리 |
+| `TaskWorker` | 확장 | 도착/귀환 시 `map_march_update/complete` 전체 브로드캐스트 |
 | `BattleWorker` | **신규** | 1초 틱, `battle:active` 순회, 전투 계산 + WS push |
+| `BattleWorker` | 확장 | 전투 종료 시 `map_march_update {status: returning}` 전체 브로드캐스트 |
 
 ---
 
@@ -623,6 +626,14 @@ def calculate_round(attacker_units: dict, defender_units: dict,
   ✅ NPC 클릭 팝업 — 유닛/영웅 드롭다운 선택
   ✅ 행군 목록 / 전투 보고서
   ✅ WebSocket 실시간 로그
+
+✅ Phase 5.1: 멀티플레이어 실시간 맵 동기화 (완료)
+  ✅ WebSocket 브로드캐스트 — map_march_start / map_march_update / map_march_complete
+  ✅ APIManager → ws_manager 의존성 주입 체인 완성
+  ✅ MapManager.map_info() — all_marches 포함 (페이지 로드 초기 상태)
+  ✅ globalMarches{} 클라이언트 딕셔너리 — 전체 유저 행군 실시간 관리
+  ✅ 전투 종료 시 returning 상태 브로드캐스트 버그 수정 (BattleWorker)
+  ✅ 영웅 중복 출전 방지 (MarchManager — 3개 분기 모두)
 
 ⬜ Phase 6: C++ 벤치마크 (예정)
   ⬜ calculate_round() C++ 재구현

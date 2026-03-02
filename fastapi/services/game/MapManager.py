@@ -66,14 +66,17 @@ class MapManager:
         return self._format(True, "OK", pos)
 
     async def map_info(self) -> Dict:
-        """현재 유저 중심 반경 내 다른 유저 목록"""
+        """현재 유저 중심 반경 내 다른 유저 목록 + 전체 활성 행군"""
         radius = int(self.data.get("radius", 20))
         my_pos = await self._ensure_position(self.user_no)
         combat_rm = self.redis_manager.get_combat_manager()
         nearby = await combat_rm.get_nearby_positions(my_pos["x"], my_pos["y"], radius)
         nearby = [p for p in nearby if p["user_no"] != self.user_no]
+        march_dm = self.db_manager.get_march_manager()
+        all_marches = march_dm.get_all_active_marches()
         return self._format(True, "OK", {
             "my_position": my_pos,
             "nearby": nearby,
             "map_size": self.MAP_SIZE,
+            "all_marches": all_marches,
         })

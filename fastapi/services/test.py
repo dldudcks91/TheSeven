@@ -70,7 +70,7 @@ except Exception as e:
     print(f"오류 발생: {e}")
 
 #%%
-HASH_KEY = zset_keys['hash'][6]
+HASH_KEY = zset_keys['hash'][1]
 try:
     # HGETALL 명령어 실행: 모든 필드와 값을 딕셔너리로 가져옴
     hash_data = redis_client.hgetall(HASH_KEY)
@@ -92,6 +92,9 @@ except Exception as e:
 total_hash_dic = dict()
 for key in zset_keys['hash']:
     total_hash_dic[key] = redis_client.hgetall(key)
+#%%
+
+    
 
 #%%
 
