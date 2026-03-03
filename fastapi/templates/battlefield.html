@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>전장</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f5f5f5; font-size: 13px; }
+    h3 { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 260px 1fr; gap: 10px; }
+    .card { background: white; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+    button { padding: 4px 10px; border: 1px solid #ccc; background: white; cursor: pointer; border-radius: 3px; font-size: 12px; }
+    button:hover { background: #eee; }
+    button.primary { background: #333; color: white; border-color: #333; }
+    button.danger  { background: #c62828; color: white; border-color: #c62828; }
+    button.watching { background: #1565c0; color: white; border-color: #1565c0; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* 전장 카드 목록 */
+    .bf-list { display: flex; flex-direction: column; gap: 8px; }
+    .bf-card {
+        border: 2px solid #e0e0e0; border-radius: 6px;
+        padding: 10px 12px; cursor: pointer;
+        transition: border-color 0.15s;
+    }
+    .bf-card:hover { border-color: #bdbdbd; }
+    .bf-card.selected { border-color: #1565c0; background: #e8f0fe; }
+    .bf-card.my-bf    { border-color: #2e7d32; background: #e8f5e9; }
+    .bf-card.my-bf.selected { border-color: #1565c0; background: #dcedc8; }
+    .bf-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .bf-card-title { font-weight: bold; font-size: 14px; }
+    .bf-badge {
+        display: inline-block; padding: 1px 7px; border-radius: 10px;
+        font-size: 11px; font-weight: bold;
+    }
+    .bf-badge-mine    { background: #c8e6c9; color: #1b5e20; }
+    .bf-badge-watch   { background: #bbdefb; color: #0d47a1; }
+    .bf-stats { font-size: 12px; color: #555; margin-bottom: 8px; }
+    .bf-stats span { margin-right: 10px; }
+    .bf-actions { display: flex; gap: 6px; }
+
+    /* 맵 */
+    #bfMapCanvas { border: 1px solid #ccc; background: #fff8e1; display: block; }
+    .map-info { font-size: 11px; margin-top: 4px; color: #666; }
+    .map-legend { font-size: 11px; margin-top: 4px; }
+    .map-legend span { margin-right: 12px; }
+
+    /* 로그 */
+    .log { font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto;
+           background: #1e1e1e; color: #d4d4d4; padding: 8px; border-radius: 4px; }
+    .log .info    { color: #9cdcfe; }
+    .log .success { color: #4ec9b0; }
+    .log .warn    { color: #dcdcaa; }
+    .log .error   { color: #f44747; }
+
+    /* 툴팁 */
+    .battle-tooltip {
+        position: absolute; z-index: 20; pointer-events: none;
+        background: rgba(0,0,0,0.75); color: white;
+        padding: 4px 8px; border-radius: 4px; font-size: 11px;
+        white-space: nowrap; display: none;
+    }
+    .map-wrap { position: relative; display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="grid">
+
+    <!-- 왼쪽: 전장 목록 -->
+    <div class="card">
+        <h3>⚔️ 전장 목록 <button onclick="loadBfList()" style="float:right">새로고침</button></h3>
+        <div id="bfList" class="bf-list">
+            <div style="color:#aaa; font-size:12px;">로딩 중...</div>
+        </div>
+        <div id="bfMsg" style="margin-top:8px; font-size:11px; color:#c62828;"></div>
+    </div>
+
+    <!-- 오른쪽: 전장 맵 + 로그 -->
+    <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="card" style="flex:1;">
+            <h3 id="mapTitle">🗺️ 전장 맵</h3>
+            <div class="map-wrap">
+                <canvas id="bfMapCanvas" width="560" height="560"></canvas>
+                <div id="battleTooltip" class="battle-tooltip"></div>
+            </div>
+            <div class="map-legend">
+                <span>🔵 참여자 성</span>
+                <span style="color:#c62828">● 전투 중</span>
+            </div>
+            <div id="mapInfo" class="map-info"></div>
+        </div>
+        <div class="card">
+            <h3>📡 전장 로그 <button onclick="clearLog()" style="float:right">지우기</button></h3>
+            <div id="bfLog" class="log"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let currentUserId = null;
+
+// ─── 상태 변수 ───────────────────────────────────────────────
+let currentBfId  = null;  // 현재 보고 있는(선택한) bf_id
+let myBfId       = null;  // 내가 참여 중인 bf_id
+let watchingBfId = null;  // 현재 구독 중인 bf_id
+let bfList       = [];    // [{bf_id, member_count, subscriber_count}]
+let bfSnapshot   = null;  // {members: {user_no: {...}}, battles: [...]}
+let bfBattles    = {};    // {battle_id: [x, y, atk_pct, def_pct, round]}
+
+// ─── API 헬퍼 ────────────────────────────────────────────────
+function getUserNo() {
+    return currentUserId || (window.parent && window.parent.currentUserId) || null;
+}
+
+async function apiCall(apiCode, data = {}) {
+    const uid = getUserNo();
+    if (!uid) return null;
+    try {
+        const res = await fetch('/api', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_no: uid, api_code: apiCode, data })
+        });
+        return await res.json();
+    } catch(e) {
+        return { success: false, message: e.message };
+    }
+}
+
+// ─── 로그 ────────────────────────────────────────────────────
+function log(msg, cls = 'info') {
+    const el = document.getElementById('bfLog');
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('bfLog').innerHTML = ''; }
+
+function setMsg(msg, isError = true) {
+    const el = document.getElementById('bfMsg');
+    el.textContent = msg;
+    el.style.color = isError ? '#c62828' : '#2e7d32';
+    if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+// ─── 전장 목록 로드 ──────────────────────────────────────────
+async function loadBfList() {
+    const res = await apiCall(9050);
+    if (!res || !res.success) { log('전장 목록 로드 실패', 'error'); return; }
+    bfList = res.data.battlefields || [];
+    renderBfList();
+}
+
+function renderBfList() {
+    const container = document.getElementById('bfList');
+    if (!bfList.length) {
+        container.innerHTML = '<div style="color:#aaa">데이터 없음</div>';
+        return;
+    }
+
+    container.innerHTML = bfList.map(bf => {
+        const isMine     = myBfId === bf.bf_id;
+        const isSelected = currentBfId === bf.bf_id;
+        const isWatching = watchingBfId === bf.bf_id;
+        const extWatchers = Math.max(0, bf.subscriber_count - bf.member_count);
+
+        let cardClass = 'bf-card';
+        if (isSelected) cardClass += ' selected';
+        if (isMine)     cardClass += ' my-bf';
+
+        const joinBtn = isMine
+            ? `<button class="danger" onclick="retreat(event)">후퇴</button>`
+            : `<button onclick="join(event, ${bf.bf_id})" ${myBfId && !isMine ? 'disabled title="다른 전장 참여 중"' : ''}>참여</button>`;
+
+        const watchBtn = isWatching
+            ? `<button class="watching" onclick="unwatch(event, ${bf.bf_id})">관전 종료</button>`
+            : `<button onclick="watch(event, ${bf.bf_id})">관전</button>`;
+
+        return `
+        <div class="${cardClass}" onclick="selectBf(${bf.bf_id})">
+            <div class="bf-card-header">
+                <span class="bf-card-title">전장 ${bf.bf_id}</span>
+                <span>
+                    ${isMine ? '<span class="bf-badge bf-badge-mine">참여중</span>' : ''}
+                    ${isWatching && !isMine ? '<span class="bf-badge bf-badge-watch">관전중</span>' : ''}
+                </span>
+            </div>
+            <div class="bf-stats">
+                <span>👥 참여 ${bf.member_count}명</span>
+                <span>👁️ 관전 ${extWatchers}명</span>
+            </div>
+            <div class="bf-actions" onclick="event.stopPropagation()">
+                ${joinBtn}
+                ${watchBtn}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ─── 전장 선택 (맵 전환) ─────────────────────────────────────
+async function selectBf(bfId) {
+    currentBfId = bfId;
+    bfBattles = {};
+    bfSnapshot = null;
+    document.getElementById('mapTitle').textContent = `🗺️ 전장 ${bfId} 맵`;
+    renderBfList();
+
+    // 스냅샷 로드 (관전 중이면 watch API, 아니면 info API)
+    const apiCode = (watchingBfId === bfId) ? 9054 : 9053;
+    const res = await apiCall(apiCode, { bf_id: bfId });
+    if (!res || !res.success) { log(`전장 ${bfId} 스냅샷 로드 실패`, 'error'); return; }
+
+    bfSnapshot = res.data;
+    // battles 배열 → bfBattles 초기화
+    bfBattles = {};
+    (bfSnapshot.battles || []).forEach(b => {
+        bfBattles[b.battle_id] = [b.x, b.y, b.atk_hp_pct, b.def_hp_pct, b.round];
+    });
+    drawBfMap();
+    updateMapInfo();
+    log(`전장 ${bfId} 스냅샷 로드 완료 (참여자 ${Object.keys(bfSnapshot.members || {}).length}명, 전투 ${Object.keys(bfBattles).length}건)`, 'info');
+}
+
+// ─── 전장 참여 ───────────────────────────────────────────────
+async function join(e, bfId) {
+    e.stopPropagation();
+    const res = await apiCall(9051, { bf_id: bfId });
+    if (!res) return;
+    if (!res.success) { setMsg(res.message); return; }
+    myBfId = bfId;
+    log(`전장 ${bfId} 참여 완료 (성 위치: ${res.data.castle_x}, ${res.data.castle_y})`, 'success');
+    setMsg(`전장 ${bfId} 참여 완료`, false);
+    await loadBfList();
+    selectBf(bfId);
+}
+
+// ─── 전장 후퇴 ───────────────────────────────────────────────
+async function retreat(e) {
+    e.stopPropagation();
+    if (!myBfId) return;
+    const res = await apiCall(9052);
+    if (!res) return;
+    if (!res.success) { setMsg(res.message); return; }
+    log(`전장 ${myBfId} 후퇴 완료`, 'success');
+    myBfId = null;
+    await loadBfList();
+    if (currentBfId) selectBf(currentBfId);
+}
+
+// ─── 전장 관전 ───────────────────────────────────────────────
+async function watch(e, bfId) {
+    e.stopPropagation();
+    // 기존 구독 해제
+    if (watchingBfId && watchingBfId !== bfId) {
+        await apiCall(9055, { bf_id: watchingBfId });
+    }
+    const res = await apiCall(9054, { bf_id: bfId });
+    if (!res || !res.success) { setMsg(res?.message || '관전 실패'); return; }
+    watchingBfId = bfId;
+    log(`전장 ${bfId} 관전 시작`, 'info');
+
+    // 스냅샷 반영
+    bfSnapshot = res.data;
+    bfBattles = {};
+    (bfSnapshot.battles || []).forEach(b => {
+        bfBattles[b.battle_id] = [b.x, b.y, b.atk_hp_pct, b.def_hp_pct, b.round];
+    });
+    if (currentBfId !== bfId) {
+        currentBfId = bfId;
+        document.getElementById('mapTitle').textContent = `🗺️ 전장 ${bfId} 맵`;
+    }
+    renderBfList();
+    drawBfMap();
+    updateMapInfo();
+    await loadBfList();
+}
+
+// ─── 전장 관전 종료 ──────────────────────────────────────────
+async function unwatch(e, bfId) {
+    e.stopPropagation();
+    const res = await apiCall(9055, { bf_id: bfId });
+    if (!res || !res.success) { setMsg(res?.message || '관전 종료 실패'); return; }
+    watchingBfId = null;
+    log(`전장 ${bfId} 관전 종료`, 'info');
+    renderBfList();
+    await loadBfList();
+}
+
+// ─── 맵 그리기 ───────────────────────────────────────────────
+function drawBfMap() {
+    const canvas = document.getElementById('bfMapCanvas');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const MAP_SIZE = 100;
+    const scale = W / MAP_SIZE;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // 격자
+    ctx.strokeStyle = '#ffe082';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= MAP_SIZE; i += 10) {
+        ctx.beginPath(); ctx.moveTo(i * scale, 0); ctx.lineTo(i * scale, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, i * scale); ctx.lineTo(W, i * scale); ctx.stroke();
+    }
+
+    const myUid = getUserNo();
+    const members = bfSnapshot ? bfSnapshot.members : {};
+    const font = `${Math.max(9, Math.round(scale * 0.85))}px Arial`;
+
+    // 참여자 성 (파란 원)
+    Object.entries(members).forEach(([user_no, data]) => {
+        const x = data.castle_x * scale;
+        const y = data.castle_y * scale;
+        const isMe = String(user_no) === String(myUid);
+        ctx.fillStyle = isMe ? '#1565c0' : '#42a5f5';
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(6, scale * 0.7), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = '#333';
+        ctx.font = font;
+        ctx.fillText(isMe ? '나' : `U${user_no}`, x + scale * 0.75, y - scale * 0.3);
+    });
+
+    // 전투 중 위치 (빨간 원 + HP%)
+    Object.entries(bfBattles).forEach(([bid, arr]) => {
+        const [bx, by, atkPct, defPct, round] = arr;
+        const x = bx * scale;
+        const y = by * scale;
+        const r = Math.max(7, scale * 0.8);
+        ctx.fillStyle = '#c62828';
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = '#b71c1c';
+        ctx.font = `bold ${font}`;
+        ctx.fillText(`⚔️${atkPct}/${defPct}`, x + r + 2, y - 2);
+    });
+}
+
+function updateMapInfo() {
+    const el = document.getElementById('mapInfo');
+    if (!currentBfId) { el.textContent = ''; return; }
+    const members  = bfSnapshot ? Object.keys(bfSnapshot.members || {}).length : 0;
+    const battles  = Object.keys(bfBattles).length;
+    el.textContent = `전장 ${currentBfId} | 참여자 ${members}명 | 진행 전투 ${battles}건`;
+}
+
+// ─── WebSocket 이벤트 수신 ───────────────────────────────────
+window.addEventListener('message', async function(event) {
+    const msg = event.data;
+    if (!msg || !msg.type) return;
+
+    switch (msg.type) {
+        case 'set_player_id': {
+            const newId = parseInt(msg.userId);
+            if (currentUserId !== newId) {
+                currentUserId = newId;
+                await loadBfList();
+            }
+            break;
+        }
+
+        case 'battlefield_tick': {
+            const { bf_id, battles } = msg.data || msg;
+            // 현재 보고 있는 전장의 tick만 처리
+            if (bf_id !== currentBfId) break;
+            bfBattles = {};
+            (battles || []).forEach(arr => {
+                const [bid, x, y, atkPct, defPct, round] = arr;
+                bfBattles[bid] = [x, y, atkPct, defPct, round];
+            });
+            drawBfMap();
+            updateMapInfo();
+            break;
+        }
+
+        case 'battlefield_join': {
+            const { bf_id, user_no, castle_x, castle_y } = msg.data || msg;
+            log(`전장 ${bf_id}: 유저 ${user_no} 참여 (${castle_x}, ${castle_y})`, 'success');
+            // 현재 보고 있는 전장이면 스냅샷에 추가
+            if (bf_id === currentBfId && bfSnapshot) {
+                bfSnapshot.members[String(user_no)] = { castle_x, castle_y };
+                drawBfMap();
+            }
+            // 목록 카운트 갱신
+            const item = bfList.find(b => b.bf_id === bf_id);
+            if (item) item.member_count = (item.member_count || 0) + 1;
+            renderBfList();
+            break;
+        }
+
+        case 'battlefield_retreat': {
+            const { bf_id, user_no } = msg.data || msg;
+            log(`전장 ${bf_id}: 유저 ${user_no} 후퇴`, 'warn');
+            if (bf_id === currentBfId && bfSnapshot) {
+                delete bfSnapshot.members[String(user_no)];
+                drawBfMap();
+            }
+            const item2 = bfList.find(b => b.bf_id === bf_id);
+            if (item2) item2.member_count = Math.max(0, (item2.member_count || 1) - 1);
+            renderBfList();
+            break;
+        }
+    }
+});
+
+// ─── 초기화 ──────────────────────────────────────────────────
+async function loadData() {
+    if (!getUserNo()) return;
+    await loadBfList();
+}
+</script>
+</body>
+</html>

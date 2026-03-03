@@ -351,6 +351,7 @@
         <button class="tab-button" onclick="showTab('hero')">⚔️ 영웅</button>
         <button class="tab-button" onclick="showTab('ally')">연맹</button>
         <button class="tab-button" onclick="showTab('battle')">전투</button>
+        <button class="tab-button" onclick="showTab('battlefield')">전장</button>
     </div>
     
     <!-- 자원 탭 -->
@@ -500,6 +501,17 @@
                 </iframe>
             </div>
         </div>
+
+        <!-- 전장 탭 -->
+        <div id="tab-battlefield" class="tab-content">
+            <div class="game-section" style="height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                <iframe
+                    id="battlefieldFrame"
+                    src="battlefield.html"
+                    style="width: 100%; flex-grow: 1; border: none;">
+                </iframe>
+            </div>
+        </div>
     </div>
 
     
@@ -624,6 +636,12 @@
                 case 'map_march_complete':
                     forwardToBattleFrame({ type: message.type, data: message.data });
                     break;
+
+                case 'battlefield_tick':
+                case 'battlefield_join':
+                case 'battlefield_retreat':
+                    forwardToBattlefieldFrame({ type: message.type, data: message.data });
+                    break;
             }
         }
 
@@ -631,6 +649,13 @@
             const battleFrame = document.getElementById('battleFrame');
             if (battleFrame) {
                 battleFrame.contentWindow.postMessage(msg, '*');
+            }
+        }
+
+        function forwardToBattlefieldFrame(msg) {
+            const battlefieldFrame = document.getElementById('battlefieldFrame');
+            if (battlefieldFrame) {
+                battlefieldFrame.contentWindow.postMessage(msg, '*');
             }
         }
 
@@ -748,7 +773,7 @@
             connectWebSocket(userId);
             
             // 3. 모든 iframe에 플레이어 ID 전달
-            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame','heroFrame','allyFrame','battleFrame'];
+            const frameIds = ['buildingFrame', 'researchFrame','unitFrame','resourceFrame','missionFrame','itemFrame','shopFrame','buffFrame','heroFrame','allyFrame','battleFrame','battlefieldFrame'];
             
             frameIds.forEach(frameId => {
                 const frame = document.getElementById(frameId);

@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager, MapManager, MarchManager, BattleManager, NpcManager
+from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager, MapManager, MarchManager, BattleManager, NpcManager, BattlefieldManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -91,6 +91,14 @@ class APIManager():
 
         9021: (BattleManager, BattleManager.battle_info),
         9022: (BattleManager, BattleManager.battle_report),
+
+        # === 전장 API (905x) ===
+        9050: (BattlefieldManager, BattlefieldManager.battlefield_list),
+        9051: (BattlefieldManager, BattlefieldManager.battlefield_join),
+        9052: (BattlefieldManager, BattlefieldManager.battlefield_retreat),
+        9053: (BattlefieldManager, BattlefieldManager.battlefield_info),
+        9054: (BattlefieldManager, BattlefieldManager.battlefield_watch),
+        9055: (BattlefieldManager, BattlefieldManager.battlefield_unwatch),
     }
     
     def __init__(self, db_manager, redis_manager, websocket_manager=None):

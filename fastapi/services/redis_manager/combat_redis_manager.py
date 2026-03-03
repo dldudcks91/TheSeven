@@ -240,3 +240,103 @@ class CombatRedisManager:
     async def remove_npc_respawn_from_queue(self, npc_id: int) -> bool:
         await self.redis.zrem(self.NPC_RESPAWN_QUEUE_KEY, str(npc_id))
         return True
+
+    # ─────────────────────────────────────────────
+    # 전장(Battlefield) 관련
+    # bf_id: 1 | 2 | 3
+    # ─────────────────────────────────────────────
+
+    def _bf_members_key(self, bf_id: int) -> str:
+        return f"battlefield:{bf_id}:members"
+
+    def _bf_subscribers_key(self, bf_id: int) -> str:
+        return f"battlefield:{bf_id}:subscribers"
+
+    def _bf_battles_key(self, bf_id: int) -> str:
+        return f"battlefield:{bf_id}:battles"
+
+    def _user_bf_key(self, user_no: int) -> str:
+        return f"user_data:{user_no}:battlefield"
+
+    # --- 유저 전장 참여 상태 ---
+
+    async def get_user_battlefield(self, user_no: int) -> Optional[int]:
+        """유저가 참여 중인 전장 ID 반환 (없으면 None)"""
+        raw = await self.redis.get(self._user_bf_key(user_no))
+        return int(raw) if raw else None
+
+    async def set_user_battlefield(self, user_no: int, bf_id: int) -> bool:
+        await self.redis.set(self._user_bf_key(user_no), str(bf_id))
+        return True
+
+    async def delete_user_battlefield(self, user_no: int) -> bool:
+        await self.redis.delete(self._user_bf_key(user_no))
+        return True
+
+    # --- 전장 멤버 (성 위치 Hash) ---
+
+    async def bf_join(self, bf_id: int, user_no: int, castle_x: int, castle_y: int) -> bool:
+        """전장 멤버 등록 + 구독자 자동 추가"""
+        member_data = json.dumps({
+            "castle_x": castle_x,
+            "castle_y": castle_y,
+            "joined_at": datetime.utcnow().isoformat(),
+        })
+        await self.redis.hset(self._bf_members_key(bf_id), str(user_no), member_data)
+        await self.redis.sadd(self._bf_subscribers_key(bf_id), str(user_no))
+        await self.set_user_battlefield(user_no, bf_id)
+        return True
+
+    async def bf_retreat(self, bf_id: int, user_no: int) -> bool:
+        """전장 멤버 제거 + 구독 해제 + 유저 전장 키 삭제"""
+        await self.redis.hdel(self._bf_members_key(bf_id), str(user_no))
+        await self.redis.srem(self._bf_subscribers_key(bf_id), str(user_no))
+        await self.delete_user_battlefield(user_no)
+        return True
+
+    async def bf_get_members(self, bf_id: int) -> Dict[int, Dict]:
+        """전장 참여자 목록 {user_no → {castle_x, castle_y, joined_at}}"""
+        raw = await self.redis.hgetall(self._bf_members_key(bf_id))
+        result = {}
+        for user_no_str, data_str in raw.items():
+            try:
+                result[int(user_no_str)] = json.loads(data_str)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return result
+
+    async def bf_get_member_count(self, bf_id: int) -> int:
+        return await self.redis.hlen(self._bf_members_key(bf_id))
+
+    async def bf_get_subscriber_count(self, bf_id: int) -> int:
+        return await self.redis.scard(self._bf_subscribers_key(bf_id))
+
+    # --- 전장 구독자 (battlefield_tick 수신 대상) ---
+
+    async def bf_watch(self, bf_id: int, user_no: int) -> bool:
+        """전장 관전 구독 (멤버가 아닌 외부 관전자)"""
+        await self.redis.sadd(self._bf_subscribers_key(bf_id), str(user_no))
+        return True
+
+    async def bf_unwatch(self, bf_id: int, user_no: int) -> bool:
+        """전장 관전 구독 해제"""
+        await self.redis.srem(self._bf_subscribers_key(bf_id), str(user_no))
+        return True
+
+    async def bf_get_subscribers(self, bf_id: int) -> List[int]:
+        members = await self.redis.smembers(self._bf_subscribers_key(bf_id))
+        return [int(m) for m in members]
+
+    # --- 전장 내 진행 중 전투 Set ---
+
+    async def bf_add_battle(self, bf_id: int, battle_id: int) -> bool:
+        await self.redis.sadd(self._bf_battles_key(bf_id), str(battle_id))
+        return True
+
+    async def bf_remove_battle(self, bf_id: int, battle_id: int) -> bool:
+        await self.redis.srem(self._bf_battles_key(bf_id), str(battle_id))
+        return True
+
+    async def bf_get_battles(self, bf_id: int) -> List[int]:
+        members = await self.redis.smembers(self._bf_battles_key(bf_id))
+        return [int(m) for m in members]

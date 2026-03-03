@@ -200,6 +200,12 @@ class BattleManager:
         self.db_manager.commit()
 
         hero_mult = self._hero_atk_multiplier(march.get("hero_idx"), hero_lv)
+        atk_stats = self._calc_army_stats(atk_units, hero_mult)
+        def_stats = self._calc_army_stats(def_units, 1.0)
+
+        # 전장 참여 여부 확인 (전장 내 전투 추적용)
+        bf_id = await combat_rm.get_user_battlefield(attacker_no) or 0
+
         await combat_rm.set_battle_state(battle_id, {
             "battle_id": battle_id,
             "march_id": march_id,
@@ -211,14 +217,37 @@ class BattleManager:
             "atk_units": atk_units,
             "def_units": def_units,
             "hero_multiplier": hero_mult,
+            "atk_max_hp": atk_stats["total_hp"],
+            "def_max_hp": def_stats["total_hp"],
+            "atk_hp": atk_stats["total_hp"],
+            "def_hp": def_stats["total_hp"],
+            "to_x": march.get("to_x", 0),
+            "to_y": march.get("to_y", 0),
+            "bf_id": bf_id,
             "round": 0,
             "atk_total_loss": {},
             "def_total_loss": {},
             "status": "active",
         })
         await combat_rm.add_active_battle(battle_id)
+        if bf_id:
+            await combat_rm.bf_add_battle(bf_id, battle_id)
 
-        return self._format(True, "NPC 전투 시작", {"battle_id": battle_id})
+        return self._format(True, "NPC 전투 시작", {
+            "battle_id": battle_id,
+            "battle_type": "npc",
+            "x": march.get("to_x"),
+            "y": march.get("to_y"),
+            "atk_user_no": attacker_no,
+            "atk_hero_idx": march.get("hero_idx"),
+            "atk_hero_lv": hero_lv,
+            "atk_max_hp": atk_stats["total_hp"],
+            "atk_units": atk_units,
+            "def_user_no": 0,
+            "def_npc_id": npc_id,
+            "def_max_hp": def_stats["total_hp"],
+            "def_units": def_units,
+        })
 
     # ─────────────────────────────────────────────
     # 전투 시작 (march 도착 시 TaskWorker가 호출)
@@ -281,6 +310,12 @@ class BattleManager:
 
         # Redis 전투 상태 초기화
         hero_mult = self._hero_atk_multiplier(march.get("hero_idx"), hero_lv)
+        atk_stats = self._calc_army_stats(atk_units, hero_mult)
+        def_stats = self._calc_army_stats(def_units, 1.0)
+
+        # 전장 참여 여부 확인
+        bf_id = await combat_rm.get_user_battlefield(attacker_no) or 0
+
         await combat_rm.set_battle_state(battle_id, {
             "battle_id": battle_id,
             "march_id": march_id,
@@ -289,14 +324,36 @@ class BattleManager:
             "atk_units": atk_units,
             "def_units": def_units,
             "hero_multiplier": hero_mult,
+            "atk_max_hp": atk_stats["total_hp"],
+            "def_max_hp": def_stats["total_hp"],
+            "atk_hp": atk_stats["total_hp"],
+            "def_hp": def_stats["total_hp"],
+            "to_x": march.get("to_x", 0),
+            "to_y": march.get("to_y", 0),
+            "bf_id": bf_id,
             "round": 0,
             "atk_total_loss": {},
             "def_total_loss": {},
             "status": "active",
         })
         await combat_rm.add_active_battle(battle_id)
+        if bf_id:
+            await combat_rm.bf_add_battle(bf_id, battle_id)
 
-        return self._format(True, "전투 시작", {"battle_id": battle_id})
+        return self._format(True, "전투 시작", {
+            "battle_id": battle_id,
+            "battle_type": "user",
+            "x": march.get("to_x"),
+            "y": march.get("to_y"),
+            "atk_user_no": attacker_no,
+            "atk_hero_idx": march.get("hero_idx"),
+            "atk_hero_lv": hero_lv,
+            "atk_max_hp": atk_stats["total_hp"],
+            "atk_units": atk_units,
+            "def_user_no": defender_no,
+            "def_max_hp": def_stats["total_hp"],
+            "def_units": def_units,
+        })
 
     # ─────────────────────────────────────────────
     # 전투 틱 (BattleWorker가 1초마다 호출)
@@ -336,7 +393,11 @@ class BattleManager:
             key = str(uid)
             def_total_loss[key] = int(def_total_loss.get(key, 0)) + lost
 
-        # 상태 업데이트
+        # 라운드 후 남은 병력으로 현재 HP 계산
+        new_atk_stats = self._calc_army_stats(round_result["atk_alive"], hero_mult)
+        new_def_stats = self._calc_army_stats(round_result["def_alive"], 1.0)
+
+        # 상태 업데이트 (atk_hp/def_hp도 함께 저장 → battlefield_tick에서 사용)
         await combat_rm.set_battle_state(battle_id, {
             **state,
             "round": new_round,
@@ -344,6 +405,8 @@ class BattleManager:
             "def_units": round_result["def_alive"],
             "atk_total_loss": atk_total_loss,
             "def_total_loss": def_total_loss,
+            "atk_hp": new_atk_stats["total_hp"],
+            "def_hp": new_def_stats["total_hp"],
         })
 
         # 종료 조건 체크
@@ -462,6 +525,10 @@ class BattleManager:
 
         await combat_rm.update_battle_field(battle_id, "status", "finished")
         await combat_rm.remove_active_battle(battle_id)
+        # 전장 내 전투였으면 전장 Set에서도 제거
+        bf_id = int(state.get("bf_id", 0))
+        if bf_id:
+            await combat_rm.bf_remove_battle(bf_id, battle_id)
 
     # ─────────────────────────────────────────────
     # 전투 종료
@@ -550,6 +617,10 @@ class BattleManager:
         # Redis 정리
         await combat_rm.update_battle_field(battle_id, "status", "finished")
         await combat_rm.remove_active_battle(battle_id)
+        # 전장 내 전투였으면 전장 Set에서도 제거
+        bf_id = int(state.get("bf_id", 0))
+        if bf_id:
+            await combat_rm.bf_remove_battle(bf_id, battle_id)
 
     # ─────────────────────────────────────────────
     # API 메서드
