@@ -9,7 +9,8 @@
       "Bash(curl -s -X POST http://127.0.0.1:8002/api -H \"Content-Type: application/json\" -d '{\"\"user_no\"\": 0, \"\"api_code\"\": 1003, \"\"data\"\": {}}')",
       "Bash(/d/anaconda3/python.exe -c \":*)",
       "Bash(taskkill /F /IM python.exe)",
-      "Bash(taskkill //F //IM python.exe)"
+      "Bash(taskkill //F //IM python.exe)",
+      "Read(//c/Users/user/.claude/projects/c--Users-user-Desktop-python-text-git-TheSeven/memory/**)"
     ]
   }
 }

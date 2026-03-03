@@ -69,10 +69,10 @@ class TaskWorker(BaseWorker):
                 # finish_unit_internal이 캐시 갱신 및 DB 동기화 큐 삽입 처리
                 #success = await unit_manager.finish_unit_internal(user_no, task_id)
                 result = await unit_manager.unit_finish()
-                
+
                 if result and result.get('success'):
                     self.logger.info(f"Unit task {task_id} completed for user {user_no}")
-                    await self._send_websocket_notification(user_no, 'unit_finish', result)
+                    await self._send_websocket_notification(user_no, 'unit_finish', result.get('data', {}))
                     
         except Exception as e:
             self.logger.error(f"Error processing unit tasks: {e}")
@@ -95,11 +95,9 @@ class TaskWorker(BaseWorker):
                     npc_id = int(metadata.get("npc_id", 0)) if metadata else 0
                     result = await battle_manager.npc_battle_start(march_id, npc_id)
                     if result["success"]:
-                        battle_id = result["data"].get("battle_id")
-                        attacker_no = metadata["user_no"]
+                        event_data = result["data"]
                         await self._send_websocket_notification(
-                            attacker_no, "battle_start",
-                            {"battle_id": battle_id, "battle_type": "npc", "npc_id": npc_id}
+                            event_data["atk_user_no"], "battle_start", event_data
                         )
                         if self.websocket_manager:
                             await self.websocket_manager.broadcast_message({
@@ -128,18 +126,16 @@ class TaskWorker(BaseWorker):
                 else:
                     result = await battle_manager.battle_start(march_id)
                     if result["success"]:
-                        battle_id = result["data"].get("battle_id")
-                        march_info = db_manager.get_march_manager().get_march(march_id)
-                        if march_info:
+                        event_data = result["data"]
+                        attacker_no = event_data["atk_user_no"]
+                        defender_no = event_data["def_user_no"]
+                        # 공격자, 수비자 모두 battle_start 수신
+                        await self._send_websocket_notification(attacker_no, "battle_start", event_data)
+                        if defender_no:
+                            await self._send_websocket_notification(defender_no, "battle_start", event_data)
                             await self._send_websocket_notification(
-                                march_info["user_no"], "battle_start",
-                                {"battle_id": battle_id}
+                                defender_no, "battle_incoming", {"battle_id": event_data["battle_id"]}
                             )
-                            if march_info.get("target_user_no"):
-                                await self._send_websocket_notification(
-                                    march_info["target_user_no"], "battle_incoming",
-                                    {"battle_id": battle_id}
-                                )
                         if self.websocket_manager:
                             await self.websocket_manager.broadcast_message({
                                 "type": "map_march_update",
@@ -196,15 +192,15 @@ class TaskWorker(BaseWorker):
         except Exception as e:
             self.logger.error(f"Error processing NPC respawns: {e}")
 
-    async def _send_websocket_notification(self, user_no: int, message_type:str, result: dict):
+    async def _send_websocket_notification(self, user_no: int, message_type: str, data: dict):
         """WebSocket으로 완료 알림 전송"""
-        if not self.websocket_manager:
+        if not self.websocket_manager or not user_no:
             return
         try:
             message = json.dumps({
                 'type': message_type,
                 'user_no': user_no,
-                'data': result.get('data', {})
+                'data': data,
             })
             await self.websocket_manager.send_personal_message(message, user_no)
         except Exception as e:
