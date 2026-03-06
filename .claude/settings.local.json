@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(*)",
       "Bash(curl -s -X POST http://localhost:8001/api -H \"Content-Type: application/json\" -d '{\"\"user_no\"\":1,\"\"api_code\"\":7016,\"\"data\"\":{}}')",
       "Bash(curl -s -X POST http://localhost:8001/api -H \"Content-Type: application/json\" -d '{\"\"user_no\"\":1,\"\"api_code\"\":7011,\"\"data\"\":{\"\"research_idx\"\":8002,\"\"resource_type\"\":\"\"food\"\",\"\"amount\"\":500}}')",
       "Bash(curl -s -X POST http://localhost:8001/api -H \"Content-Type: application/json\" -d '{\"\"user_no\"\":1,\"\"api_code\"\":7011,\"\"data\"\":{\"\"research_idx\"\":8001,\"\"resource_type\"\":\"\"food\"\",\"\"amount\"\":500}}')"

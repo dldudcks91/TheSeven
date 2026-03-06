@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(*)",
       "Read(//c/Users/82109/AppData/Local/Programs/**)",
       "Read(//c/Users/82109/**)",
       "Bash(/d/anaconda3/python.exe --version)",

@@ -269,18 +269,26 @@ class BuildingManager:
             if not costs or base_build_time <= 0:
                 return {"success": False, "message": "Invalid building configuration", "data": {}}
             
-            # 5. 자원 버프 적용 / 자원 체크 및 소모 (Redis)
+            # 5. 자원 체크 및 소모 (Redis, 원자적)
             resource_manager = ResourceManager(self.db_manager, self.redis_manager)
-            
-            # comsume_resources로 통일
-            # if not await resource_manager.check_require_resources(user_no, costs):
-            #     return {"success": False, "message": "Need More Resources", "data": {}}
-            
-            if not await resource_manager.consume_resources(user_no, costs):
-                return {"success": False, "message": "Failed to consume resources", "data": {}}
+            consume_result = await resource_manager.consume_resources(user_no, costs)
+
+            if not consume_result["success"]:
+                if consume_result.get("reason") == "insufficient":
+                    shortage = consume_result.get("shortage", {})
+                    return {
+                        "success": False,
+                        "message": "Need More Resources",
+                        "data": {"shortage": shortage}
+                    }
+                return {
+                    "success": False,
+                    "message": "Failed to consume resources",
+                    "data": consume_result
+                }
             
             # 6. 버프 적용
-            final_build_time = self._apply_building_buffs(user_no, base_build_time)
+            final_build_time = await self._apply_building_buffs(user_no, base_build_time)
             
             # 7. 시간 계산
             start_time = datetime.utcnow()
@@ -435,7 +443,7 @@ class BuildingManager:
                 }
             
             # 5. 버프 적용
-            final_upgrade_time = self._apply_building_buffs(user_no, base_upgrade_time)
+            final_upgrade_time = await self._apply_building_buffs(user_no, base_upgrade_time)
             
             # 6. 시간 계산
             start_time = datetime.utcnow()
@@ -780,8 +788,12 @@ class BuildingManager:
             building_redis = self.redis_manager.get_building_manager()
             
             if status == 1:
-                # 건설 중이면 Redis에서 삭제
+                # 건설 중이면 Redis + DB에서 삭제
                 await building_redis.remove_cached_building(user_no, building_idx)
+                if self.db_manager:
+                    building_db = self.db_manager.get_building_manager()
+                    building_db.delete_building(user_no, building_idx)
+                    self.db_manager.commit()
                 action = "deleted"
             else:
                 # 업그레이드 중이면 상태만 복구
@@ -827,14 +839,14 @@ class BuildingManager:
             }
 
     
-    def _apply_building_buffs(self, user_no, base_time):
+    async def _apply_building_buffs(self, user_no, base_time):
         """건설 시간 버프 적용"""
         try:
             if base_time <= 0:
                 return base_time
-            
+
             buff_manager = BuffManager(self.db_manager, self.redis_manager)
-            building_speed_buffs = buff_manager.get_total_buffs_by_type(user_no, 'building_speed')
+            building_speed_buffs = await buff_manager.get_total_buffs_by_type(user_no, 'building_speed')
             
             if not building_speed_buffs:
                 return base_time

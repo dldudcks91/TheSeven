@@ -287,24 +287,31 @@ class ResearchManager:
         Returns: STATUS_AVAILABLE or STATUS_LOCKED
         """
         try:
-            # CSV에서 선행 연구 정보 가져오기
-            config = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
-            if not config:
+            # CSV에서 선행 연구 정보 가져오기 (레벨 1 기준)
+            research_levels = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE].get(research_idx)
+            if not research_levels:
                 return self.STATUS_LOCKED
-            
-            prerequisite = config.get('prerequisite_research')
-            if not prerequisite or prerequisite == 0:
+
+            # 레벨 1의 선행 조건 확인
+            lv1_config = research_levels.get(1)
+            if not lv1_config:
+                return self.STATUS_LOCKED
+
+            required_researches = lv1_config.get('required_researches', [])
+            if not required_researches:
                 return self.STATUS_AVAILABLE
-            
-            # 선행 연구 완료 확인
+
+            # 선행 연구 완료 확인: [(research_idx, required_lv), ...]
             researches_data = await self.get_user_researches()
-            prereq_research = researches_data.get(str(prerequisite))
-            
-            if prereq_research and prereq_research.get('status') == self.STATUS_COMPLETED:
-                return self.STATUS_AVAILABLE
-            
-            return self.STATUS_LOCKED
-            
+            for prereq_idx, prereq_lv in required_researches:
+                prereq = researches_data.get(str(prereq_idx))
+                if not prereq or prereq.get('status') != self.STATUS_COMPLETED:
+                    return self.STATUS_LOCKED
+                if prereq.get('research_lv', 0) < prereq_lv:
+                    return self.STATUS_LOCKED
+
+            return self.STATUS_AVAILABLE
+
         except Exception as e:
             self.logger.error(f"Error checking research availability: {e}")
             return self.STATUS_LOCKED
@@ -336,11 +343,11 @@ class ResearchManager:
         except Exception as e:
             return None, f"Resource error: {str(e)}"
     
-    def _apply_research_buffs(self, user_no, base_time):
+    async def _apply_research_buffs(self, user_no, base_time):
         """연구 시간 버프 적용"""
         try:
             buff_manager = BuffManager(self.db_manager, self.redis_manager)
-            buffs = buff_manager.get_total_buffs_by_type(user_no, 'research_speed')
+            buffs = await buff_manager.get_total_buffs_by_type(user_no, 'research_speed')
             
             total_reduction = 0
             for buff in buffs:
@@ -472,7 +479,7 @@ class ResearchManager:
                 }
             
             # 7. 버프 적용
-            research_time = self._apply_research_buffs(user_no, base_research_time)
+            research_time = await self._apply_research_buffs(user_no, base_research_time)
             
             # 8. 시간 설정
             start_time = datetime.utcnow()
@@ -655,32 +662,39 @@ class ResearchManager:
         완료된 연구를 선행 조건으로 하는 연구들을 잠금 해제
         """
         try:
-            # 모든 연구 설정을 순회하며 선행 연구가 방금 완료된 연구인지 확인
             all_configs = GameDataManager.REQUIRE_CONFIGS[self.CONFIG_TYPE]
-            
-            for research_idx, config in all_configs.items():
-                prereq = config.get('prerequisite_research')
-                if prereq == completed_research_idx:
-                    # 해당 연구의 상태를 AVAILABLE로 변경
-                    research = await self._ensure_research_exists(user_no, research_idx)
-                    if research.get('status') == self.STATUS_LOCKED:
-                        updated_research = {
-                            **research,
-                            'status': self.STATUS_AVAILABLE,
-                            'cached_at': datetime.utcnow().isoformat()
-                        }
-                        await self._update_cached_research(user_no, research_idx, updated_research)
-                        
-                        # DB도 업데이트
-                        research_db = self.db_manager.get_research_manager()
-                        research_db.update_research_status(
-                            user_no, 
-                            research_idx, 
-                            self.STATUS_AVAILABLE
-                        )
-            
+
+            for research_idx, level_configs in all_configs.items():
+                # 레벨 1의 선행 조건에 완료된 연구가 포함되어 있는지 확인
+                lv1_config = level_configs.get(1)
+                if not lv1_config:
+                    continue
+
+                required_researches = lv1_config.get('required_researches', [])
+                for prereq_idx, prereq_lv in required_researches:
+                    if prereq_idx == completed_research_idx:
+                        # 선행 조건 재확인 (다른 선행 조건도 충족하는지)
+                        status = await self._check_research_availability(user_no, research_idx)
+                        if status == self.STATUS_AVAILABLE:
+                            research = await self._ensure_research_exists(user_no, research_idx)
+                            if research.get('status') == self.STATUS_LOCKED:
+                                updated_research = {
+                                    **research,
+                                    'status': self.STATUS_AVAILABLE,
+                                    'cached_at': datetime.utcnow().isoformat()
+                                }
+                                await self._update_cached_research(user_no, research_idx, updated_research)
+
+                                research_db = self.db_manager.get_research_manager()
+                                research_db.update_research_status(
+                                    user_no,
+                                    research_idx,
+                                    status=self.STATUS_AVAILABLE
+                                )
+                        break
+
             self.db_manager.commit()
-            
+
         except Exception as e:
             self.logger.error(f"Error unlocking dependent researches: {e}")
     

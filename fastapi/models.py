@@ -265,3 +265,18 @@ class Battle(Base):
     attacker_loss: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON: {unit_idx: count}
     defender_loss: Mapped[Optional[str]] = mapped_column(Text, nullable=True)   # JSON: {unit_idx: count}
     loot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)            # JSON: {food, wood, stone, gold}
+
+
+class BattlefieldMember(Base):
+    __tablename__ = 'battlefield_member'
+    __table_args__ = (
+        Index('idx_bf_member_user_no', 'user_no', unique=True),
+        Index('idx_bf_member_bf_id', 'bf_id'),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    bf_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    castle_x: Mapped[int] = mapped_column(Integer, nullable=False)
+    castle_y: Mapped[int] = mapped_column(Integer, nullable=False)
+    joined_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)

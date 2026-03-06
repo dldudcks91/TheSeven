@@ -29,6 +29,7 @@ class APIManager():
         2004: (BuildingManager, BuildingManager.building_finish),
         2005: (BuildingManager, BuildingManager.building_cancel),
         2006: (BuildingManager, BuildingManager.finish_all_completed_buildings),
+        2007: (BuildingManager, BuildingManager.building_speedup),
         
         # === 연구 API (3xxx) ===
         3001: (ResearchManager, ResearchManager.research_info),
@@ -40,7 +41,9 @@ class APIManager():
         4001: (UnitManager, UnitManager.unit_info),
         4002: (UnitManager, UnitManager.unit_train),
         4003: (UnitManager, UnitManager.unit_upgrade),
-        #4004: (UnitManager, UnitManager.unit_finish),
+        4004: (UnitManager, UnitManager.unit_finish),
+        4005: (UnitManager, UnitManager.unit_cancel),
+        4006: (UnitManager, UnitManager.unit_speedup),
         
         # === 미션 API (5xxx) ===
         5001: (MissionManager, MissionManager.mission_info),

@@ -64,11 +64,25 @@ class UnitRedisManager:
         """유닛 완료 시간 조회"""
         return await self.task_manager.get_completion_time(user_no, unit_type, unit_idx)
     
-    async def update_unit_completion_time(self, user_no: int, unit_idx: int, new_completion_time: datetime, 
-                                         queue_id: Optional[int] = None) -> bool:
+    async def update_unit_completion_time(self, user_no: int, unit_type: int, new_completion_time: datetime,
+                                         unit_idx: Optional[int] = None) -> bool:
         """유닛 완료 시간 업데이트"""
-        return await self.task_manager.update_completion_time(user_no, unit_idx, new_completion_time, queue_id)
+        return await self.task_manager.update_completion_time(user_no, unit_type, new_completion_time, unit_idx)
     
+    async def has_ongoing_task_for_type(self, user_no: int, unit_type: int) -> bool:
+        """해당 유저의 unit_type에 진행 중인 태스크가 있는지 확인"""
+        prefix = f"{user_no}:{unit_type}:"
+        all_members = await self.redis_client.zrange(self.task_manager.queue_key, 0, -1)
+        for member in all_members:
+            member_str = member.decode() if isinstance(member, bytes) else member
+            if member_str.startswith(prefix):
+                return True
+        return False
+
+    async def get_user_active_tasks(self, user_no: int) -> List[Dict[str, Any]]:
+        """해당 유저의 모든 진행 중인 태스크 조회 (completion_queue 기반)"""
+        return await self.task_manager.get_user_tasks(user_no)
+
     async def get_completed_tasks(self, current_time: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """완료된 유닛들 조회"""
         return await self.task_manager.get_completed_tasks(current_time)
@@ -189,7 +203,7 @@ class UnitRedisManager:
         """사용자 유닛 캐시 전체 무효화"""
         try:
             hash_key = self.cache_manager.get_user_data_hash_key(user_no)
-            meta_key = self._get_units_meta_key(user_no)
+            meta_key = self.cache_manager.get_user_data_meta_key(user_no)
             
             # 두 키 모두 삭제
             hash_deleted = await self.cache_manager.delete_data(hash_key)
@@ -209,7 +223,7 @@ class UnitRedisManager:
         """캐시 정보 조회 (디버깅/모니터링용)"""
         try:
             hash_key = self.cache_manager.get_user_data_hash_key(user_no)
-            meta_key = self._get_units_meta_key(user_no)
+            meta_key = self.cache_manager.get_user_data_meta_key(user_no)
             
             # Cache Manager를 통해 정보 조회
             quantity = await self.cache_manager.get_hash_length(hash_key)

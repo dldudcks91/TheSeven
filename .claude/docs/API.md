@@ -179,6 +179,15 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 ---
 
+### 2007 - 건물 가속
+
+업그레이드 중(status=2)인 건물의 완료 시간을 단축. 단축 후 end_time이 현재 시간 이전이면 즉시 완료 가능 상태.
+
+- **data**: `{"building_idx": 101, "speedup_seconds": 300}`
+- **응답 data**: 업데이트된 건물 데이터 (end_time 변경 반영)
+
+---
+
 ## 연구 API (3xxx)
 
 ### 3001 - 연구 정보 조회
@@ -232,6 +241,28 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
 
 - **data**: `{"unit_idx": 401, "target_unit_idx": 402, "quantity": 1}`
 - **처리**: 비용 차감 → Redis Task Queue에 완료 시각 등록 → 원본 유닛 upgrading 수량 차감
+
+---
+
+### 4004 - 유닛 완료 (unit_finish)
+
+- **data**: `{"unit_idx": 401, "unit_type": 0}`
+- **처리**: 완료 시간 확인 → 훈련: training→ready 이동 / 업그레이드: upgrading→target ready 이동 → Redis 큐 삭제
+- TaskWorker가 자동 호출하지만, 클라이언트에서 수동 호출도 가능
+
+---
+
+### 4005 - 유닛 취소 (unit_cancel)
+
+- **data**: `{"unit_idx": 401}`
+- **처리**: Redis metadata에서 task 조회 → 자원 100% 환불 → 캐시 상태 복원 → Redis 큐 삭제
+
+---
+
+### 4006 - 유닛 즉시 완료 (unit_speedup)
+
+- **data**: `{"unit_idx": 401}`
+- **처리**: Redis completion_time을 현재 시각으로 변경 → TaskWorker가 다음 사이클에 완료 처리
 
 ---
 
