@@ -72,8 +72,16 @@ class MapManager:
         combat_rm = self.redis_manager.get_combat_manager()
         nearby = await combat_rm.get_nearby_positions(my_pos["x"], my_pos["y"], radius)
         nearby = [p for p in nearby if p["user_no"] != self.user_no]
-        march_dm = self.db_manager.get_march_manager()
-        all_marches = march_dm.get_all_active_marches()
+        # 활성 행군: march 큐에서 전체 march_id 조회 후 metadata 조합
+        all_march_ids_raw = await combat_rm.redis.zrange(combat_rm.MARCH_QUEUE_KEY, 0, -1)
+        return_ids_raw = await combat_rm.redis.zrange(combat_rm.MARCH_RETURN_QUEUE_KEY, 0, -1)
+        all_march_ids = set(int(m) for m in all_march_ids_raw)
+        all_march_ids.update(int(m) for m in return_ids_raw)
+        all_marches = []
+        for mid in all_march_ids:
+            meta = await combat_rm.get_march_metadata(mid)
+            if meta and meta.get("status") in ("marching", "battling", "returning"):
+                all_marches.append(meta)
         return self._format(True, "OK", {
             "my_position": my_pos,
             "nearby": nearby,

@@ -177,7 +177,9 @@ await getattr(service, method_name)()
 | 국가 데이터 | `nation_data:{user_no}` | Hash | `nation_data:10017` |
 | 맵 위치 | `map:positions` | Hash | `{user_no -> "x,y"}` |
 | NPC 목록 | `map:npcs` | Hash | `{npc_id -> JSON}` |
-| 행군 메타 | `march:metadata:{march_id}` | String (JSON) | |
+| 행군 ID 카운터 | `march:id:counter` | String | INCR로 march_id 생성 |
+| 행군 메타 | `march:metadata:{march_id}` | String (JSON) | TTL 없음, 완료 시 명시적 삭제 |
+| 유저 활성 행군 | `user:active_marches:{user_no}` | Set | march_id 집합 |
 | 행군 완료 큐 | `completion_queue:march` | Sorted Set | score=도착시각 |
 | 귀환 완료 큐 | `completion_queue:march_return` | Sorted Set | score=귀환시각 |
 | NPC 리스폰 큐 | `completion_queue:npc_respawn` | Sorted Set | score=리스폰시각 |
@@ -306,7 +308,6 @@ TaskWorker 실시간 폴링 (주기: ~1초):
 | item | Item | 아이템 보유 현황 |
 | user_mission | UserMission | 미션 진행 현황 |
 | hero | Hero | 영웅 보유 현황 |
-| march | March | 행군 영속 기록 |
 | battle | Battle | 전투 결과 기록 |
 | alliance | Alliance | 연맹 기본 정보 |
 | alliance_member | AllianceMember | 연맹 멤버 |
@@ -349,13 +350,10 @@ position (1~4), donated_exp, donated_coin, joined_at
 user_no (PK), hero_idx (PK),
 hero_lv, exp
 
-# March: 행군 영속 기록 (완료/취소 포함)
-march_id (PK, VARCHAR UUID), user_no,
-status (marching/battling/returning/completed/cancelled),
-target_type (user/npc), target_user_no, npc_id,
-from_x, from_y, to_x, to_y,
-departure_time, arrival_time, return_time,
-units (JSON), hero_idx, battle_id
+# March: DB 테이블 없음 (Redis-only)
+# march:metadata:{march_id} → JSON String
+# user:active_marches:{user_no} → Set
+# march:id:counter → INCR
 
 # Battle: 전투 결과 기록
 battle_id (PK, VARCHAR UUID), march_id,

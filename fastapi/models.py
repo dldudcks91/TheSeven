@@ -217,33 +217,6 @@ class Resources(Base):
     stat_nation: Mapped['StatNation'] = relationship('StatNation', back_populates='resources')
 
 
-class March(Base):
-    __tablename__ = 'march'
-    __table_args__ = (
-        Index('idx_march_user_no', 'user_no'),
-        Index('idx_march_target_user_no', 'target_user_no'),
-    )
-
-    march_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    target_type: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'user'"))
-    # target_type: user | npc
-    target_user_no: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # NULL for NPC
-    from_x: Mapped[int] = mapped_column(Integer, nullable=False)
-    from_y: Mapped[int] = mapped_column(Integer, nullable=False)
-    to_x: Mapped[int] = mapped_column(Integer, nullable=False)
-    to_y: Mapped[int] = mapped_column(Integer, nullable=False)
-    units: Mapped[str] = mapped_column(Text, nullable=False)           # JSON: {unit_idx: count}
-    hero_idx: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    march_speed: Mapped[int] = mapped_column(Integer, nullable=False)  # tiles/min
-    departure_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
-    arrival_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
-    return_time: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'marching'"))
-    # status: marching | battling | returning | completed | cancelled
-    battle_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-
-
 class Battle(Base):
     __tablename__ = 'battle'
     __table_args__ = (

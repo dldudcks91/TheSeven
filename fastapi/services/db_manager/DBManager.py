@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 
-from services.db_manager import NationDBManager, BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager, UserInitDBManager, AllianceDBManager, ShopDBManager, HeroDBManager, MarchDBManager, BattleDBManager, BattlefieldDBManager
+from services.db_manager import NationDBManager, BuildingDBManager, UnitDBManager, ResearchDBManager, BuffDBManager, ResourceDBManager, ItemDBManager, MissionDBManager, UserInitDBManager, AllianceDBManager, ShopDBManager, HeroDBManager, BattleDBManager, BattlefieldDBManager
 
 
 class DBManager:
@@ -31,7 +31,6 @@ class DBManager:
         
         self._hero_manager = None
         self._alliance_manager = None
-        self._march_manager = None
         self._battle_manager = None
         self._battlefield_manager = None
     
@@ -111,12 +110,6 @@ class DBManager:
         if self._hero_manager is None:
             self._hero_manager = HeroDBManager(self.db_session)
         return self._hero_manager
-
-    def get_march_manager(self) -> MarchDBManager:
-        """행군 DB 관리자 반환 (싱글톤 패턴)"""
-        if self._march_manager is None:
-            self._march_manager = MarchDBManager(self.db_session)
-        return self._march_manager
 
     def get_battle_manager(self) -> BattleDBManager:
         """전투 DB 관리자 반환 (싱글톤 패턴)"""

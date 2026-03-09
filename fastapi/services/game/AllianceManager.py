@@ -265,49 +265,44 @@ class AllianceManager:
         
         
         alliance_redis = self._get_alliance_redis()
-        
+
         existing_id = await alliance_redis.get_alliance_no_by_name(name)
         if existing_id:
             return {"success": False, "message": "이미 사용 중인 연맹 이름입니다"}
-        
+
         alliance_no = await alliance_redis.generate_alliance_no()
-        
+
         if not await alliance_redis.acquire_lock(alliance_no):
             return {"success": False, "message": "잠시 후 다시 시도해주세요"}
-        
-        
-        now = datetime.utcnow().isoformat()
-        alliance_info = {
-            "alliance_no": alliance_no,
-            "name": name,
-            "level": 1,
-            "exp": 0,
-            "leader_no": user_no,
-            "join_type": join_type,
-            "created_at": now
-        }
-        member_data = {
-            "position": self.POSITION_LEADER,
-            "joined_at": now,
-            "donated_exp": 0,
-            "donated_coin": 0
-        }
-        await alliance_redis.set_alliance_info(alliance_no, alliance_info)
-        await alliance_redis.add_member(alliance_no, user_no, member_data)
-        await alliance_redis.set_name_mapping(name, alliance_no)
-        await alliance_redis.add_to_list(alliance_no)
-        await nation_manager.set_user_alliance_info(user_no, alliance_no, self.POSITION_LEADER)
-        await alliance_redis.mark_dirty(alliance_no)
-        await self._add_alliance_buff(user_no, alliance_no, 1)
-        self.logger.info(f"Alliance created: id={alliance_no}, name={name}, leader={user_no}")
-        return {"success": True, "data": {"alliance_no": alliance_no, "name": name}}
-        
-            
-        #     finally:
-        #         await alliance_redis.release_lock(alliance_no)
-        # except Exception as e:
-        #     self.logger.error(f"Error in alliance_create: {e}")
-        #     return {"success": False, "message": str(e)}
+
+        try:
+            now = datetime.utcnow().isoformat()
+            alliance_info = {
+                "alliance_no": alliance_no,
+                "name": name,
+                "level": 1,
+                "exp": 0,
+                "leader_no": user_no,
+                "join_type": join_type,
+                "created_at": now
+            }
+            member_data = {
+                "position": self.POSITION_LEADER,
+                "joined_at": now,
+                "donated_exp": 0,
+                "donated_coin": 0
+            }
+            await alliance_redis.set_alliance_info(alliance_no, alliance_info)
+            await alliance_redis.add_member(alliance_no, user_no, member_data)
+            await alliance_redis.set_name_mapping(name, alliance_no)
+            await alliance_redis.add_to_list(alliance_no)
+            await nation_manager.set_user_alliance_info(user_no, alliance_no, self.POSITION_LEADER)
+            await alliance_redis.mark_dirty(alliance_no)
+            await self._add_alliance_buff(user_no, alliance_no, 1)
+            self.logger.info(f"Alliance created: id={alliance_no}, name={name}, leader={user_no}")
+            return {"success": True, "data": {"alliance_no": alliance_no, "name": name}}
+        finally:
+            await alliance_redis.release_lock(alliance_no)
 
     # ==================== API: 연맹 가입 ====================
     
@@ -658,23 +653,23 @@ class AllianceManager:
                 return {"success": False, "message": "잠시 후 다시 시도해주세요"}
             
             try:
-                await alliance_redis.remove_application(alliance_no, target_user_no)
-                
                 if approve:
                     member_count = await alliance_redis.get_member_count(alliance_no)
                     alliance_info = await alliance_redis.get_alliance_info(alliance_no)
                     level_config = self._get_level_config(alliance_info.get('level', 1))
                     max_members = level_config.get('max_members', 20)
-                    
+
                     if member_count >= max_members:
                         return {"success": False, "message": "연맹 인원이 가득 찼습니다"}
-                    
+
                     target_nation = await nation_manager.get_nation(target_user_no)
                     if not target_nation:
                         return {"success": False, "message": "존재하지 않는 유저입니다"}
                     if target_nation.get('alliance_no'):
                         return {"success": False, "message": "해당 유저가 이미 다른 연맹에 가입되어 있습니다"}
-                    
+
+                    await alliance_redis.remove_application(alliance_no, target_user_no)
+
                     now = datetime.utcnow().isoformat()
                     member_data = {
                         "position": self.POSITION_MEMBER,
@@ -685,11 +680,11 @@ class AllianceManager:
                     await alliance_redis.add_member(alliance_no, target_user_no, member_data)
                     await nation_manager.set_user_alliance_info(target_user_no, alliance_no, self.POSITION_MEMBER)
                     await self._add_alliance_buff(target_user_no, alliance_no, alliance_info.get('level', 1))
-                
-                await alliance_redis.mark_dirty(alliance_no)
-                if approve:
+                    await alliance_redis.mark_dirty(alliance_no)
                     return {"success": True, "data": {"approved": True, "target_user_no": target_user_no}}
                 else:
+                    await alliance_redis.remove_application(alliance_no, target_user_no)
+                    await alliance_redis.mark_dirty(alliance_no)
                     return {"success": True, "data": {"approved": False, "target_user_no": target_user_no}}
             finally:
                 await alliance_redis.release_lock(alliance_no)

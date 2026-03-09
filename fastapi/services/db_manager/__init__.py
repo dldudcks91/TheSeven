@@ -19,7 +19,6 @@ from .shop_db_manager import ShopDBManager
 
 from .user_init_db_manager import UserInitDBManager
 from .hero_db_manager import HeroDBManager
-from .march_db_manager import MarchDBManager
 from .battle_db_manager import BattleDBManager
 from .battlefield_db_manager import BattlefieldDBManager
 
@@ -45,7 +44,6 @@ __all__ = [
     'ItemDBManager',
     'UserInitDBManager',
     'HeroDBManager',
-    'MarchDBManager',
     'BattleDBManager',
     'BattlefieldDBManager',
 ]

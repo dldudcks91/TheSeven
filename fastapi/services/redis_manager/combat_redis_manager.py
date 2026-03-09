@@ -102,7 +102,7 @@ class CombatRedisManager:
 
     async def set_march_metadata(self, march_id: int, metadata: Dict[str, Any]) -> bool:
         key = f"march:metadata:{march_id}"
-        await self.redis.set(key, json.dumps(metadata), ex=86400)  # 24h TTL
+        await self.redis.set(key, json.dumps(metadata))
         return True
 
     async def get_march_metadata(self, march_id: int) -> Optional[Dict[str, Any]]:
@@ -118,25 +118,47 @@ class CombatRedisManager:
         return True
 
     # ─────────────────────────────────────────────
-    # 유저별 행군 목록 캐시
+    # 행군 ID 생성
     # ─────────────────────────────────────────────
 
-    async def get_user_marches(self, user_no: int) -> Optional[List[Dict]]:
-        key = f"user_data:{user_no}:march"
-        raw = await self.redis.get(key)
-        if raw is None:
-            return None
-        return json.loads(raw)
+    MARCH_ID_COUNTER_KEY = "march:id:counter"
 
-    async def set_user_marches(self, user_no: int, marches: List[Dict]) -> bool:
-        key = f"user_data:{user_no}:march"
-        await self.redis.set(key, json.dumps(marches), ex=3600)
+    async def generate_march_id(self) -> int:
+        """원자적 march_id 생성 (INCR)"""
+        return await self.redis.incr(self.MARCH_ID_COUNTER_KEY)
+
+    # ─────────────────────────────────────────────
+    # 행군 metadata 업데이트
+    # ─────────────────────────────────────────────
+
+    async def update_march_metadata(self, march_id: int, updates: Dict[str, Any]) -> bool:
+        """기존 metadata를 읽어 updates를 병합 후 저장"""
+        metadata = await self.get_march_metadata(march_id)
+        if metadata is None:
+            return False
+        metadata.update(updates)
+        key = f"march:metadata:{march_id}"
+        await self.redis.set(key, json.dumps(metadata))
         return True
 
-    async def invalidate_user_marches(self, user_no: int) -> bool:
-        key = f"user_data:{user_no}:march"
-        await self.redis.delete(key)
+    # ─────────────────────────────────────────────
+    # 유저별 활성 행군 Set
+    # ─────────────────────────────────────────────
+
+    def _user_active_marches_key(self, user_no: int) -> str:
+        return f"user:active_marches:{user_no}"
+
+    async def add_user_active_march(self, user_no: int, march_id: int) -> bool:
+        await self.redis.sadd(self._user_active_marches_key(user_no), str(march_id))
         return True
+
+    async def remove_user_active_march(self, user_no: int, march_id: int) -> bool:
+        await self.redis.srem(self._user_active_marches_key(user_no), str(march_id))
+        return True
+
+    async def get_user_active_march_ids(self, user_no: int) -> List[int]:
+        members = await self.redis.smembers(self._user_active_marches_key(user_no))
+        return [int(m) for m in members]
 
     # ─────────────────────────────────────────────
     # 전투 상태 (Hash per battle)

@@ -142,3 +142,20 @@
 ### 알려진 한계/주의사항
 - buff_info(1012)는 정상 동작. 버프 데이터의 CRUD는 다른 Manager(Research, Item)에서 호출하는 내부 메서드.
 - 임시 버프 만료 자동 처리는 ISSUE #2로 인해 TaskWorker에서 동작하지 않을 수 있음.
+
+---
+
+## [2026-03-08] Resource / Item / Shop 테스트 검증
+
+### 즉시 수정한 버그
+
+(없음)
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- `CacheType` enum에서 자원 카테고리는 `RESOURCE`가 아닌 `RESOURCES` (복수형). 테스트 작성 시 혼동 주의.
+- `ShopManager.shop_buy()` — `data` 파라미터가 빈 dict `{}`이면 `not self._data`가 `True`로 평가되어 `"Missing data"` 반환. slot 누락과 동일 분기. 명시적 `"slot"` 키 누락 메시지가 없음.
+- fakeredis가 Lua 스크립트(`EVAL`)를 지원하지 않아 `conftest.py`에서 `atomic_consume`을 non-Lua로 패치. 실제 Redis와 동작 차이가 있을 수 있음.

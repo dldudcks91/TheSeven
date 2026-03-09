@@ -145,19 +145,17 @@ class BattleManager:
 
     async def npc_battle_start(self, march_id: int, npc_id: int) -> Dict:
         """NPC 행군 도착 → NPC 전투 시작"""
-        from services.system.GameDataManager import GameDataManager
-        march_dm = self.db_manager.get_march_manager()
         battle_dm = self.db_manager.get_battle_manager()
         combat_rm = self.redis_manager.get_combat_manager()
 
-        march = march_dm.get_march(march_id)
+        march = await combat_rm.get_march_metadata(march_id)
         if not march:
             return self._format(False, "행군 정보 없음")
-        if march["status"] != "marching":
+        if march.get("status") != "marching":
             return self._format(False, "이미 처리된 행군")
 
-        attacker_no = march["user_no"]
-        atk_units = march["units"]
+        attacker_no = int(march["user_no"])
+        atk_units = {int(k): int(v) for k, v in march["units"].items()}
 
         # NPC 방어 병력
         npc_configs = GameDataManager.REQUIRE_CONFIGS.get('npc', {})
@@ -170,8 +168,7 @@ class BattleManager:
         npc_instance = await combat_rm.get_npc(npc_id)
         if not npc_instance or not npc_instance.get("alive", True):
             # NPC 처치 상태: 전투 없이 귀환
-            march_dm.update_march_status(march_id, "returning")
-            self.db_manager.commit()
+            await combat_rm.update_march_metadata(march_id, {"status": "returning"})
             return self._format(False, "NPC가 이미 처치된 상태")
 
         # 영웅 레벨 조회
@@ -196,7 +193,7 @@ class BattleManager:
             return self._format(False, "전투 생성 실패")
 
         battle_id = result["data"]["battle_id"]
-        march_dm.update_march_status(march_id, "battling", battle_id=battle_id)
+        await combat_rm.update_march_metadata(march_id, {"status": "battling", "battle_id": battle_id})
         self.db_manager.commit()
 
         hero_mult = self._hero_atk_multiplier(march.get("hero_idx"), hero_lv)
@@ -255,19 +252,18 @@ class BattleManager:
 
     async def battle_start(self, march_id: int) -> Dict:
         """행군 도착 → 전투 시작"""
-        march_dm = self.db_manager.get_march_manager()
         battle_dm = self.db_manager.get_battle_manager()
         combat_rm = self.redis_manager.get_combat_manager()
 
-        march = march_dm.get_march(march_id)
+        march = await combat_rm.get_march_metadata(march_id)
         if not march:
             return self._format(False, "행군 정보 없음")
-        if march["status"] != "marching":
+        if march.get("status") != "marching":
             return self._format(False, "이미 처리된 행군")
 
-        attacker_no = march["user_no"]
-        defender_no = march["target_user_no"]
-        atk_units = march["units"]  # {unit_idx: count}
+        attacker_no = int(march["user_no"])
+        defender_no = int(march["target_user_no"])
+        atk_units = {int(k): int(v) for k, v in march["units"].items()}
 
         # 방어 병력: Redis 캐시에서 defender ready 병력
         unit_rm = self.redis_manager.get_unit_manager()
@@ -284,9 +280,7 @@ class BattleManager:
         if march.get("hero_idx"):
             try:
                 hero_key = f"user_data:{attacker_no}:hero"
-                raw = await self.redis_manager.get_combat_manager().redis.hget(
-                    hero_key, str(march["hero_idx"])
-                )
+                raw = await combat_rm.redis.hget(hero_key, str(march["hero_idx"]))
                 if raw:
                     hero_data = json.loads(raw)
                     hero_lv = int(hero_data.get("hero_lv", 0))
@@ -304,8 +298,8 @@ class BattleManager:
 
         battle_id = result["data"]["battle_id"]
 
-        # March 상태 업데이트
-        march_dm.update_march_status(march_id, "battling", battle_id=battle_id)
+        # March 상태 업데이트 (Redis metadata)
+        await combat_rm.update_march_metadata(march_id, {"status": "battling", "battle_id": battle_id})
         self.db_manager.commit()
 
         # Redis 전투 상태 초기화
@@ -446,7 +440,6 @@ class BattleManager:
                               atk_total_loss: Dict, def_total_loss: Dict):
         combat_rm = self.redis_manager.get_combat_manager()
         battle_dm = self.db_manager.get_battle_manager()
-        march_dm = self.db_manager.get_march_manager()
 
         attacker_no = int(state["attacker_no"])
         march_id = int(state["march_id"])
@@ -455,7 +448,6 @@ class BattleManager:
         # 공격자 승리 시 영웅 EXP 지급
         if result == "attacker_win" and state.get("hero_idx"):
             hero_idx = int(state["hero_idx"])
-            from services.system.GameDataManager import GameDataManager
             npc_cfg = GameDataManager.REQUIRE_CONFIGS.get('npc', {}).get(npc_id, {})
             exp_reward = int(npc_cfg.get("exp_reward", 0))
             if exp_reward > 0:
@@ -470,7 +462,6 @@ class BattleManager:
 
         # NPC 처치: alive=false, 리스폰 큐 등록
         if result in ("attacker_win", "draw") and npc_id:
-            from services.system.GameDataManager import GameDataManager
             npc_cfg = GameDataManager.REQUIRE_CONFIGS.get('npc', {}).get(npc_id, {})
             respawn_min = int(npc_cfg.get("respawn_minutes", 5))
             respawn_time = datetime.utcnow() + timedelta(minutes=respawn_min)
@@ -482,12 +473,13 @@ class BattleManager:
             await combat_rm.add_npc_respawn_to_queue(npc_id, respawn_time)
 
         # 귀환 병력 처리 (공격자 생존 병력 field→ready)
-        if atk_alive:
+        march = await combat_rm.get_march_metadata(march_id)
+        if atk_alive and march:
             unit_rm = self.redis_manager.get_unit_manager()
-            march = march_dm.get_march(march_id)
-            original_units = march["units"] if march else {}
+            original_units = march.get("units", {})
             for uid_str, orig_count in original_units.items():
                 unit_idx = int(uid_str)
+                orig_count = int(orig_count)
                 survived = int(atk_alive.get(unit_idx, 0))
                 lost = orig_count - survived
                 cached = await unit_rm.get_cached_unit(attacker_no, unit_idx)
@@ -507,21 +499,21 @@ class BattleManager:
             defender_loss={k: v for k, v in def_total_loss.items()},
             loot={},
         )
+        self.db_manager.commit()
 
         # 귀환 큐 등록
-        march = march_dm.get_march(march_id)
         if march:
-            march_speed = march["march_speed"]
-            from_x, from_y = march["from_x"], march["from_y"]
-            to_x, to_y = march["to_x"], march["to_y"]
+            march_speed = int(march.get("march_speed", 1))
+            from_x, from_y = int(march["from_x"]), int(march["from_y"])
+            to_x, to_y = int(march["to_x"]), int(march["to_y"])
             distance = math.sqrt((to_x - from_x) ** 2 + (to_y - from_y) ** 2)
             travel_min = distance / march_speed if march_speed > 0 else 1
             return_time = datetime.utcnow() + timedelta(minutes=travel_min)
-            march_dm.update_march_status(march_id, "returning", return_time=return_time)
+            await combat_rm.update_march_metadata(march_id, {
+                "status": "returning",
+                "return_time": return_time.isoformat(),
+            })
             await combat_rm.add_march_return_to_queue(march_id, return_time)
-            await combat_rm.invalidate_user_marches(attacker_no)
-
-        self.db_manager.commit()
 
         await combat_rm.update_battle_field(battle_id, "status", "finished")
         await combat_rm.remove_active_battle(battle_id)
@@ -539,7 +531,6 @@ class BattleManager:
                           atk_total_loss: Dict, def_total_loss: Dict):
         combat_rm = self.redis_manager.get_combat_manager()
         battle_dm = self.db_manager.get_battle_manager()
-        march_dm = self.db_manager.get_march_manager()
 
         attacker_no = int(state["attacker_no"])
         defender_no = int(state["defender_no"])
@@ -562,12 +553,13 @@ class BattleManager:
                     await resource_rm.change_resource_amount(attacker_no, res_type, looted)
 
         # 귀환 병력 처리 (공격자 생존 병력 field→ready)
-        if atk_alive:
+        march = await combat_rm.get_march_metadata(march_id)
+        if atk_alive and march:
             unit_rm = self.redis_manager.get_unit_manager()
-            march = march_dm.get_march(march_id)
-            original_units = march["units"] if march else {}
+            original_units = march.get("units", {})
             for uid_str, orig_count in original_units.items():
                 unit_idx = int(uid_str)
+                orig_count = int(orig_count)
                 survived = int(atk_alive.get(unit_idx, 0))
                 lost = orig_count - survived
                 cached = await unit_rm.get_cached_unit(attacker_no, unit_idx)
@@ -598,21 +590,21 @@ class BattleManager:
             defender_loss={k: v for k, v in def_total_loss.items()},
             loot=loot,
         )
+        self.db_manager.commit()
 
         # 귀환 큐 등록 (공격자 귀환)
-        march = march_dm.get_march(march_id)
         if march:
-            march_speed = march["march_speed"]
-            from_x, from_y = march["from_x"], march["from_y"]
-            to_x, to_y = march["to_x"], march["to_y"]
+            march_speed = int(march.get("march_speed", 1))
+            from_x, from_y = int(march["from_x"]), int(march["from_y"])
+            to_x, to_y = int(march["to_x"]), int(march["to_y"])
             distance = math.sqrt((to_x - from_x) ** 2 + (to_y - from_y) ** 2)
             travel_min = distance / march_speed if march_speed > 0 else 1
             return_time = datetime.utcnow() + timedelta(minutes=travel_min)
-            march_dm.update_march_status(march_id, "returning", return_time=return_time)
+            await combat_rm.update_march_metadata(march_id, {
+                "status": "returning",
+                "return_time": return_time.isoformat(),
+            })
             await combat_rm.add_march_return_to_queue(march_id, return_time)
-            await combat_rm.invalidate_user_marches(attacker_no)
-
-        self.db_manager.commit()
 
         # Redis 정리
         await combat_rm.update_battle_field(battle_id, "status", "finished")

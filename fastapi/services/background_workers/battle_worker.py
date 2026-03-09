@@ -58,11 +58,10 @@ class BattleWorker(BaseWorker):
                             if self.websocket_manager:
                                 march_id = state.get("march_id")
                                 if march_id:
-                                    march = db_manager.get_march_manager().get_march(int(march_id))
+                                    march_meta = await combat_rm.get_march_metadata(int(march_id))
                                     return_time_str = None
-                                    if march and march.get("return_time"):
-                                        rt = march["return_time"]
-                                        return_time_str = rt.isoformat() if hasattr(rt, "isoformat") else str(rt)
+                                    if march_meta and march_meta.get("return_time"):
+                                        return_time_str = march_meta["return_time"]
                                     await self.websocket_manager.broadcast_message({
                                         "type": "map_march_update",
                                         "data": {

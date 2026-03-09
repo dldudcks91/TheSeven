@@ -72,8 +72,9 @@ march_create()
   → 영웅 중복 출전 체크
   → 이동 시간 계산
   → 유닛 상태: ready → field
-  → DB: March 레코드 생성 (march_type 포함)
+  → Redis: march_id INCR 생성 + march:metadata 저장
   → Redis: completion_queue:march 등록 (score = 도착 timestamp)
+  → Redis: user:active_marches:{user_no} SADD
   → WebSocket: map_march_start 브로드캐스트
 
 TaskWorker (만료된 march 감지)
@@ -82,38 +83,26 @@ TaskWorker (만료된 march 감지)
   → WebSocket: map_march_update 브로드캐스트
 ```
 
-#### March 테이블
+#### March 데이터 (Redis-only, DB 테이블 없음)
 
-```python
-class March(Base):
-    __tablename__ = 'march'
-    march_id        : str       # UUID, PK
-    user_no         : int       # 출발자
-    target_user_no  : int       # nullable (NPC 공격 시 없음)
-    npc_id          : str       # nullable (NPC 공격 시)
-    rally_id        : str       # nullable (집결 소속 march)
-    march_type      : str       # normal | rally_gather | rally_attack
-    target_type     : str       # user | npc | stronghold
-    from_x, from_y  : int
-    to_x, to_y      : int
-    units           : str       # JSON {"401": 100, "411": 50}
-    hero_idx        : int       # nullable
-    march_speed     : float
-    departure_time  : datetime
-    arrival_time    : datetime
-    return_time     : datetime  # nullable
-    status          : str       # marching | battling | returning | completed | cancelled
-    battle_id       : str       # nullable
-```
-
-#### March Redis
+행군은 순수 임시 상태이므로 Redis에만 저장한다. DB 영속 기록 없음.
+서버/Redis 재시작 시 진행 중인 행군은 유실된다 (Redis AOF persistence 권장).
 
 ```
-completion_queue:march        → ZSet  (score=도착시각)
-completion_queue:march_return → ZSet  (score=귀환시각)
-march:{march_id}              → Hash  (행군 상세, 전투 중 조회용)
-user_data:{user_no}:marches   → Set   (활성 march_id 목록)
+march:id:counter              → String (INCR로 march_id 원자적 생성)
+march:metadata:{march_id}     → String (JSON, TTL 없음)
+  {
+    march_id, user_no, target_type, target_user_no, npc_id,
+    units, hero_idx, from_x, from_y, to_x, to_y,
+    march_speed, departure_time, arrival_time, return_time,
+    status, battle_id
+  }
+completion_queue:march        → ZSet  (score=도착시각, member=march_id)
+completion_queue:march_return → ZSet  (score=귀환시각, member=march_id)
+user:active_marches:{user_no} → Set   (활성 march_id 집합)
 ```
+
+완료/취소 시 `delete_march_metadata()` + `remove_user_active_march()` 로 명시적 정리.
 
 ### 2.3 집결 공통 흐름
 
@@ -513,11 +502,7 @@ map_x : Mapped[Optional[int]]
 map_y : Mapped[Optional[int]]
 ```
 
-### 10.2 March
-
-섹션 2.2 참조. `march_type`, `rally_id` 포함.
-
-### 10.3 Battle
+### 10.2 Battle
 
 ```python
 class Battle(Base):
@@ -554,8 +539,9 @@ class Battle(Base):
 |----|------|------|
 | `map:positions` | Hash | `{user_no → "x,y"}` |
 | `map:npcs` | Hash | `{npc_id → JSON}` |
-| `march:{march_id}` | Hash | 행군 상세 |
-| `user_data:{user_no}:marches` | Set | 활성 march_id 목록 |
+| `march:id:counter` | String | march_id 자동증가 (INCR) |
+| `march:metadata:{march_id}` | String (JSON) | 행군 전체 정보 (TTL 없음) |
+| `user:active_marches:{user_no}` | Set | 활성 march_id 집합 |
 | `completion_queue:march` | ZSet | score = 도착시각 |
 | `completion_queue:march_return` | ZSet | score = 귀환시각 |
 | `completion_queue:npc_respawn` | ZSet | score = 리스폰시각 |

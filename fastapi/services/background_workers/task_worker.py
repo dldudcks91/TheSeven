@@ -15,7 +15,7 @@ class TaskWorker(BaseWorker):
     게임 내 시간 완료 작업(Task) 처리 통합 워커
     - Redis의 Task Queue를 감시하여 완료 시간이 지난 항목들을 처리합니다.
     """
-    
+
     def __init__(self, redis_manager, websocket_manager = None, check_interval: float = 1.0):
         # 작업 처리는 실시간성이 중요하므로 기본 주기를 1초로 설정합니다.
         super().__init__(category='game_task', check_interval=check_interval)
@@ -29,7 +29,7 @@ class TaskWorker(BaseWorker):
         """매 주기마다 등록된 모든 카테고리의 태스크를 순차적으로 처리합니다."""
         db_session = self._create_db_session()
         db_manager = DBManager(db_session)
-        
+
         try:
             # 1. 유닛 태스크 처리
             await self._handle_unit_tasks(db_manager)
@@ -38,11 +38,11 @@ class TaskWorker(BaseWorker):
             await self._handle_march_arrivals(db_manager)
 
             # 3. 행군 귀환 처리
-            await self._handle_march_returns(db_manager)
+            await self._handle_march_returns()
 
             # 4. NPC 리스폰 처리
             await self._handle_npc_respawns()
-            
+
         except Exception as e:
             self.logger.error(f"[{self.category}] Error in TaskWorker loop: {e}", exc_info=True)
         finally:
@@ -53,19 +53,19 @@ class TaskWorker(BaseWorker):
         try:
             unit_manager = UnitManager(db_manager, self.redis_manager)
             completed_tasks = await unit_manager.get_completed_units_for_worker()
-            
+
             if not completed_tasks:
                 return
-            
+
             for task in completed_tasks:
                 user_no = int(task.get('user_no'))
                 task_id = task.get('task_id')
                 sub_id = task.get('sub_id')
-                    
+
                 unit_manager.user_no = user_no
                 unit_manager.data = {"unit_type": task_id, "unit_idx": sub_id}
 
-                
+
                 # finish_unit_internal이 캐시 갱신 및 DB 동기화 큐 삽입 처리
                 #success = await unit_manager.finish_unit_internal(user_no, task_id)
                 result = await unit_manager.unit_finish()
@@ -73,7 +73,7 @@ class TaskWorker(BaseWorker):
                 if result and result.get('success'):
                     self.logger.info(f"Unit task {task_id} completed for user {user_no}")
                     await self._send_websocket_notification(user_no, 'unit_finish', result.get('data', {}))
-                    
+
         except Exception as e:
             self.logger.error(f"Error processing unit tasks: {e}")
 
@@ -110,11 +110,10 @@ class TaskWorker(BaseWorker):
                     return_time_str = metadata.get("return_time") if metadata else None
                     if return_time_str and user_no:
                         return_time = datetime.fromisoformat(return_time_str)
-                        march_dm = db_manager.get_march_manager()
-                        march_dm.update_march_status(march_id, "returning", return_time=return_time)
-                        db_manager.commit()
+                        await combat_rm.update_march_metadata(march_id, {
+                            "status": "returning",
+                        })
                         await combat_rm.add_march_return_to_queue(march_id, return_time)
-                        await combat_rm.invalidate_user_marches(user_no)
                         await self._send_websocket_notification(
                             user_no, "march_arrive", {"march_id": march_id}
                         )
@@ -147,27 +146,30 @@ class TaskWorker(BaseWorker):
         except Exception as e:
             self.logger.error(f"Error processing march arrivals: {e}")
 
-    async def _handle_march_returns(self, db_manager):
-        """귀환 시간이 지난 행군 처리"""
+    async def _handle_march_returns(self):
+        """귀환 시간이 지난 행군 처리 (Redis-only)"""
         try:
             combat_rm = self.redis_manager.get_combat_manager()
             march_ids = await combat_rm.get_pending_march_returns()
             if not march_ids:
                 return
 
-            march_dm = db_manager.get_march_manager()
             for march_id in march_ids:
-                march = march_dm.get_march(march_id)
+                march = await combat_rm.get_march_metadata(march_id)
                 if not march:
                     await combat_rm.remove_march_return_from_queue(march_id)
                     continue
-                march_dm.update_march_status(march_id, "completed")
-                db_manager.commit()
+
+                user_no = int(march.get("user_no", 0))
+
+                # metadata 정리
                 await combat_rm.remove_march_return_from_queue(march_id)
                 await combat_rm.delete_march_metadata(march_id)
-                await combat_rm.invalidate_user_marches(march["user_no"])
+                if user_no:
+                    await combat_rm.remove_user_active_march(user_no, march_id)
+
                 await self._send_websocket_notification(
-                    march["user_no"], "march_return",
+                    user_no, "march_return",
                     {"march_id": march_id}
                 )
                 if self.websocket_manager:
