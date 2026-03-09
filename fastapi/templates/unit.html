@@ -600,6 +600,7 @@
                             <th>보유</th>
                             <th>대기</th>
                             <th>생산중</th>
+                            <th>관리</th>
                         </tr>
                     </thead>
                     <tbody id="infantryTableBody">
@@ -625,6 +626,7 @@
                             <th>보유</th>
                             <th>대기</th>
                             <th>생산중</th>
+                            <th>관리</th>
                         </tr>
                     </thead>
                     <tbody id="cavalryTableBody">
@@ -650,6 +652,7 @@
                             <th>보유</th>
                             <th>대기</th>
                             <th>생산중</th>
+                            <th>관리</th>
                         </tr>
                     </thead>
                     <tbody id="archerTableBody">
@@ -855,16 +858,31 @@
             ['infantry', 'cavalry', 'archer'].forEach(category => {
                 const tbody = document.getElementById(`${category}TableBody`);
                 if (!tbody) return;
-                
+
                 tbody.innerHTML = '';
-                
+
                 allUnits.forEach(unit => {
                     if (unit.category != category) return;
-                    
-                    const data = userUnitData[unit.unit_idx] || { 
-                        total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0 
+
+                    const data = userUnitData[unit.unit_idx] || {
+                        total: 0, ready: 0, training: 0, upgrading: 0, field: 0, injured: 0, wounded: 0, healing: 0, death: 0
                     };
-                    
+
+                    const isTraining = (data.training || 0) > 0 || (data.upgrading || 0) > 0;
+                    const trainingDisplay = (data.training || 0) + (data.upgrading || 0);
+
+                    // 같은 카테고리의 상위 티어 유닛 찾기
+                    const nextTierUnit = allUnits.find(u => u.category === category && u.unit_tier === unit.unit_tier + 1);
+                    const canUpgrade = nextTierUnit && (data.ready || 0) > 0 && !isTraining;
+
+                    let actionHtml = '';
+                    if (isTraining) {
+                        actionHtml = `<button onclick="cancelUnit(${unit.unit_idx})" style="font-size:9px;padding:1px 4px;">취소</button>` +
+                            `<button onclick="speedupUnit(${unit.unit_idx})" style="font-size:9px;padding:1px 4px;">가속</button>`;
+                    } else if (canUpgrade) {
+                        actionHtml = `<button onclick="upgradeUnit(${unit.unit_idx}, ${nextTierUnit.unit_idx})" style="font-size:9px;padding:1px 4px;">승급</button>`;
+                    }
+
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td>
@@ -875,27 +893,32 @@
                         </td>
                         <td>
                             <div class="unit-counts">
-                                <div class="count-item">    
+                                <div class="count-item">
                                     <span class="count-value ready">${data.total}</span>
                                 </div>
                             </div>
                         </td>
                         <td>
                             <div class="unit-counts">
-                                <div class="count-item">    
+                                <div class="count-item">
                                     <span class="count-value ready">${data.ready}</span>
                                 </div>
                             </div>
                         </td>
                         <td>
                             <div class="unit-counts">
-                                <div class="count-item">    
-                                    <span class="count-value ready">${data.training}</span>
+                                <div class="count-item">
+                                    <span class="count-value ready">${trainingDisplay}</span>
                                 </div>
                             </div>
                         </td>
+                        <td>
+                            <div class="action-buttons" style="display:flex;gap:2px;">
+                                ${actionHtml}
+                            </div>
+                        </td>
                     `;
-                    
+
                     tbody.appendChild(row);
                 });
             });
@@ -1210,6 +1233,83 @@
             }, 100);
         };
 
+
+        async function upgradeUnit(unitIdx, targetUnitIdx) {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            const unit = allUnits.find(u => u.unit_idx === unitIdx);
+            const targetUnit = allUnits.find(u => u.unit_idx === targetUnitIdx);
+            const data = userUnitData[unitIdx] || { ready: 0 };
+            const maxQty = data.ready || 0;
+            const qty = prompt(`${unit?.korean_name || unitIdx} → ${targetUnit?.korean_name || targetUnitIdx} 승급\n수량 (최대 ${maxQty}):`, String(Math.min(10, maxQty)));
+            if (!qty || parseInt(qty) <= 0) return;
+            try {
+                showResult(`승급 요청 중...`);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 4003, data: { unit_idx: unitIdx, target_unit_idx: targetUnitIdx, quantity: parseInt(qty) } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (result.data) userUnitData[unitIdx] = result.data;
+                    generateUnitTables();
+                    showResult(`승급 시작: ${result.message}`);
+                } else {
+                    showResult(`승급 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`승급 에러: ${error.message}`);
+            }
+        }
+
+        async function cancelUnit(unitIdx) {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            const unit = allUnits.find(u => u.unit_idx === unitIdx);
+            const name = unit?.korean_name || unitIdx;
+            if (!confirm(`${name} 훈련/승급을 취소하시겠습니까?`)) return;
+            try {
+                showResult(`${name} 취소 중...`);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 4005, data: { unit_idx: unitIdx } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (result.data) userUnitData[unitIdx] = result.data;
+                    generateUnitTables();
+                    showResult(`${name} 취소 완료`);
+                } else {
+                    showResult(`${name} 취소 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`${name} 취소 에러: ${error.message}`);
+            }
+        }
+
+        async function speedupUnit(unitIdx) {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            const unit = allUnits.find(u => u.unit_idx === unitIdx);
+            const name = unit?.korean_name || unitIdx;
+            try {
+                showResult(`${name} 가속 중...`);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 4006, data: { unit_idx: unitIdx } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (result.data) userUnitData[unitIdx] = result.data;
+                    generateUnitTables();
+                    showResult(`${name} 가속 완료`);
+                } else {
+                    showResult(`${name} 가속 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`${name} 가속 에러: ${error.message}`);
+            }
+        }
 
         async function callAPI(apiCode, unitIdx, quantity) {
             if (!userId) {

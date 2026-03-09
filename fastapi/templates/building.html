@@ -116,6 +116,7 @@
         <div id="timerDisplay" class="timer-display" style="display: none; ">
             <strong>진행 중인 작업: </strong>
             <div id="timerItems"></div>
+            <button onclick="finishAllBuildings()" style="margin-top:4px; padding:2px 8px; font-size:10px; border:1px solid #4caf50; background:#e8f5e8; color:#2e7d32; cursor:pointer; border-radius:2px;">전체 즉시완료</button>
         </div>
         
         <table class="building-table">
@@ -277,13 +278,19 @@
                 if (hasNextLevel) {
                     costDisplay = formatCosts(nextLevelConfig.cost);
                     timeDisplay = `${nextLevelConfig.time}초`;
-                    
-                    actionButton = data.building_lv === 0 ? 
-                        `<button onclick="callAPI(2002, ${building.idx})">건설</button>` : 
-                        `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`;
+
+                    if (data.status === 1 || data.status === 2) {
+                        // 건설/업그레이드 진행중 → 취소, 가속 버튼
+                        actionButton = `<button onclick="cancelBuilding(${building.idx})">취소</button>` +
+                            `<button onclick="speedupBuilding(${building.idx})">가속</button>`;
+                    } else {
+                        actionButton = data.building_lv === 0 ?
+                            `<button onclick="callAPI(2002, ${building.idx})">건설</button>` :
+                            `<button onclick="callAPI(2003, ${building.idx})">업그레이드</button>`;
+                    }
                 }
 
-                
+
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td style="font-size: 9px;">${building.display_name || building.korean_name}</td>
@@ -554,6 +561,80 @@
             }
         }
         
+        async function cancelBuilding(buildingIdx) {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            const building = allBuildingsList.find(b => b.idx === buildingIdx);
+            const name = building ? (building.display_name || building.korean_name) : buildingIdx;
+            if (!confirm(`${name} 건설/업그레이드를 취소하시겠습니까?`)) return;
+            try {
+                showResult(`${name} 취소 중...`);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 2005, data: { building_idx: buildingIdx } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    await loadBuildings();
+                    const refund = result.data?.refund_resources;
+                    const refundText = refund ? ` (환불: ${formatCosts(refund)})` : '';
+                    showResult(`${name} 취소 완료${refundText}`);
+                } else {
+                    showResult(`${name} 취소 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`${name} 취소 에러: ${error.message}`);
+            }
+        }
+
+        async function speedupBuilding(buildingIdx) {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            const building = allBuildingsList.find(b => b.idx === buildingIdx);
+            const name = building ? (building.display_name || building.korean_name) : buildingIdx;
+            const seconds = prompt('가속할 시간(초)을 입력하세요:', '60');
+            if (!seconds) return;
+            try {
+                showResult(`${name} 가속 중...`);
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 2007, data: { building_idx: buildingIdx, speedup_seconds: parseInt(seconds) } })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (result.data) userBuildingData[buildingIdx] = result.data;
+                    await loadBuildings();
+                    showResult(`${name} ${seconds}초 가속 완료`);
+                } else {
+                    showResult(`${name} 가속 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`${name} 가속 에러: ${error.message}`);
+            }
+        }
+
+        async function finishAllBuildings() {
+            if (!userId) { showResult('플레이어 ID를 입력하세요'); return; }
+            try {
+                showResult('완료된 건물 일괄 처리 중...');
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(userId), api_code: 2006, data: {} })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    const count = result.data?.buildings?.length || 0;
+                    await loadBuildings();
+                    showResult(`${count}개 건물 일괄 완료 처리`);
+                } else {
+                    showResult(`일괄 완료 실패: ${result.message}`);
+                }
+            } catch (error) {
+                showResult(`일괄 완료 에러: ${error.message}`);
+            }
+        }
+
         function showResult(message) {
             const resultBox = document.getElementById('result');
             resultBox.style.display = 'block';
