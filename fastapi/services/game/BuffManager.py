@@ -511,13 +511,13 @@ class BuffManager:
             self.logger.error(f"Error in buff_total_info: {e}")
             return {"success": False, "message": str(e)}
 
-    async def buff_total_by_type_info(self, target_type: str) -> Dict:
+    async def buff_total_by_type_info(self) -> Dict:
         """
         API: 특정 target_type의 총합만 (전투용 - unit만)
-        
-        Args:
+
+        data:
             target_type: "unit", "resource" 등
-            
+
         Returns:
             {
                 "success": True,
@@ -528,6 +528,9 @@ class BuffManager:
             }
         """
         user_no = self.user_no
+        target_type = self.data.get("target_type") if self.data else None
+        if not target_type:
+            return {"success": False, "message": "target_type is required"}
         try:
             totals = await self.get_total_buffs_by_type(user_no, target_type)
             

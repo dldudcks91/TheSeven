@@ -185,6 +185,7 @@ await getattr(service, method_name)()
 | NPC 리스폰 큐 | `completion_queue:npc_respawn` | Sorted Set | score=리스폰시각 |
 | 전투 상태 | `battle:{battle_id}` | Hash | 라운드/병력/상태 |
 | 활성 전투 집합 | `battle:active` | Set | battle_id 집합 |
+| 성 공격 그룹 | `castle_battle:{defender_no}` | Set | 해당 수비자 대상 활성 battle_id |
 
 ### 7.2 Cache-Aside 패턴 (읽기)
 

@@ -4,6 +4,50 @@
 
 ---
 
+## [2026-03-09] 성 일반전투 (multi-attacker) 구현
+
+### 즉시 수정한 버그
+
+#### BUG #1 - _castle_all_attackers_win 수비 손실 계산 오류 ✅
+
+- 발생 위치: `services/game/BattleManager.py` / `_castle_all_attackers_win`
+- 원인: 현재 틱의 snapshot(마지막 틱 잔존 병력)만 ready에서 차감. 이전 틱의 누적 손실이 반영되지 않아 수비자 유닛이 부분만 사망 처리됨.
+- 해결: `def_units_original` (전투 시작 시점의 ready 캐시 기준) 필드를 battle state에 추가. 종료 시 원본 기준으로 정확히 차감.
+
+#### BUG #2 - battle_start 기존 전투 동기화 누락 ✅
+
+- 발생 위치: `services/game/BattleManager.py` / `battle_start`
+- 원인: 새 전투 시작 시 항상 수비자 ready 캐시에서 def_units를 읽음. 이미 진행 중인 전투에서 감소된 수비 병력과 불일치.
+- 해결: `get_castle_battles()`로 기존 진행 중 전투 확인 후, 있으면 해당 전투의 현재 def_units로 동기화.
+
+### 테스트 검증 중 발견/수정한 이슈
+
+#### TEST-FIX #1 - 순환 import 오류 ✅
+
+- 발생 위치: `tests/test_castle_battle.py` 모듈 레벨 import
+- 원인: `from services.game.BattleManager import BattleManager`를 모듈 레벨에서 호출 시 순환 import 체인 발생 (BattleManager → game/__init__ → ResourceManager → system/__init__ → APIManager → game modules). `AttributeError: partially initialized module` 에러.
+- 해결: 모든 import를 `create_battle_manager()` 함수 내부 및 개별 테스트 메서드 내부로 deferred import 처리.
+
+#### TEST-FIX #2 - 전투 무한 루프 (unit 401 정수 데미지 모델) ✅
+
+- 발생 위치: `tests/test_castle_battle.py` / `test_single_attacker_until_finish` 외 3개 테스트
+- 원인: unit 401의 스탯이 attack=1, defense=1, hp=100. 공격자 100명 vs 수비 10명일 때 `net_atk = max(1, 100-10) = 90`, `killed = 90 // 100 = 0`. 매 라운드 처치 0명 → 전투 무한 반복.
+- 해결: 유닛 수를 충분히 크게 설정 (공격자 1000+명) → `net_dmg = 990`, `killed = 990 // 100 = 9`명/라운드.
+
+#### TEST-FIX #3 - 약탈 합산 오차 (int 절삭) ✅
+
+- 발생 위치: `tests/test_castle_battle.py` / `test_multi_attacker_defender_eliminated`
+- 원인: `int(amt * ratio)`로 각 공격자 몫 계산 시 소수점 절삭. 2명 분배 시 합계가 total_loot보다 1~2 적을 수 있음.
+- 해결: `assert total_looted == 2000` → `assert 1990 <= total_looted <= 2000` 범위 허용.
+
+### 알려진 한계/주의사항
+
+- 수비자가 전투 중 새 유닛 훈련 완료 시, 해당 유닛은 진행 중인 전투에 투입되지 않음 (ready 캐시에만 반영, battle state의 def_units에는 미반영). 의도된 동작.
+- 무한 교착 가능성 (라운드 제한 없음): 공격/방어 DPS가 서로의 HP를 0으로 만들 수 없는 극단적 경우. 추후 기술적 이슈로 분류하여 해결 예정.
+- 정수 데미지 모델 한계: `killed = net_dmg // hp_per_unit`이므로 소규모 병력 간 교전에서 0 kills 가능. 의도된 동작이지만 밸런스 주의 필요.
+
+---
+
 ## [2026-03-06] Building 테스트 검증
 
 ### 즉시 수정한 버그
@@ -142,6 +186,121 @@
 ### 알려진 한계/주의사항
 - buff_info(1012)는 정상 동작. 버프 데이터의 CRUD는 다른 Manager(Research, Item)에서 호출하는 내부 메서드.
 - 임시 버프 만료 자동 처리는 ISSUE #2로 인해 TaskWorker에서 동작하지 않을 수 있음.
+
+---
+
+## [2026-03-09] 연맹 버프 시스템 구현 + 버그 수정
+
+### 즉시 수정한 버그
+
+#### BUG #1 - _remove_alliance_buff target_type 하드코딩 ✅
+
+- 발생 위치: `services/game/AllianceManager.py` / `_remove_alliance_buff` (기존 line 122)
+- 원인: `remove_permanent_buff(..., "unit")` — target_type이 `"unit"`으로 하드코딩. 연맹 레벨 버프(buff_idx 103)의 실제 target_type은 `"building"`. 탈퇴/추방/해산 시 연맹 레벨 버프가 삭제되지 않음.
+- 해결: `_get_buff_target_type(buff_idx)` 헬퍼 추가. buff_info config에서 실제 target_type을 조회하여 삭제.
+
+#### BUG #2 - 탈퇴/추방 시 연맹 연구 버프 미삭제 ✅
+
+- 발생 위치: `services/game/AllianceManager.py` / `_remove_alliance_buff`
+- 원인: `source_type="alliance"` 소스만 삭제. `source_type="alliance_research"` 소스(연맹 연구 버프)는 삭제 로직 없음. 탈퇴/추방/해산 후에도 연구 버프가 유저에게 잔존.
+- 해결: `_remove_alliance_buff`에서 `alliance_research` config를 순회하며 각 연구 버프의 target_type을 조회하여 모두 삭제.
+
+#### BUG #3 - 신규 가입자에게 기존 연구 버프 미적용 ✅
+
+- 발생 위치: `services/game/AllianceManager.py` / `_add_alliance_buff`
+- 원인: 연맹 레벨 버프만 적용. 이미 레벨업 완료된 연맹 연구 버프는 가입 시 적용되지 않음. 기존 멤버만 연구 버프를 보유.
+- 해결: `_add_alliance_buff`에서 `alliance_redis.get_all_research()`로 기존 연구 상태를 조회하고, level > 0인 연구의 버프를 모두 적용.
+
+### 미해결 이슈
+
+#### ISSUE #1 - 공지사항 권한 불일치 (CSV vs 코드) → ✅ 해결 (2026-03-09)
+
+- 발생 위치: `services/game/AllianceManager.py` / `alliance_notice_write`
+- 원인: `alliance_position.csv`에서 간부(3)도 `can_notice=1`이지만, 코드는 `my_position != POSITION_LEADER` (맹주만 허용)
+- 해결: CSV 기준으로 수정 — `_has_permission(my_position, 'can_notice')` 사용
+
+### 알려진 한계/주의사항
+- 연맹 레벨업 시 `_update_alliance_buff_for_all_members`가 remove→add를 호출하므로 연구 버프도 불필요하게 재설정됨. 정합성 문제는 없으나 멤버 수 × 연구 수만큼 Redis 호출 발생.
+- `alliance_level.csv`의 buff_idx는 전 레벨 동일(103). 레벨별로 다른 버프를 적용하려면 구조 변경 필요.
+- `alliance_donate.csv`의 `coin_item_idx`가 0이므로 연맹 코인 아이템은 실제 지급되지 않음.
+- DB 동기화 시 탈퇴/추방 멤버가 DB에서 삭제되지 않을 수 있음 (SyncWorker가 upsert만 수행).
+
+---
+
+## [2026-03-09] 연맹 테스트 + 버그 수정
+
+### 즉시 수정한 버그
+
+#### BUG #4 - AllianceManager buff_redis → buff_manager 레이어 오류 ✅
+
+- 발생 위치: `services/game/AllianceManager.py` / `_add_alliance_buff`, `_remove_alliance_buff`, `_apply_research_buff` (4개소)
+- 원인: `self.redis_manager.get_buff_manager()` → `BuffRedisManager` (redis layer) 반환. `add_permanent_buff`/`remove_permanent_buff`는 `BuffManager` (game layer)에만 존재. 연맹 버프 적용/삭제가 모두 `AttributeError`로 실패.
+- 해결: `_get_buff_manager()` 헬퍼 추가. `BuffManager(self.db_manager, self.redis_manager)` 생성하여 game layer 메서드 호출.
+
+#### BUG #5 - buff_info.csv 인코딩 깨짐 ✅
+
+- 발생 위치: `meta_data/buff_info.csv`
+- 원인: 이전 세션에서 UTF-8로 저장되었으나 `GameDataManager`는 `encoding='cp949'`로 읽음. `UnicodeDecodeError` 발생.
+- 해결: git에서 원본 cp949 바이트 복원 후 buff_idx 205 행을 cp949로 append.
+
+#### BUG #6 (ISSUE #1 해결) - 공지사항 권한 불일치 ✅
+
+- 발생 위치: `services/game/AllianceManager.py` / `alliance_notice_write`
+- 원인: `alliance_position.csv`에서 간부(3)도 `can_notice=1`이지만, 코드는 `my_position != POSITION_LEADER` (맹주만 허용)
+- 해결: `_has_permission(my_position, 'can_notice')` 사용으로 CSV 기준 동작.
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- 연맹 레벨업 시 `_update_alliance_buff_for_all_members`가 remove→add를 호출하므로 연구 버프도 불필요하게 재설정됨. 정합성 문제는 없으나 멤버 수 × 연구 수만큼 Redis 호출 발생.
+
+---
+
+## [2026-03-09] Buff 미해결 이슈 수정
+
+### 즉시 수정한 버그
+
+#### ISSUE #1 해결 - buff_total_info / buff_total_by_type_info API 미등록 ✅
+
+- 발생 위치: `services/system/APIManager.py`
+- 원인: `BuffManager.buff_total_info()`와 `buff_total_by_type_info()` 메서드는 존재하지만 APIManager에 api_code 미등록. 클라이언트 `buff.html`에서 API 코드 1111을 호출하지만 400 에러 반환.
+- 해결: APIManager에 1013(buff_total_info), 1014(buff_total_by_type_info) 등록. `buff_total_by_type_info`를 APIManager 패턴에 맞게 `self.data`에서 `target_type`을 읽도록 수정. `buff.html`의 api_code 1111 → 1013으로 변경.
+
+#### ISSUE #2 해결 - get_completed_tasks에서 sub_id KeyError 가능성 ✅
+
+- 발생 위치: `services/redis_manager/base_redis_task_manager.py` / `get_completed_tasks` (line 82)
+- 원인: `parsed['sub_id']`를 무조건 참조하지만, buff는 2-part key(`{user_no}:{buff_id}`)로 `sub_id`가 없음. KeyError 발생.
+- 해결: `parsed['sub_id']` → `parsed.get('sub_id')` 변경.
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- `buff_total_by_type_info`(1014)는 `self.data`에서 `target_type`을 읽는 방식으로 변경. 기존에 `target_type` 파라미터를 직접 받던 내부 호출 코드가 있으면 영향받을 수 있으나, 현재 내부 호출 없음 확인.
+
+---
+
+## [2026-03-09] 집결(Rally) 시스템 구현
+
+### 즉시 수정한 버그
+
+#### BUG #7 - _distribute_survived_units Leader 식별 불확실 ✅
+
+- 발생 위치: `services/game/BattleManager.py` / `_distribute_survived_units`
+- 원인: 나머지 유닛을 `next(iter(contributors))`로 첫 번째 contributor에게 주는데, Redis hgetall 반환 순서가 Leader 보장 안 됨.
+- 해결: `leader_no` 파라미터 명시적 전달, 나머지 유닛을 leader_no에게 할당.
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- Rally는 Redis-only 데이터. 서버 재시작 시 진행 중 Rally 데이터 유실.
+- Leader의 행군 슬롯 march는 `target_type="rally_slot"`으로 생성되며, 실제 이동은 없음. rally_attack 시 별도 march 생성.
+- gather 행군 도착과 recruit 만료가 동일 TaskWorker 루프에서 순차 처리되므로 경합 없음. 다만 동일 루프에서 두 이벤트 모두 `try_launch_rally`를 호출하는 경우 status 체크로 중복 발사 방지.
 
 ---
 

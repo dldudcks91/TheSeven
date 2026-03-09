@@ -27,6 +27,7 @@ from .MarchManager import MarchManager
 from .BattleManager import BattleManager
 from .NpcManager import NpcManager
 from .BattlefieldManager import BattlefieldManager
+from .RallyManager import RallyManager
 
 __all__ = [
     "UserInitManager",
@@ -45,4 +46,5 @@ __all__ = [
     "BattleManager",
     "NpcManager",
     "BattlefieldManager",
+    "RallyManager",
 ]

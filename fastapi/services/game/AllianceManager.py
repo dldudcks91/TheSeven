@@ -101,25 +101,70 @@ class AllianceManager:
     def _get_alliance_redis(self):
         return self.redis_manager.get_alliance_manager()
 
+    def _get_buff_manager(self):
+        from services.game.BuffManager import BuffManager
+        return BuffManager(self.db_manager, self.redis_manager)
+
     # ==================== 버프 관련 ====================
-    
+
+    def _get_buff_target_type(self, buff_idx: int) -> Optional[str]:
+        """buff_idx로부터 target_type 조회"""
+        buff_configs = GameDataManager.REQUIRE_CONFIGS.get('buff', {})
+        config = buff_configs.get(buff_idx)
+        return config.get('target_type') if config else None
+
     async def _add_alliance_buff(self, user_no: int, alliance_no: int, level: int):
+        """연맹 레벨 버프 + 기존 연구 버프를 유저에게 적용"""
         try:
+            buff_manager = self._get_buff_manager()
+
+            # 1. 연맹 레벨 버프
             level_config = self._get_level_config(level)
             buff_idx = level_config.get('buff_idx')
             buff_value = level_config.get('buff_value', 0)
             if buff_idx:
-                buff_redis = self.redis_manager.get_buff_manager()
-                buff_redis.user_no = user_no
-                await buff_redis.add_permanent_buff(user_no, "alliance", str(alliance_no), buff_idx, buff_value)
+                await buff_manager.add_permanent_buff(user_no, "alliance", str(alliance_no), buff_idx, buff_value)
+
+            # 2. 기존 연맹 연구 버프 (이미 레벨업된 연구가 있으면 적용)
+            alliance_redis = self._get_alliance_redis()
+            all_research = await alliance_redis.get_all_research(alliance_no)
+            for research_idx_str, research_data in all_research.items():
+                research_level = research_data.get('level', 0) if research_data else 0
+                if research_level > 0:
+                    research_config = self._get_research_config(int(research_idx_str), research_level)
+                    r_buff_idx = research_config.get('buff_idx')
+                    r_buff_value = research_config.get('buff_value', 0)
+                    if r_buff_idx:
+                        await buff_manager.add_permanent_buff(
+                            user_no, "alliance_research", research_idx_str, r_buff_idx, r_buff_value
+                        )
         except Exception as e:
             self.logger.error(f"Error adding alliance buff: {e}")
-    
+
     async def _remove_alliance_buff(self, user_no: int, alliance_no: int):
+        """연맹 관련 모든 버프 제거 (레벨 버프 + 연구 버프)"""
         try:
-            buff_redis = self.redis_manager.get_buff_manager()
-            buff_redis.user_no = user_no
-            await buff_redis.remove_permanent_buff(user_no, "alliance", str(alliance_no), "unit")
+            buff_manager = self._get_buff_manager()
+
+            # 1. 연맹 레벨 버프 제거
+            level_config = self._get_level_config(1)
+            buff_idx = level_config.get('buff_idx')
+            if buff_idx:
+                target_type = self._get_buff_target_type(buff_idx)
+                if target_type:
+                    await buff_manager.remove_permanent_buff(user_no, "alliance", str(alliance_no), target_type)
+
+            # 2. 연맹 연구 버프 제거
+            research_configs = GameDataManager.REQUIRE_CONFIGS.get(self.CONFIG_TYPE_RESEARCH, {})
+            for research_idx, level_configs in research_configs.items():
+                first_config = next(iter(level_configs.values()), {})
+                r_buff_idx = first_config.get('buff_idx')
+                if r_buff_idx:
+                    r_target_type = self._get_buff_target_type(r_buff_idx)
+                    if r_target_type:
+                        await buff_manager.remove_permanent_buff(
+                            user_no, "alliance_research", str(research_idx), r_target_type
+                        )
         except Exception as e:
             self.logger.error(f"Error removing alliance buff: {e}")
     
@@ -178,11 +223,10 @@ class AllianceManager:
                 return
             alliance_redis = self._get_alliance_redis()
             members = await alliance_redis.get_members(alliance_no)
+            buff_manager = self._get_buff_manager()
             for user_no_str in members.keys():
                 user_no = int(user_no_str)
-                buff_redis = self.redis_manager.get_buff_manager()
-                buff_redis.user_no = user_no
-                await buff_redis.add_permanent_buff(user_no, "alliance_research", str(research_idx), buff_idx, buff_value)
+                await buff_manager.add_permanent_buff(user_no, "alliance_research", str(research_idx), buff_idx, buff_value)
         except Exception as e:
             self.logger.error(f"Error applying research buff: {e}")
 
@@ -913,8 +957,8 @@ class AllianceManager:
             alliance_no = nation.get('alliance_no')
             my_position = nation.get('alliance_position')
             
-            if my_position != self.POSITION_LEADER:
-                return {"success": False, "message": "맹주만 공지를 작성할 수 있습니다"}
+            if not self._has_permission(my_position, 'can_notice'):
+                return {"success": False, "message": "공지 작성 권한이 없습니다"}
             
             now = datetime.utcnow().isoformat()
             notice_data = {"content": content, "writer_no": user_no, "updated_at": now}

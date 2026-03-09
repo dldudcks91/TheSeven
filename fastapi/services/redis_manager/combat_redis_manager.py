@@ -213,6 +213,29 @@ class CombatRedisManager:
         return [int(m) for m in members]
 
     # ─────────────────────────────────────────────
+    # 성 공격 그룹 (multi-attacker)
+    # castle_battle:{defender_no} → Set { battle_id, ... }
+    # ─────────────────────────────────────────────
+
+    def _castle_battle_key(self, defender_no: int) -> str:
+        return f"castle_battle:{defender_no}"
+
+    async def add_castle_battle(self, defender_no: int, battle_id: int) -> bool:
+        """해당 수비자를 공격 중인 전투 등록"""
+        await self.redis.sadd(self._castle_battle_key(defender_no), str(battle_id))
+        return True
+
+    async def remove_castle_battle(self, defender_no: int, battle_id: int) -> bool:
+        """해당 수비자 공격 전투 제거"""
+        await self.redis.srem(self._castle_battle_key(defender_no), str(battle_id))
+        return True
+
+    async def get_castle_battles(self, defender_no: int) -> List[int]:
+        """해당 수비자를 공격 중인 전투 ID 목록"""
+        members = await self.redis.smembers(self._castle_battle_key(defender_no))
+        return [int(m) for m in members]
+
+    # ─────────────────────────────────────────────
     # NPC 인스턴스 관리
     # ─────────────────────────────────────────────
 
@@ -261,6 +284,29 @@ class CombatRedisManager:
 
     async def remove_npc_respawn_from_queue(self, npc_id: int) -> bool:
         await self.redis.zrem(self.NPC_RESPAWN_QUEUE_KEY, str(npc_id))
+        return True
+
+    # ─────────────────────────────────────────────
+    # 전투 관전자 (battle_subscribers:{battle_id})
+    # ─────────────────────────────────────────────
+
+    def _battle_subscribers_key(self, battle_id: int) -> str:
+        return f"battle_subscribers:{battle_id}"
+
+    async def add_battle_subscriber(self, battle_id: int, user_no: int) -> bool:
+        await self.redis.sadd(self._battle_subscribers_key(battle_id), str(user_no))
+        return True
+
+    async def remove_battle_subscriber(self, battle_id: int, user_no: int) -> bool:
+        await self.redis.srem(self._battle_subscribers_key(battle_id), str(user_no))
+        return True
+
+    async def get_battle_subscribers(self, battle_id: int) -> List[int]:
+        members = await self.redis.smembers(self._battle_subscribers_key(battle_id))
+        return [int(m) for m in members]
+
+    async def clear_battle_subscribers(self, battle_id: int) -> bool:
+        await self.redis.delete(self._battle_subscribers_key(battle_id))
         return True
 
     # ─────────────────────────────────────────────
@@ -362,3 +408,98 @@ class CombatRedisManager:
     async def bf_get_battles(self, bf_id: int) -> List[int]:
         members = await self.redis.smembers(self._bf_battles_key(bf_id))
         return [int(m) for m in members]
+
+    # ─────────────────────────────────────────────
+    # 집결(Rally) 관련
+    # ─────────────────────────────────────────────
+
+    RALLY_ID_COUNTER_KEY = "rally:id:counter"
+    RALLY_RECRUIT_QUEUE_KEY = "completion_queue:rally_recruit"
+    RALLY_GATHER_QUEUE_KEY = "completion_queue:rally_gather"
+
+    async def generate_rally_id(self) -> int:
+        return await self.redis.incr(self.RALLY_ID_COUNTER_KEY)
+
+    # --- Rally 메타데이터 (JSON String) ---
+
+    def _rally_key(self, rally_id: int) -> str:
+        return f"rally:{rally_id}"
+
+    def _rally_members_key(self, rally_id: int) -> str:
+        return f"rally:{rally_id}:members"
+
+    async def set_rally(self, rally_id: int, data: Dict[str, Any]) -> bool:
+        await self.redis.set(self._rally_key(rally_id), json.dumps(data))
+        return True
+
+    async def get_rally(self, rally_id: int) -> Optional[Dict[str, Any]]:
+        raw = await self.redis.get(self._rally_key(rally_id))
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+    async def update_rally(self, rally_id: int, updates: Dict[str, Any]) -> bool:
+        rally = await self.get_rally(rally_id)
+        if rally is None:
+            return False
+        rally.update(updates)
+        await self.redis.set(self._rally_key(rally_id), json.dumps(rally))
+        return True
+
+    async def delete_rally(self, rally_id: int) -> bool:
+        await self.redis.delete(self._rally_key(rally_id))
+        await self.redis.delete(self._rally_members_key(rally_id))
+        return True
+
+    # --- Rally 멤버 (Hash: user_no → JSON {units, march_id, status, ...}) ---
+
+    async def set_rally_member(self, rally_id: int, user_no: int, member_data: Dict) -> bool:
+        await self.redis.hset(self._rally_members_key(rally_id), str(user_no), json.dumps(member_data))
+        return True
+
+    async def get_rally_member(self, rally_id: int, user_no: int) -> Optional[Dict]:
+        raw = await self.redis.hget(self._rally_members_key(rally_id), str(user_no))
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+    async def remove_rally_member(self, rally_id: int, user_no: int) -> bool:
+        await self.redis.hdel(self._rally_members_key(rally_id), str(user_no))
+        return True
+
+    async def get_all_rally_members(self, rally_id: int) -> Dict[int, Dict]:
+        raw = await self.redis.hgetall(self._rally_members_key(rally_id))
+        result = {}
+        for user_no_str, data_str in raw.items():
+            try:
+                result[int(user_no_str)] = json.loads(data_str)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return result
+
+    async def get_rally_member_count(self, rally_id: int) -> int:
+        return await self.redis.hlen(self._rally_members_key(rally_id))
+
+    # --- Rally 모집 만료 큐 (ZSet) ---
+
+    async def add_rally_recruit_to_queue(self, rally_id: int, expire_time: datetime) -> bool:
+        score = expire_time.timestamp()
+        await self.redis.zadd(self.RALLY_RECRUIT_QUEUE_KEY, {str(rally_id): score})
+        return True
+
+    async def remove_rally_recruit_from_queue(self, rally_id: int) -> bool:
+        await self.redis.zrem(self.RALLY_RECRUIT_QUEUE_KEY, str(rally_id))
+        return True
+
+    async def get_pending_rally_recruit_expires(self, current_time: Optional[datetime] = None) -> List[int]:
+        now = (current_time or datetime.utcnow()).timestamp()
+        members = await self.redis.zrangebyscore(self.RALLY_RECRUIT_QUEUE_KEY, "-inf", now)
+        return [int(m) for m in members]
+
+    # --- Rally gather 도착 큐 (ZSet) ---
+    # gather 행군은 기존 completion_queue:march를 재사용하되,
+    # march metadata의 target_type="rally_gather"로 구분
+
+    # --- Rally attack 행군 큐 ---
+    # rally_attack도 기존 completion_queue:march를 재사용
+    # march metadata의 target_type="rally_attack"로 구분

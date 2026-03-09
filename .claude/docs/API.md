@@ -106,7 +106,25 @@
 ### 1012 - 버프 정보 조회
 
 - **data**: `{}`
-- **응답 data**: `{buff_idx: {...버프 데이터}}` 딕셔너리
+- **응답 data**: `{permanent_buffs: {...}, temporary_buffs: [...], total_buffs: {...}}`
+
+---
+
+### 1013 - 버프 총합 조회
+
+총합만 반환 (전투, 자원생산 계산용).
+
+- **data**: `{}`
+- **응답 data**: `{total_buffs: {"unit:attack:infantry": 15.0, ...}}`
+
+---
+
+### 1014 - 타입별 버프 총합 조회
+
+특정 target_type의 버프 총합만 반환.
+
+- **data**: `{"target_type": "unit"}`
+- **응답 data**: `{target_type: "unit", total_buffs: {"unit:attack:infantry": 15.0, ...}}`
 
 ---
 
@@ -628,6 +646,211 @@ end_time이 지난 status=2 건물을 모두 자동 완료.
     "hero_exp": 150
 }
 ```
+
+---
+
+## 집결(Rally) API (903x)
+
+### 9031 - 집결 생성
+
+Leader가 NPC 집결을 시작한다. 연맹 가입 필수.
+
+- **data**: `{"target_type": "npc", "npc_id": 1, "units": {"401": 50}, "hero_idx": 1, "recruit_window": 1}`
+- **recruit_window**: 1 또는 5 (분)
+- **응답 data**:
+```json
+{
+    "rally_id": 1,
+    "recruit_expire": "2026-03-09T12:01:00",
+    "recruit_window": 1
+}
+```
+
+### 9032 - 집결 참여
+
+연맹 멤버가 집결에 병사를 보낸다. gather 행군 생성.
+
+- **data**: `{"rally_id": 1, "units": {"401": 30}}`
+- **응답 data**:
+```json
+{
+    "rally_id": 1,
+    "march_id": 10,
+    "arrival_time": "2026-03-09T12:00:30"
+}
+```
+
+### 9033 - 집결 정보 조회
+
+집결 상태 및 참여 멤버 목록 조회.
+
+- **data**: `{"rally_id": 1}`
+- **응답 data**:
+```json
+{
+    "rally": {"rally_id": 1, "status": "recruiting", "leader_no": 1, "...": "..."},
+    "members": [{"user_no": 1, "units": {"401": 50}, "status": "arrived"}]
+}
+```
+
+### 9034 - 집결 멤버 추방
+
+Leader만 가능. 추방된 멤버는 본인 성으로 귀환.
+
+- **data**: `{"rally_id": 1, "target_user_no": 2}`
+
+### 9035 - 집결 취소
+
+Leader만 가능. 전체 멤버 귀환 처리 후 집결 삭제.
+
+- **data**: `{"rally_id": 1}`
+
+---
+
+## WebSocket 이벤트 (전투)
+
+클라이언트가 `/ws/{user_no}`로 연결 후 수신하는 전투 관련 Push 이벤트.
+
+### battle_start
+
+전투 시작 시 공격자/수비자에게 전송.
+
+```json
+{
+    "type": "battle_start",
+    "data": {
+        "battle_id": 1,
+        "battle_type": "user",
+        "x": 50, "y": 50,
+        "atk_user_no": 1,
+        "atk_hero_lv": 5,
+        "atk_max_hp": 10000,
+        "atk_units": {"401": 100},
+        "def_user_no": 2,
+        "def_max_hp": 5000,
+        "def_units": {"401": 50}
+    }
+}
+```
+
+### battle_tick
+
+매 라운드 결과 (공격자/수비자/구독자에게 전송).
+
+```json
+{
+    "type": "battle_tick",
+    "data": {
+        "battle_id": 1,
+        "round": 3,
+        "atk_units": {"401": 95},
+        "def_units": {"401": 30}
+    }
+}
+```
+
+### battle_end
+
+전투 종료 시 공격자/수비자/구독자에게 전송.
+
+```json
+{
+    "type": "battle_end",
+    "data": {
+        "battle_id": 1,
+        "result": "attacker_win"
+    }
+}
+```
+
+| result 값 | 의미 |
+|-----------|------|
+| attacker_win | 공격자 승리 |
+| defender_win | 수비자 승리 |
+| draw | 상호 전멸 |
+
+### battle_incoming
+
+수비자에게만 전송. 새 공격이 도착했음을 알림.
+
+```json
+{
+    "type": "battle_incoming",
+    "data": {"battle_id": 1}
+}
+```
+
+### battle_bloodless
+
+무혈입성 (수비 병력 0일 때). 공격자에게 전송.
+
+```json
+{
+    "type": "battle_bloodless",
+    "data": {
+        "bloodless": true,
+        "battle_id": 1,
+        "battle_type": "user",
+        "x": 50, "y": 50,
+        "atk_user_no": 1,
+        "atk_hero_lv": 0,
+        "def_user_no": 2,
+        "loot": {"food": 2000, "wood": 1000, "stone": 500, "gold": 300},
+        "return_time": "2026-03-09T12:10:00"
+    }
+}
+```
+
+### battle_bloodless_defend
+
+무혈입성 시 수비자에게 전송. data 구조는 `battle_bloodless`와 동일.
+
+### map_march_update
+
+맵 전체 브로드캐스트. 행군 상태 변경 시.
+
+```json
+{
+    "type": "map_march_update",
+    "data": {
+        "march_id": 1,
+        "status": "battling",
+        "return_time": null
+    }
+}
+```
+
+| status 값 | 의미 |
+|-----------|------|
+| battling | 전투 중 |
+| returning | 귀환 중 |
+
+### map_march_complete
+
+맵 전체 브로드캐스트. 행군 완전 완료 (귀환 도착).
+
+```json
+{
+    "type": "map_march_complete",
+    "data": {"march_id": 1}
+}
+```
+
+### battlefield_tick
+
+전장 구독자에게 1초마다 전송. 전장 내 전투 요약.
+
+```json
+{
+    "type": "battlefield_tick",
+    "bf_id": 1,
+    "battles": [
+        [1, 50, 50, 85, 60, 3]
+    ]
+}
+```
+
+battles 배열 형식: `[battle_id, x, y, atk_hp_%, def_hp_%, round]`
 
 ---
 

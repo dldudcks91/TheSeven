@@ -1,6 +1,8 @@
 """
 버프 API 테스트
 - 1012: 버프 정보 조회 (buff_info)
+- 1013: 버프 총합 조회 (buff_total_info)
+- 1014: 타입별 버프 총합 조회 (buff_total_by_type_info)
 - Total Buffs 계산 검증
 """
 import pytest
@@ -249,12 +251,90 @@ class TestTotalBuffsCalculation:
 
 
 # ===========================================================================
+# 1013 - 버프 총합 조회 (buff_total_info)
+# ===========================================================================
+class TestBuffTotalInfo:
+    @pytest.mark.asyncio
+    async def test_total_info_empty(self, client, fake_redis, create_test_user, test_user_no):
+        """버프 없을 때 → total_buffs 빈 dict"""
+        resp = await call_api(client, test_user_no, 1013)
+        result = resp.json()
+        assert result["success"] is True
+        assert result["data"]["total_buffs"] == {}
+
+    @pytest.mark.asyncio
+    async def test_total_info_with_buffs(self, client, fake_redis, create_test_user, test_user_no):
+        """영구 버프 설정 → total_buffs에 반영"""
+        buff_data = {
+            "buff_idx": 202, "target_type": "unit", "target_sub_type": "infantry",
+            "stat_type": "attack", "value": 5, "value_type": "percentage"
+        }
+        await setup_permanent_buff(fake_redis, test_user_no, "unit", "research:101_3", buff_data)
+
+        resp = await call_api(client, test_user_no, 1013)
+        result = resp.json()
+        assert result["success"] is True
+        assert result["data"]["total_buffs"].get("unit:attack:infantry") == 5.0
+
+    @pytest.mark.asyncio
+    async def test_total_info_no_detail_data(self, client, fake_redis, create_test_user, test_user_no):
+        """1013은 total_buffs만 반환 (permanent/temporary 미포함)"""
+        resp = await call_api(client, test_user_no, 1013)
+        result = resp.json()
+        assert result["success"] is True
+        assert "permanent_buffs" not in result["data"]
+        assert "temporary_buffs" not in result["data"]
+
+
+# ===========================================================================
+# 1014 - 타입별 버프 총합 조회 (buff_total_by_type_info)
+# ===========================================================================
+class TestBuffTotalByTypeInfo:
+    @pytest.mark.asyncio
+    async def test_by_type_unit(self, client, fake_redis, create_test_user, test_user_no):
+        """target_type=unit → unit 관련 버프만 반환"""
+        unit_buff = {
+            "buff_idx": 202, "target_type": "unit", "target_sub_type": "infantry",
+            "stat_type": "attack", "value": 5, "value_type": "percentage"
+        }
+        resource_buff = {
+            "buff_idx": 101, "target_type": "resource", "target_sub_type": "all",
+            "stat_type": "get", "value": 10, "value_type": "percentage"
+        }
+        await setup_permanent_buff(fake_redis, test_user_no, "unit", "research:101_3", unit_buff)
+        await setup_permanent_buff(fake_redis, test_user_no, "resource", "research:201_1", resource_buff)
+
+        resp = await call_api(client, test_user_no, 1014, {"target_type": "unit"})
+        result = resp.json()
+        assert result["success"] is True
+        assert result["data"]["target_type"] == "unit"
+        assert result["data"]["total_buffs"].get("unit:attack:infantry") == 5.0
+        # resource 관련 키는 포함되지 않음
+        assert "resource:get:all" not in result["data"]["total_buffs"]
+
+    @pytest.mark.asyncio
+    async def test_by_type_missing_param(self, client, fake_redis, create_test_user, test_user_no):
+        """target_type 누락 → 실패"""
+        resp = await call_api(client, test_user_no, 1014)
+        result = resp.json()
+        assert result["success"] is False
+
+    @pytest.mark.asyncio
+    async def test_by_type_empty_result(self, client, fake_redis, create_test_user, test_user_no):
+        """존재하지 않는 target_type → 빈 dict"""
+        resp = await call_api(client, test_user_no, 1014, {"target_type": "building"})
+        result = resp.json()
+        assert result["success"] is True
+        assert result["data"]["total_buffs"] == {}
+
+
+# ===========================================================================
 # 잘못된 API 코드
 # ===========================================================================
 class TestInvalidBuffApiCode:
     @pytest.mark.asyncio
-    async def test_unregistered_buff_total_api(self, client, fake_redis, create_test_user, test_user_no):
-        """미등록 API 코드 1111 → HTTP 400 (buff_total_info 미등록)"""
+    async def test_unregistered_api_code(self, client, fake_redis, create_test_user, test_user_no):
+        """미등록 API 코드 1111 → HTTP 400"""
         resp = await client.post("/api", json={
             "user_no": test_user_no,
             "api_code": 1111,

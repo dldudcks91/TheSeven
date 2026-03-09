@@ -3,6 +3,8 @@
     "defaultMode": "acceptEdits",
     "allow": [
       "Bash(*)",
+      "Edit",
+      "Write",
       "Read(//c/Users/82109/AppData/Local/Programs/**)",
       "Read(//c/Users/82109/**)",
       "Bash(/d/anaconda3/python.exe --version)",

@@ -2,7 +2,7 @@
 from services.system import SystemManager, LoginManager, GameDataManager, UserInitManager
 #from services.system.GameDataManager import
 #from services.system.UserInitManager import 
-from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager, MapManager, MarchManager, BattleManager, NpcManager, BattlefieldManager
+from services.game import NationManager, ResourceManager, BuffManager, ItemManager, MissionManager, BuildingManager, ResearchManager, UnitManager, ShopManager, HeroManager, AllianceManager, MapManager, MarchManager, BattleManager, NpcManager, BattlefieldManager, RallyManager
 from fastapi import HTTPException
 
 class APIManager():
@@ -19,8 +19,10 @@ class APIManager():
         1010: (LoginManager, LoginManager.handle_user_login),
         1011: (ResourceManager, ResourceManager.resource_info),
         1012: (BuffManager, BuffManager.buff_info),
-        
-        
+        1013: (BuffManager, BuffManager.buff_total_info),
+        1014: (BuffManager, BuffManager.buff_total_by_type_info),
+
+
         
         # === 건물 API (2xxx) ===
         2001: (BuildingManager, BuildingManager.building_info),
@@ -94,6 +96,13 @@ class APIManager():
 
         9021: (BattleManager, BattleManager.battle_info),
         9022: (BattleManager, BattleManager.battle_report),
+
+        # === 집결 API (903x) ===
+        9031: (RallyManager, RallyManager.rally_create),
+        9032: (RallyManager, RallyManager.rally_join),
+        9033: (RallyManager, RallyManager.rally_info),
+        9034: (RallyManager, RallyManager.rally_kick),
+        9035: (RallyManager, RallyManager.rally_cancel),
 
         # === 전장 API (905x) ===
         9050: (BattlefieldManager, BattlefieldManager.battlefield_list),

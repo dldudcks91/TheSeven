@@ -10,3 +10,4 @@ buff_idx,buff_type,effect_time,effect_type,target_type,target_sub_type,stat_type
 210,research,0,unlock,unit,infantry,-,-,k,보병 2티어
 211,research,0,unlock,unit,cavarly,-,-,l,기병 2티어
 212,research,0,unlock,unit,archer,-,-,k,궁병 2티어
+205,alliance,0,buff,unit,all,attack,percentage,all_unit_attack,전체 공격력+

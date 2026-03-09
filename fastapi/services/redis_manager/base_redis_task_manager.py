@@ -79,7 +79,7 @@ class BaseRedisTaskManager(ABC):
                 'task_type':self.task_type.value,
                 'user_no': parsed['user_no'],
                 'task_id': parsed['task_id'],
-                'sub_id' : parsed['sub_id']
+                'sub_id' : parsed.get('sub_id')
             })
         
         return result
