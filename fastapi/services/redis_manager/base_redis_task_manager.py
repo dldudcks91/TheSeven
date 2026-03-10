@@ -39,7 +39,7 @@ class BaseRedisTaskManager(ABC):
             if metadata:
                 metadata_key = f"{self.queue_key}:metadata:{member}"
                 await self.redis_client.hmset(metadata_key, mapping=metadata)
-                await self.redis_client.expire(metadata_key, 86400)
+                # TTL 없음: Sorted Set 멤버와 수명 동일 (remove_from_queue에서 함께 삭제)
                 print("meta_data_key:", metadata_key)
 
             print("----------------------------")

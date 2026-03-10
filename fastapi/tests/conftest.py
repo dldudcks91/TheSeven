@@ -205,8 +205,6 @@ def create_test_user(test_user_no):
             name="TestUser",
             hq_lv=1,
             power=0,
-            map_x=50,
-            map_y=50,
             cr_dt=datetime.datetime.now(),
             last_dt=datetime.datetime.now(),
         )

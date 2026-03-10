@@ -34,6 +34,17 @@ async def call_api(client, user_no, api_code, data=None):
     return resp
 
 
+async def setup_research_completed(fake_redis, user_no, research_idx, research_lv=1):
+    """Redis에 연구 완료 상태 세팅 (승급 선행 연구 조건 충족용)"""
+    hash_key = f"user_data:{user_no}:research"
+    research_data = {
+        "research_idx": research_idx,
+        "research_lv": research_lv,
+        "status": 0,  # STATUS_COMPLETED
+    }
+    await fake_redis.hset(hash_key, str(research_idx), json.dumps(research_data))
+
+
 async def setup_resources(fake_redis, user_no, food=100000, wood=100000, stone=100000, gold=100000, ruby=1000):
     """Redis에 자원 세팅"""
     hash_key = f"user_data:{user_no}:resources"
@@ -214,6 +225,7 @@ class TestUnitUpgrade:
         """정상 업그레이드: ready 감소, upgrading 증가"""
         await setup_resources(fake_redis, test_user_no)
         await setup_unit_in_cache(fake_redis, test_user_no, 401, total=10, ready=10)
+        await setup_research_completed(fake_redis, test_user_no, 2021, 1)  # 402 선행 연구
 
         resp = await call_api(client, test_user_no, 4003, {
             "unit_idx": 401, "target_unit_idx": 402, "quantity": 5
@@ -226,6 +238,7 @@ class TestUnitUpgrade:
         """ready 부족 → 실패"""
         await setup_resources(fake_redis, test_user_no)
         await setup_unit_in_cache(fake_redis, test_user_no, 401, total=3, ready=3)
+        await setup_research_completed(fake_redis, test_user_no, 2021, 1)  # 402 선행 연구
 
         resp = await call_api(client, test_user_no, 4003, {
             "unit_idx": 401, "target_unit_idx": 402, "quantity": 5
@@ -265,6 +278,7 @@ class TestUnitUpgrade:
         """업그레이드 자원 소모 확인: target(402) 기준 food=200 * 3 = 600"""
         await setup_resources(fake_redis, test_user_no, food=1000)
         await setup_unit_in_cache(fake_redis, test_user_no, 401, total=10, ready=10)
+        await setup_research_completed(fake_redis, test_user_no, 2021, 1)  # 402 선행 연구
 
         resp = await call_api(client, test_user_no, 4003, {
             "unit_idx": 401, "target_unit_idx": 402, "quantity": 3
@@ -301,6 +315,7 @@ class TestUnitFlow:
         """업그레이드 시 ready 감소, upgrading 증가 확인"""
         await setup_resources(fake_redis, test_user_no)
         await setup_unit_in_cache(fake_redis, test_user_no, 401, total=10, ready=10)
+        await setup_research_completed(fake_redis, test_user_no, 2021, 1)  # 402 선행 연구
 
         resp = await call_api(client, test_user_no, 4003, {
             "unit_idx": 401, "target_unit_idx": 402, "quantity": 3
@@ -404,6 +419,7 @@ class TestUnitCancel:
         """업그레이드 취소: ready 복원 + upgrading 감소 + 자원 환불"""
         await setup_resources(fake_redis, test_user_no, food=1000)
         await setup_unit_in_cache(fake_redis, test_user_no, 401, total=10, ready=10)
+        await setup_research_completed(fake_redis, test_user_no, 2021, 1)  # 402 선행 연구
 
         resp = await call_api(client, test_user_no, 4003, {
             "unit_idx": 401, "target_unit_idx": 402, "quantity": 3

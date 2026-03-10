@@ -4,6 +4,50 @@
 
 ---
 
+## [2026-03-11] 유닛 훈련/업그레이드 완료 처리 버그 수정
+
+### 즉시 수정한 버그
+
+#### BUG #1 - 메타데이터 TTL 만료로 유닛 완료 처리 실패 ✅
+
+- 발생 위치: `services/redis_manager/base_redis_task_manager.py` / `add_to_queue` (line 42)
+- 원인: 메타데이터에 86400초(24시간) TTL이 설정되어 있으나, Sorted Set 멤버는 TTL 없음. 메타데이터 만료 후 Worker가 처리 시도 → `task_type=-1` (TASK_TRAIN도 TASK_UPGRADE도 아님) → 큐에서만 제거하고 유닛 상태 미변경. `upgrading` 값이 영구 고착.
+- 해결: 메타데이터 TTL 제거. `remove_from_queue()`에서 Sorted Set 멤버와 메타데이터를 함께 삭제하므로 수명이 자동 동기화됨.
+
+#### BUG #2 - 로그인 복구에서 upgrading 유닛 누락 ✅
+
+- 발생 위치: `services/redis_manager/unit_redis_manager.py` / `register_active_tasks_to_queue` (line 539-540)
+- 원인: `training > 0`만 체크하고 `upgrading > 0`인 유닛은 `continue`로 스킵. 서버 재시작/Redis 클리어 후 로그인 시 업그레이드 중인 유닛의 Task 큐 재등록이 이루어지지 않음.
+- 해결: `upgrading > 0` 분기 추가. `training_end_time`과 `upgrade_target_unit_idx` 기반으로 큐 재등록 또는 강제 완료(ready로 복구) 처리.
+
+#### BUG #3 - 고아 복구에서 upgrading 유닛 누락 ✅
+
+- 발생 위치: `services/game/UnitManager.py` / `recover_orphaned_tasks` (line 951-952)
+- 원인: BUG #2와 동일 패턴. `training > 0`만 체크, `upgrading > 0`은 무시. Task 큐에 없는 upgrading 유닛이 영구 고착.
+- 해결: `upgrading > 0` && Task 큐 없음 → `ready += upgrading`, `upgrading = 0`으로 강제 복구.
+
+#### BUG #4 - 업그레이드 완료 시 target 유닛 ready 미증가 ✅
+
+- 발생 위치: `services/game/UnitManager.py` / `_handle_unit_upgrade` (line 868)
+- 원인: `target_unit_data['total']`만 증가시키고 `target_unit_data['ready']`는 증가시키지 않음. 업그레이드 완료된 유닛이 total에만 반영되고 실제 사용 가능한 ready에는 미반영.
+- 해결: `target_unit_data['ready'] += quantity` 추가.
+
+#### BUG #5 (보완) - unit_upgrade 캐시에 training_end_time 미저장 ✅
+
+- 발생 위치: `services/game/UnitManager.py` / `unit_upgrade` (line 560-565)
+- 원인: `unit_train()`은 `training_end_time`을 캐시에 저장하지만, `unit_upgrade()`는 저장하지 않음. 로그인 복구 시 완료 시간을 알 수 없어 큐 재등록 불가능.
+- 해결: `unit_upgrade()` 캐시 업데이트에 `training_end_time`, `upgrade_target_unit_idx` 필드 추가. `_handle_unit_upgrade()` 완료 시 해당 필드 None으로 정리.
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- 업그레이드 강제 복구(BUG #2, #3) 시 타겟 유닛으로 이전이 아닌 원래 유닛의 ready로 복구. 타겟 유닛 정보 없이는 정확한 이전 불가능하므로 데이터 유실 방지 우선.
+- `base_redis_task_manager.py`의 TTL 제거는 모든 TaskType(building, research, unit_training 등)에 영향. 다만 기존에도 `remove_from_queue`에서 메타데이터를 삭제하므로 정상 플로우에서는 영향 없음.
+
+---
+
 ## [2026-03-10] DB 자동 테이블 생성 + 유저 위치 Redis-only 전환 + CSV/클라이언트 버그 수정
 
 ### 즉시 수정한 버그

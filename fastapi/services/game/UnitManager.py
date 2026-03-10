@@ -287,6 +287,44 @@ class UnitManager():
         
         return new_unit
     
+    async def _check_research_requirement(self, user_no: int, unit_idx: int) -> str:
+        """
+        유닛의 선행 연구 조건 확인.
+        Returns: None이면 통과, 문자열이면 실패 메시지
+        """
+        try:
+            unit_config = GameDataManager.REQUIRE_CONFIGS.get('unit', {}).get(unit_idx, {})
+            required_researches = unit_config.get('required_researches', [])
+
+            if not required_researches:
+                return None  # 선행 연구 없음 (티어 1)
+
+            # Redis에서 유저 연구 데이터 조회
+            research_redis = self.redis_manager.get_research_manager()
+            researches = await research_redis.get_cached_researches(user_no)
+
+            if not researches:
+                # Redis 캐시 없으면 DB에서 로드
+                from services.game.ResearchManager import ResearchManager
+                research_manager = ResearchManager(self.db_manager, self.redis_manager)
+                research_manager.user_no = user_no
+                researches = await research_manager.get_user_researches()
+
+            for prereq_idx, prereq_lv in required_researches:
+                research = researches.get(str(prereq_idx))
+                if not research:
+                    return f"Required research {prereq_idx} not started"
+                if research.get('status') != 0:  # STATUS_COMPLETED = 0
+                    return f"Required research {prereq_idx} not completed"
+                if research.get('research_lv', 0) < prereq_lv:
+                    return f"Required research {prereq_idx} level {prereq_lv} not reached"
+
+            return None  # 모든 조건 충족
+
+        except Exception as e:
+            self.logger.error(f"Error checking research requirement: {e}")
+            return f"Research check error: {str(e)}"
+
     async def _has_ongoing_task(self, user_no, unit_type):
         """해당 유닛 타입에 진행중인 작업이 있는지 확인 (Redis 기반)"""
         try:
@@ -409,7 +447,12 @@ class UnitManager():
             
             if await self._has_ongoing_task(user_no, unit_type):
                 return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
-            
+
+            # 선행 연구 조건 확인
+            research_error = await self._check_research_requirement(user_no, unit_idx)
+            if research_error:
+                return {"success": False, "message": research_error, "data": {}}
+
             # 유닛 존재 확인 및 생성
             unit = await self._ensure_unit_exists(user_no, unit_idx)
             
@@ -482,9 +525,12 @@ class UnitManager():
             # 진행중인 작업이 있는지 확인
             if await self._has_ongoing_task(user_no, unit_type):
                 return {"success": False, "message": "Another task is already in progress for this unit type", "data": {}}
-            
-            
-            
+
+            # 타겟 유닛의 선행 연구 조건 확인
+            research_error = await self._check_research_requirement(user_no, target_unit_idx)
+            if research_error:
+                return {"success": False, "message": research_error, "data": {}}
+
             # 캐시에서 유닛 정보 조회
             units_data = await self.get_user_units()
             unit = units_data.get(str(unit_idx))
@@ -515,6 +561,8 @@ class UnitManager():
                 **unit,
                 'ready': unit.get('ready', 0) - quantity,
                 'upgrading': unit.get('upgrading', 0) + quantity,
+                'training_end_time': completion_time.isoformat(),
+                'upgrade_target_unit_idx': target_unit_idx,
                 'cached_at': datetime.utcnow().isoformat()
             }
             await self._update_cached_unit(user_no, unit_idx, updated_unit)
@@ -813,16 +861,19 @@ class UnitManager():
     
     async def _handle_unit_upgrade(self, unit_data: Dict[str, Any], target_unit_data: Dict[str, Any], quantity):
         """업그레이드 완료 처리 로직"""
-        
-        
+
+
         # upgrading 감소, total 감소
         unit_data['upgrading'] = max(0, unit_data.get('upgrading', 0) - quantity)
         unit_data['total'] = max(0, unit_data.get('total', 0) - quantity)
-        
+        unit_data['training_end_time'] = None
+        unit_data['upgrade_target_unit_idx'] = None
+
         target_unit_data['total'] = max(0, target_unit_data.get('total', 0) + quantity)
-        
-        
-            
+        target_unit_data['ready'] = target_unit_data.get('ready', 0) + quantity
+
+
+
         return [{**unit_data},{**target_unit_data}]
     
     async def finish_unit_internal(self, user_no: int, task_id: str, sub_id: str):
@@ -885,39 +936,51 @@ class UnitManager():
     async def recover_orphaned_tasks(self):
         """
         Task 큐 유실 시 복구 처리 (로그인 시 호출)
-        training > 0인데 Task 큐에 없는 유닛 → 강제 완료 (ready로 이동)
+        training/upgrading > 0인데 Task 큐에 없는 유닛 → 강제 완료 (ready로 이동)
         """
         try:
             user_no = self.user_no
             unit_redis = self.redis_manager.get_unit_manager()
             units_data = await self.get_user_units(user_no)
-            
+
             if not units_data:
                 return
-            
+
             recovered = 0
             for unit_idx_str, unit_data in units_data.items():
                 training = unit_data.get('training', 0)
-                if training <= 0:
+                upgrading = unit_data.get('upgrading', 0)
+
+                if training <= 0 and upgrading <= 0:
                     continue
-                
+
                 # Task 큐에 있는지 확인
                 completion_time = await unit_redis.get_unit_completion_time(user_no, int(unit_idx_str))
                 if completion_time:
                     continue  # Task 존재 → 정상
-                
+
                 # Task 없음 → 강제 완료
-                unit_data['ready'] = unit_data.get('ready', 0) + training
-                unit_data['training'] = 0
+                if training > 0:
+                    unit_data['ready'] = unit_data.get('ready', 0) + training
+                    unit_data['training'] = 0
+                    unit_data['training_end_time'] = None
+                    self.logger.info(f"Recovered orphaned training: user={user_no}, unit={unit_idx_str}, qty={training}")
+
+                if upgrading > 0:
+                    # 타겟 유닛 정보 없으므로 원래 유닛으로 복구 (ready로 되돌림)
+                    unit_data['ready'] = unit_data.get('ready', 0) + upgrading
+                    unit_data['upgrading'] = 0
+                    unit_data['training_end_time'] = None
+                    unit_data['upgrade_target_unit_idx'] = None
+                    self.logger.info(f"Recovered orphaned upgrade: user={user_no}, unit={unit_idx_str}, qty={upgrading}")
+
                 unit_data['cached_at'] = datetime.utcnow().isoformat()
-                
                 await self._update_cached_unit(user_no, int(unit_idx_str), unit_data)
                 recovered += 1
-                self.logger.info(f"Recovered orphaned training: user={user_no}, unit={unit_idx_str}, qty={training}")
-            
+
             if recovered > 0:
                 self.logger.info(f"Recovered {recovered} orphaned unit tasks for user {user_no}")
-        
+
         except Exception as e:
             self.logger.error(f"Error recovering orphaned tasks: {e}")
 

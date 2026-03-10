@@ -527,72 +527,96 @@ class UnitRedisManager:
 
     async def register_active_tasks_to_queue(self, user_no: int, units_data: dict):
         """
-        로그인 시 training_end_time이 있는 유닛을 Task 큐에 재등록
-        training > 0인데 training_end_time이 없으면 강제 완료 처리
+        로그인 시 training/upgrading 중인 유닛을 Task 큐에 재등록
+        training_end_time 없거나 이미 지남 → 강제 완료 처리
         """
         print(f"[LoginManager >> Task >> Unit] Registered unit tasks for user {user_no}: {units_data}")
         try:
             registered = 0
             recovered = 0
-            
+            hash_key = self.cache_manager.get_user_data_hash_key(user_no)
+
             for unit_idx_str, unit_data in units_data.items():
                 training = unit_data.get('training', 0)
-                if training <= 0:
+                upgrading = unit_data.get('upgrading', 0)
+
+                if training <= 0 and upgrading <= 0:
                     continue
-                
+
                 training_end_time_str = unit_data.get('training_end_time')
                 unit_idx = int(unit_idx_str)
-                
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-                
-                # training_end_time 없음 → 강제 완료
-                if not training_end_time_str or datetime.now(timezone.utc).replace(tzinfo=None) >= datetime.fromisoformat(training_end_time_str):
-                    unit_data['total'] = unit_data.get('total', 0) + training
-                    unit_data['ready'] = unit_data.get('ready', 0) + training
-                    unit_data['training'] = 0
-                    unit_data['training_end_time'] = None
-                    unit_data['cached_at'] = datetime.utcnow().isoformat()
-                    
-                    hash_key = self.cache_manager.get_user_data_hash_key(user_no)
-                    await self.cache_manager.set_hash_field(
-                        hash_key, unit_idx_str, unit_data,
-                        expire_time=self.cache_expire_time
-                    )
-                    recovered += 1
-                    continue
-                
-                # 이미 큐에 있는지 확인
-                existing = await self.get_unit_completion_time(user_no, unit_idx)
-                if existing:
-                    continue
-                
-                # 완료 시간 파싱
-                try:
-                    completion_time = datetime.fromisoformat(training_end_time_str)
-                except (ValueError, TypeError):
-                    continue
-                
-                # Task 큐에 등록
-                quantity = unit_data.get('training', 0)
-                unit_type = unit_idx
-                
-                await self.add_unit_to_queue(
-                    user_no=user_no,
-                    unit_type=unit_type,
-                    unit_idx=unit_idx,
-                    completion_time=completion_time,
-                    quantity=quantity,
-                    task_type=0
-                )
-                registered += 1
-            
+                # === 훈련(training) 처리 ===
+                if training > 0:
+                    if not training_end_time_str or now >= datetime.fromisoformat(training_end_time_str):
+                        # 시간 없거나 이미 지남 → 강제 완료
+                        unit_data['total'] = unit_data.get('total', 0) + training
+                        unit_data['ready'] = unit_data.get('ready', 0) + training
+                        unit_data['training'] = 0
+                        unit_data['training_end_time'] = None
+                        unit_data['cached_at'] = datetime.utcnow().isoformat()
+                        await self.cache_manager.set_hash_field(
+                            hash_key, unit_idx_str, unit_data,
+                            expire_time=self.cache_expire_time
+                        )
+                        recovered += 1
+                        continue
+
+                    # 이미 큐에 있는지 확인
+                    existing = await self.get_unit_completion_time(user_no, unit_idx)
+                    if not existing:
+                        try:
+                            completion_time = datetime.fromisoformat(training_end_time_str)
+                        except (ValueError, TypeError):
+                            continue
+                        await self.add_unit_to_queue(
+                            user_no=user_no, unit_type=unit_idx, unit_idx=unit_idx,
+                            completion_time=completion_time,
+                            quantity=training, task_type=0  # TASK_TRAIN
+                        )
+                        registered += 1
+
+                # === 업그레이드(upgrading) 처리 ===
+                elif upgrading > 0:
+                    target_unit_idx = unit_data.get('upgrade_target_unit_idx')
+
+                    if not training_end_time_str or now >= datetime.fromisoformat(training_end_time_str) or not target_unit_idx:
+                        # 시간/타겟 없거나 이미 지남 → 강제 완료 (원래 유닛으로 복구)
+                        unit_data['ready'] = unit_data.get('ready', 0) + upgrading
+                        unit_data['upgrading'] = 0
+                        unit_data['training_end_time'] = None
+                        unit_data['upgrade_target_unit_idx'] = None
+                        unit_data['cached_at'] = datetime.utcnow().isoformat()
+                        await self.cache_manager.set_hash_field(
+                            hash_key, unit_idx_str, unit_data,
+                            expire_time=self.cache_expire_time
+                        )
+                        recovered += 1
+                        continue
+
+                    # 이미 큐에 있는지 확인
+                    existing = await self.get_unit_completion_time(user_no, unit_idx)
+                    if not existing:
+                        try:
+                            completion_time = datetime.fromisoformat(training_end_time_str)
+                        except (ValueError, TypeError):
+                            continue
+                        await self.add_unit_to_queue(
+                            user_no=user_no, unit_type=unit_idx, unit_idx=unit_idx,
+                            completion_time=completion_time,
+                            quantity=upgrading, task_type=1,  # TASK_UPGRADE
+                            target_unit_idx=int(target_unit_idx)
+                        )
+                        registered += 1
+
             if registered > 0:
                 print(f"[Redis] Registered {registered} active unit tasks for user {user_no}")
             if recovered > 0:
                 print(f"[Redis] Recovered {recovered} orphaned unit tasks for user {user_no}")
-            
+
             return registered
-            
+
         except Exception as e:
             print(f"[Redis] Error registering active tasks: {e}")
             return 0
