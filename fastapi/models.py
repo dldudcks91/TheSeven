@@ -21,8 +21,6 @@ class StatNation(Base):
     name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     hq_lv: Mapped[int] = mapped_column(Integer)
     power: Mapped[int] = mapped_column(Integer)
-    map_x: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    map_y: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cr_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     last_dt: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
 

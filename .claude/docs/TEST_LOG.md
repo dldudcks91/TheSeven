@@ -309,8 +309,8 @@
 
 | ID | 위치 | 심각도 | 내용 | 상태 |
 |----|------|--------|------|------|
-| ISSUE #1 | APIManager | 중 | buff_total_info/buff_total_by_type_info 메서드 존재하지만 api_code 미등록. 클라이언트 buff.html에서 1111 호출 시 400 에러 | 미해결 |
-| ISSUE #2 | base_redis_task_manager.get_completed_tasks:82 | 중 | `parsed['sub_id']` 무조건 참조 → buff는 2-part key로 sub_id 없음 → KeyError → TaskWorker 만료 처리 크래시 | 미해결 |
+| ISSUE #1 | APIManager | 중 | buff_total_info/buff_total_by_type_info 메서드 존재하지만 api_code 미등록. 클라이언트 buff.html에서 1111 호출 시 400 에러 | ✅ 해결 (2026-03-09) |
+| ISSUE #2 | base_redis_task_manager.get_completed_tasks:82 | 중 | `parsed['sub_id']` 무조건 참조 → buff는 2-part key로 sub_id 없음 → KeyError → TaskWorker 만료 처리 크래시 | ✅ 해결 (2026-03-09) |
 
 ### 미검증 항목
 

@@ -28,17 +28,7 @@ class MapManager:
         if pos:
             return pos
 
-        # Redis 미스 → DB 조회
-        nation_dm = self.db_manager.get_nation_manager()
-        result = nation_dm.get_user_nation(user_no)
-        if result.get("success"):
-            nation_data = result.get("data", {})
-            if nation_data.get("map_x") is not None:
-                x, y = nation_data["map_x"], nation_data["map_y"]
-                await combat_rm.set_position(user_no, x, y)
-                return {"x": x, "y": y}
-
-        # 신규 배정: 점유되지 않은 좌표 탐색
+        # Redis 미스 → 신규 배정: 점유되지 않은 좌표 탐색
         all_pos = await combat_rm.get_all_positions()
         occupied = {(p["x"], p["y"]) for p in all_pos.values()}
 
@@ -51,10 +41,6 @@ class MapManager:
                 break
 
         await combat_rm.set_position(user_no, x, y)
-        # DB에도 저장
-        nation_dm.update_nation_fields(user_no, map_x=x, map_y=y)
-        self.db_manager.commit()
-
         return {"x": x, "y": y}
 
     # ─────────────────────────────────────────────

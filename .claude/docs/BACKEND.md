@@ -1,7 +1,7 @@
 # BACKEND.md - 백엔드 기술 문서
 
 > **프로젝트**: TheSeven FastAPI 서버
-> **최종 수정**: 2026-03-01
+> **최종 수정**: 2026-03-10
 
 > **관련 문서**: 전투/맵/행군 시스템 → [`COMBAT.md`](COMBAT.md) 참조
 
@@ -93,9 +93,10 @@ fastapi/
 4. DBManager 초기화 (SessionLocal) → app.state.db_manager
 5. WebsocketManager 초기화 → app.state.websocket_manager
 6. BackgroundWorkerManager 초기화 및 모든 워커 시작
-7. GameDataManager.initialize() → CSV 전체 메모리 로드 (1회)
-8. NpcManager.initialize() → NPC 초기 배치 (Redis map:npcs 없을 시)
-9. 서버 준비 완료
+7. models.Base.metadata.create_all() → 누락된 테이블 자동 생성 (ALTER 불가, 신규만)
+8. GameDataManager.initialize() → CSV 전체 메모리 로드 (1회)
+9. NpcManager.initialize() → NPC 초기 배치 (Redis map:npcs 없을 시)
+10. 서버 준비 완료
 ```
 
 ---
@@ -148,18 +149,20 @@ await getattr(service, method_name)()
 | 1009 | 국가 정보 | NationManager |
 | 1010 | 로그인 (전체 데이터 로드) | LoginManager |
 | 1011 | 자원 정보 | ResourceManager |
-| 1012 | 버프 정보 | BuffManager |
-| 2001~2006 | 건물 (조회/생성/업그레이드/완료/취소/전체완료) | BuildingManager |
+| 1012~1014 | 버프 (정보/총합/타입별 총합) | BuffManager |
+| 2001~2007 | 건물 (조회/생성/업그레이드/완료/취소/전체완료/가속) | BuildingManager |
 | 3001~3004 | 연구 (조회/시작/완료/취소) | ResearchManager |
-| 4001~4003 | 유닛 (조회/훈련/업그레이드) | UnitManager |
+| 4001~4006 | 유닛 (조회/훈련/업그레이드/완료/취소/가속) | UnitManager |
 | 5001~5002 | 미션 (조회/보상수령) | MissionManager |
 | 6001~6003 | 아이템 (조회/획득/사용) | ItemManager |
 | 6011~6013 | 상점 (조회/새로고침/구매) | ShopManager |
 | 7001~7017 | 연맹 전체 | AllianceManager |
 | 8001~8002 | 영웅 (목록/지급) | HeroManager |
-| 9001~9003 | 맵/NPC (내위치/맵정보/NPC목록) | MapManager |
+| 9001~9003 | 맵/NPC (내위치/맵정보/NPC목록) | MapManager, NpcManager |
 | 9011~9013 | 행군 (목록/생성/취소) | MarchManager |
 | 9021~9022 | 전투 (정보/보고서) | BattleManager |
+| 9031~9035 | 집결 (생성/참여/정보/추방/취소) | RallyManager |
+| 9050~9055 | 전장 (목록/참여/후퇴/정보/관전/관전종료) | BattlefieldManager |
 
 ---
 
@@ -186,6 +189,16 @@ await getattr(service, method_name)()
 | 전투 상태 | `battle:{battle_id}` | Hash | 라운드/병력/상태 |
 | 활성 전투 집합 | `battle:active` | Set | battle_id 집합 |
 | 성 공격 그룹 | `castle_battle:{defender_no}` | Set | 해당 수비자 대상 활성 battle_id |
+| 전투 관전 구독 | `battle_subscribers:{battle_id}` | Set | 관전 중 user_no |
+| 집결 ID 카운터 | `rally:id:counter` | String | rally_id 원자적 생성 |
+| 집결 메타 | `rally:{rally_id}` | String (JSON) | 집결 상태 |
+| 집결 멤버 | `rally:{rally_id}:members` | Hash | 멤버별 참여 정보 |
+| 집결 모집 큐 | `completion_queue:rally_recruit` | Sorted Set | score=모집만료시각 |
+| 집결 도착 큐 | `completion_queue:rally_gather` | Sorted Set | score=도착시각 |
+| 전장 멤버 | `battlefield:{bf_id}:members` | Hash | 참여자 성 위치/시각 |
+| 전장 구독자 | `battlefield:{bf_id}:subscribers` | Set | 틱 수신 user_no |
+| 전장 전투 | `battlefield:{bf_id}:battles` | Set | 전장 내 활성 battle_id |
+| 유저 전장 참여 | `user_data:{user_no}:battlefield` | String | 참여 중인 bf_id |
 
 ### 7.2 Cache-Aside 패턴 (읽기)
 
@@ -320,8 +333,7 @@ TaskWorker 실시간 폴링 (주기: ~1초):
 ```python
 # StatNation: 플레이어 계정 + 맵 좌표
 user_no (PK), account_no, alliance_no (FK),
-name, hq_lv, power, cr_dt, last_dt,
-map_x, map_y  ← 맵 상 위치 (0~100)
+name, hq_lv, power, cr_dt, last_dt
 
 # Building: 건물
 user_no (PK), building_idx (PK), building_lv,

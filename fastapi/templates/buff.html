@@ -153,6 +153,35 @@
             text-align: center;
             padding: 10px;
         }
+
+        .buff-mode-btn {
+            font-size: 10px;
+            padding: 1px 6px;
+            border: 1px solid #ccc;
+            background: #f8f8f8;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .buff-mode-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .buff-source {
+            font-size: 10px;
+            color: #999;
+            margin-left: 4px;
+        }
+
+        .buff-section-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #444;
+            margin: 8px 0 4px 0;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
@@ -165,7 +194,20 @@
         </div>
         
         <div class="buff-tooltip" id="buffTooltip">
-            <div class="buff-tooltip-header">🔮 활성 버프</div>
+            <div class="buff-tooltip-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>🔮 활성 버프</span>
+                <div style="display: flex; gap: 4px;">
+                    <button class="buff-mode-btn active" id="btnSummary" onclick="switchMode('summary')">총합</button>
+                    <button class="buff-mode-btn" id="btnDetail" onclick="switchMode('detail')">상세</button>
+                    <select id="typeFilter" onchange="onTypeFilterChange()" style="font-size: 10px; padding: 1px 2px; border: 1px solid #ccc; border-radius: 3px;">
+                        <option value="">전체</option>
+                        <option value="unit">유닛</option>
+                        <option value="resource">자원</option>
+                        <option value="building">건설</option>
+                        <option value="research">연구</option>
+                    </select>
+                </div>
+            </div>
             <div id="buffContent">
                 <div class="no-buffs">버프 정보를 불러오는 중...</div>
             </div>
@@ -176,6 +218,8 @@
         let playerId = null;
         let buffData = {};
         let isHovering = false;
+        let currentMode = 'summary';  // 'summary' (1013) or 'detail' (1012)
+        let detailData = null;        // 1012 응답 캐시
         
         const categoryNames = {
             'resource': '🌾 자원',
@@ -269,6 +313,171 @@
             }
         }
         
+        // 버프 상세 조회 (api_code: 1012)
+        async function loadBuffDetail() {
+            if (!playerId) return;
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(playerId), api_code: 1012, data: {} })
+                });
+                const result = await response.json();
+                if (result.success && result.data) {
+                    detailData = result.data;
+                    renderDetailBuffs(detailData);
+                } else {
+                    showNoBuffs();
+                }
+            } catch (error) {
+                console.error('Failed to load buff detail:', error);
+                showNoBuffs('버프 상세 로드 실패');
+            }
+        }
+
+        // 타입별 버프 총합 조회 (api_code: 1014)
+        async function loadBuffByType(targetType) {
+            if (!playerId) return;
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_no: parseInt(playerId), api_code: 1014, data: { target_type: targetType } })
+                });
+                const result = await response.json();
+                if (result.success && result.data) {
+                    renderTypeFilteredBuffs(result.data);
+                } else {
+                    showNoBuffs();
+                }
+            } catch (error) {
+                console.error('Failed to load buff by type:', error);
+                showNoBuffs('타입별 버프 로드 실패');
+            }
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            document.getElementById('btnSummary').classList.toggle('active', mode === 'summary');
+            document.getElementById('btnDetail').classList.toggle('active', mode === 'detail');
+            document.getElementById('typeFilter').value = '';
+            if (mode === 'summary') {
+                loadBuffs();
+            } else {
+                loadBuffDetail();
+            }
+        }
+
+        function onTypeFilterChange() {
+            const typeVal = document.getElementById('typeFilter').value;
+            if (!typeVal) {
+                // 전체 — 현재 모드에 따라 로드
+                if (currentMode === 'summary') loadBuffs();
+                else loadBuffDetail();
+            } else {
+                loadBuffByType(typeVal);
+            }
+        }
+
+        function renderDetailBuffs(data) {
+            const container = document.getElementById('buffContent');
+            const countBadge = document.getElementById('buffCount');
+            let html = '';
+            let totalCount = 0;
+
+            // 영구 버프
+            if (data.permanent_buffs) {
+                const permCategories = Object.keys(data.permanent_buffs);
+                if (permCategories.length > 0) {
+                    html += '<div class="buff-section-title">영구 버프</div>';
+                    for (const category of permCategories) {
+                        const buffs = typeof data.permanent_buffs[category] === 'string'
+                            ? JSON.parse(data.permanent_buffs[category])
+                            : data.permanent_buffs[category];
+                        const entries = Object.entries(buffs);
+                        if (entries.length === 0) continue;
+                        totalCount += entries.length;
+                        html += `<div class="buff-category ${category}">
+                            <div class="buff-category-title">${categoryNames[category] || category}</div>`;
+                        for (const [key, buff] of entries) {
+                            const statName = statNames[buff.stat_type] || buff.stat_type;
+                            const subName = subTypeNames[buff.target_sub_type] || buff.target_sub_type || '전체';
+                            const value = parseFloat(buff.value) || 0;
+                            const isPerc = buff.value_type === 'percentage';
+                            const display = isPerc ? `${value >= 0 ? '+' : ''}${value}%` : `${value >= 0 ? '+' : ''}${value}`;
+                            const label = subName === '전체' ? statName : `${subName} ${statName}`;
+                            html += `<div class="buff-item">
+                                <span class="buff-stat">${label}<span class="buff-source">(${key})</span></span>
+                                <span class="buff-value">${display}</span>
+                            </div>`;
+                        }
+                        html += '</div>';
+                    }
+                }
+            }
+
+            // 임시 버프
+            if (data.temporary_buffs && data.temporary_buffs.length > 0) {
+                html += '<div class="buff-section-title">임시 버프</div>';
+                totalCount += data.temporary_buffs.length;
+                for (const buff of data.temporary_buffs) {
+                    const statName = statNames[buff.stat_type] || buff.stat_type || '효과';
+                    const value = parseFloat(buff.value) || 0;
+                    const display = buff.value_type === 'percentage' ? `${value >= 0 ? '+' : ''}${value}%` : `${value >= 0 ? '+' : ''}${value}`;
+                    html += `<div class="buff-item">
+                        <span class="buff-stat">${statName}</span>
+                        <span class="buff-value">${display}</span>
+                    </div>`;
+                }
+            }
+
+            // 총합
+            if (data.total_buffs) {
+                html += '<div class="buff-section-title">총합</div>';
+                for (const [key, value] of Object.entries(data.total_buffs)) {
+                    html += `<div class="buff-item">
+                        <span class="buff-stat">${key}</span>
+                        <span class="buff-value">+${value}%</span>
+                    </div>`;
+                }
+            }
+
+            container.innerHTML = html || '<div class="no-buffs">활성화된 버프가 없습니다</div>';
+            if (totalCount > 0) {
+                countBadge.textContent = totalCount;
+                countBadge.classList.remove('hidden');
+            } else {
+                countBadge.classList.add('hidden');
+            }
+        }
+
+        function renderTypeFilteredBuffs(data) {
+            const container = document.getElementById('buffContent');
+            const countBadge = document.getElementById('buffCount');
+            const targetType = data.target_type || '';
+            const totals = data.total_buffs || {};
+            const entries = Object.entries(totals);
+
+            if (entries.length === 0) {
+                container.innerHTML = `<div class="no-buffs">${categoryNames[targetType] || targetType} 버프가 없습니다</div>`;
+                countBadge.classList.add('hidden');
+                return;
+            }
+
+            let html = `<div class="buff-category ${targetType}">
+                <div class="buff-category-title">${categoryNames[targetType] || targetType} 버프 총합</div>`;
+            for (const [key, value] of entries) {
+                html += `<div class="buff-item">
+                    <span class="buff-stat">${key}</span>
+                    <span class="buff-value">+${value}%</span>
+                </div>`;
+            }
+            html += '</div>';
+            container.innerHTML = html;
+            countBadge.textContent = entries.length;
+            countBadge.classList.remove('hidden');
+        }
+
         function parseBuffData(data) {
             const aggregated = {};
             

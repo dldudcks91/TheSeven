@@ -1367,16 +1367,13 @@
                 statsChart.destroy();
             }
             
-            // 임시 데이터
+            const ability = unit.ability || {};
             const stats = {
-                attack: Math.floor(Math.random() * 100),
-                defense: Math.floor(Math.random() * 100),
-                speed: Math.floor(Math.random() * 100),
-                health: Math.floor(Math.random() * 100),
-                
+                attack: ability.attack || 0,
+                defense: ability.defense || 0,
+                speed: ability.speed || 0,
+                health: ability.health || 0,
             };
-            
-            console.log('graph-stats:', stats);
             
             statsChart = new Chart(canvas, {
                 type: 'bar',

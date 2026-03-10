@@ -1,7 +1,7 @@
 # COMBAT.md - 전투 시스템 설계 문서
 
 > **프로젝트**: TheSeven
-> **최종 수정**: 2026-03-03
+> **최종 수정**: 2026-03-10
 
 ---
 
@@ -60,7 +60,7 @@ map:positions → Hash
   value: "x,y"
 ```
 
-서버 시작 시 DB 전체 로드. 성 생성 시 즉시 업데이트.
+Redis-only 관리. DB에 map_x/map_y 저장하지 않음. 서버/Redis 재시작 시 랜덤 재배정.
 
 > **확장 방향 (포트폴리오 언급용)**: 현재 O(N) 전체 스캔 → `Redis GEOADD / GEORADIUS` O(N + log M)
 
@@ -497,14 +497,7 @@ hero_skill.csv 구조 예정:
 
 ## 10. DB 스키마
 
-### 10.1 StatNation (컬럼 추가)
-
-```python
-map_x : Mapped[Optional[int]]
-map_y : Mapped[Optional[int]]
-```
-
-### 10.2 Battle
+### 10.1 Battle
 
 ```python
 class Battle(Base):

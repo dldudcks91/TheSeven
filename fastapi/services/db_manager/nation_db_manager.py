@@ -27,8 +27,6 @@ class NationDBManager:
             "name": nation.name,
             "hq_lv": nation.hq_lv,
             "power": nation.power,
-            "map_x": nation.map_x,
-            "map_y": nation.map_y,
             "alliance_no": alliance_member.alliance_no if alliance_member else nation.alliance_no,
             "alliance_position": alliance_member.position if alliance_member else None,
             "cr_dt": nation.cr_dt.isoformat() if nation.cr_dt else None,

@@ -29,18 +29,9 @@ class MarchManager:
     # ─────────────────────────────────────────────
 
     async def _get_position(self, user_no: int) -> Optional[Dict[str, int]]:
+        """Redis에서 유저 전장 위치 조회. 전장 미참가 시 None."""
         combat_rm = self.redis_manager.get_combat_manager()
-        pos = await combat_rm.get_position(user_no)
-        if pos:
-            return pos
-        result = self.db_manager.get_nation_manager().get_user_nation(user_no)
-        if result.get("success"):
-            nd = result.get("data", {})
-            if nd.get("map_x") is not None:
-                x, y = nd["map_x"], nd["map_y"]
-                await combat_rm.set_position(user_no, x, y)
-                return {"x": x, "y": y}
-        return None
+        return await combat_rm.get_position(user_no)
 
     def _calc_distance(self, x1: int, y1: int, x2: int, y2: int) -> float:
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)

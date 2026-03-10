@@ -1,3 +1,3 @@
-skill_idx,hero_idx,korean_name,english_name,trigger_type,trigger_value,effect_type,value
-10001,1001,전투의 함성,Battle Cry,round_start,1,attack_buff,0.20
-10002,1002,신비한 방어막,Mystic Shield,round_start,1,defense_buff,0.15
+skill_idx,hero_idx,korean_name,english_name,effect_type,value
+10001,1001,전투의 함성,Battle Cry,damage,500
+10002,1002,신비의 화염,Mystic Flame,damage,300

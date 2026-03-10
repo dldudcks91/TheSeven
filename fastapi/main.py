@@ -47,7 +47,11 @@ async def startup_event():
     
     try:
         print("[START] Starting Game Server...")
-        
+
+        # 0. DB 테이블 자동 생성 (없는 테이블만 생성)
+        models.Base.metadata.create_all(bind=database.engine)
+        print("[OK] Database tables verified")
+
         # 1. Redis 커넥션 풀 초기화
         redis_pool = ConnectionPool(
             host='localhost',

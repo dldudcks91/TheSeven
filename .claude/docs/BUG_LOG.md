@@ -4,6 +4,32 @@
 
 ---
 
+## [2026-03-10] DB 자동 테이블 생성 + 유저 위치 Redis-only 전환 + CSV/클라이언트 버그 수정
+
+### 즉시 수정한 버그
+
+#### BUG #1 - unit_info.csv 한글 인코딩 깨짐 ✅
+
+- 발생 위치: `meta_data/unit_info.csv`
+- 원인: korean_name 컬럼의 한글 데이터가 U+FFFD (ef bf bd) 바이트로 치환되어 있었음. 이전 저장 시점에 인코딩 손상 발생 추정.
+- 해결: 정상 UTF-8 한글로 CSV 파일 전체 재작성. (보병, 중보병, 검사, 팔라딘 등 12개 유닛 이름)
+
+#### BUG #2 - unit.html 유닛 능력치 차트 랜덤 값 표시 ✅
+
+- 발생 위치: `templates/unit.html` / `createUnitStatsChart()`
+- 원인: `Math.random() * 100`으로 임시 데이터 사용. 서버에서 전달하는 `unit.ability` 객체(attack, defense, health, speed)를 무시.
+- 해결: `unit.ability`에서 실제 스탯 값을 읽어 Chart.js 바 차트에 반영.
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- `resource.html`에서 루비 `<span id="gold-value">`로 중복 ID 사용 중 (ruby-value가 아닌 gold-value). `getElementById('ruby-value')` 호출 시 null 반환 가능.
+- 유저 맵 위치가 Redis-only로 전환됨에 따라, Redis 재시작 시 유저 위치 유실. 서버 재시작 시 랜덤 재배정됨.
+
+---
+
 ## [2026-03-09] 성 일반전투 (multi-attacker) 구현
 
 ### 즉시 수정한 버그

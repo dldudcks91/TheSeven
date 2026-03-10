@@ -29,6 +29,14 @@
                 <div class="empty-msg">데이터를 불러오는 중...</div>
             </div>
             <div id="result" class="result-box"></div>
+            <div style="margin-top: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: #fafafa;">
+                <strong style="font-size: 12px;">테스트 아이템 획득</strong>
+                <div style="display: flex; gap: 5px; margin-top: 5px; align-items: center;">
+                    <input id="getItemIdx" type="number" placeholder="item_idx" style="width: 80px; padding: 3px; font-size: 11px; border: 1px solid #ccc;">
+                    <input id="getItemQty" type="number" placeholder="수량" value="1" style="width: 50px; padding: 3px; font-size: 11px; border: 1px solid #ccc;">
+                    <button class="btn-use" onclick="getItem()">획득</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -165,6 +173,33 @@
                     window.parent.postMessage({ type: 'refresh_resource' }, '*');
                 } else {
                     showResult('실패: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showResult('오류 발생', 'error');
+            }
+        }
+
+        // 아이템 획득 - 테스트용 (api_code: 6002)
+        async function getItem() {
+            const itemIdx = parseInt(document.getElementById('getItemIdx').value);
+            const quantity = parseInt(document.getElementById('getItemQty').value) || 1;
+            if (!itemIdx) { showResult('item_idx를 입력하세요', 'error'); return; }
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_no: getUserNo(),
+                        api_code: 6002,
+                        data: { item_idx: itemIdx, quantity: quantity }
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showResult(`아이템 ${itemIdx} x${quantity} 획득 성공!`, 'success');
+                    await loadItems();
+                } else {
+                    showResult('획득 실패: ' + result.message, 'error');
                 }
             } catch (error) {
                 showResult('오류 발생', 'error');

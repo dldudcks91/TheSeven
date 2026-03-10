@@ -115,7 +115,7 @@
 | ~~P3~~ | ~~BUG-005 (alliance_research.csv 생성)~~ | ✅ 수정 완료 |
 | ~~P3~~ | ~~WARN-001 (health 엔드포인트)~~ | ✅ 수정 완료 |
 | ~~P2~~ | ~~WARN-005 (AVAILABLE_BUILDINGS 불일치)~~ | ✅ 수정 완료 |
-| P3 | WARN-006 (alliance_research buff_idx 공란) | 연맹 연구 효과 미적용 |
+| ~~P3~~ | ~~WARN-006 (alliance_research buff_idx 공란)~~ | ✅ 수정 완료 |
 | P4 | WARN-007 (CodexManager 취소 코드 잔존) | 코드 정리 필요 |
 
 ---
@@ -133,14 +133,13 @@
 
 ---
 
-### WARN-006 | alliance_research.csv buff_idx 공란 (미수정)
+### ~~WARN-006~~ | alliance_research.csv buff_idx 공란 ✅ 수정 완료
 
 - **위치**: `meta_data/alliance_research.csv`
 - **증상**: 연맹 연구 레벨업 완료 시 연맹 멤버에게 버프가 적용되지 않음
 - **원인**: alliance_research.csv의 `buff_idx` 컬럼이 모두 비어있음
-  - 연맹 연구 8001(공격력 강화), 8002(방어력 강화), 8003(자원 생산 강화) 모두 buff 미연결
-- **수정 방향**: 버프 시스템 설계 후 buff_idx 값 채우기 (전투 시스템 구현 이후 작업 예정)
-- **상태**: ⚠️ 미수정 (의도적 보류)
+- **수정**: [2026-03-09] buff_idx 값 채움 (8001→205, 8002→104, 8003→101) + buff_value 1~5 설정
+- **상태**: ✅ 수정 완료
 
 ---
 

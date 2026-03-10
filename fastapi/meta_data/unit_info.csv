@@ -1,13 +1,13 @@
 unit_idx,unit_tier,train_time,food,wood,stone,gold,attack,defense,health,speed,required_researchs,category,english_name,korean_name
-401,1,2,100,0,0,0,1,1,100,2,,infantry,Infantry,º¸º´
-402,2,4,200,0,0,0,2,2,200,2,2021_1,infantry,Heavy Infantry,Áßº¸º´
-403,3,6,400,0,0,0,3,3,300,2,2021_1,infantry,Swordsman,°Ë»ç
-404,4,8,800,0,0,0,4,4,400,2,2021_1,infantry,Paladin,ÆÈ¶óµò
-411,1,2,100,0,0,0,1,1,100,3,,cavalry,Cavalry,±âº´
-412,2,4,200,0,0,0,2,2,200,3,2022_1,cavalry,Heavy Cavalry,Áß±âº´
-413,3,6,400,0,0,0,3,3,300,3,2022_1,cavalry,Knight,±â»ç
-414,4,8,800,0,0,0,4,4,400,3,2022_1,cavalry,Royal Knights / Royal Horse Guards,¿Õ½Ç±âº´´ë
-421,1,2,100,0,0,0,1,1,100,1,,archer,Archer,±Ãº´
-422,2,4,200,0,0,0,2,2,200,1,2023_1,archer,Skirmisher,Ã´ÈÄº´
-423,3,6,400,0,0,0,3,3,300,1,2023_1,archer,Sharpshooter / Sniper,Àú°İ¼ö
-424,4,8,800,0,0,0,4,4,400,1,2023_1,archer,Hawkeye,È£Å©¾ÆÀÌ
+401,1,2,100,0,0,0,100,100,100,2,,infantry,Infantry,ë³´ë³‘
+402,2,4,200,0,0,0,110,110,110,2,2021_1,infantry,Heavy Infantry,ì¤‘ë³´ë³‘
+403,3,6,400,0,0,0,120,120,120,2,2021_1,infantry,Swordsman,ê²€ì‚¬
+404,4,8,800,0,0,0,130,130,130,2,2021_1,infantry,Paladin,íŒ”ë¼ë”˜
+411,1,2,100,0,0,0,100,100,100,3,,cavalry,Cavalry,ê¸°ë³‘
+412,2,4,200,0,0,0,110,110,110,3,2022_1,cavalry,Heavy Cavalry,ì¤‘ê¸°ë³‘
+413,3,6,400,0,0,0,120,120,120,3,2022_1,cavalry,Knight,ê¸°ì‚¬
+414,4,8,800,0,0,0,130,130,130,3,2022_1,cavalry,Royal Knights / Royal Horse Guards,ì™•ì‹¤ê¸°ë³‘ëŒ€
+421,1,2,100,0,0,0,100,100,100,1,,archer,Archer,ê¶ë³‘
+422,2,4,200,0,0,0,110,110,110,1,2023_1,archer,Skirmisher,ì²™í›„ë³‘
+423,3,6,400,0,0,0,120,120,120,1,2023_1,archer,Sharpshooter / Sniper,ì €ê²©ìˆ˜
+424,4,8,800,0,0,0,130,130,130,1,2023_1,archer,Hawkeye,í˜¸í¬ì•„ì´

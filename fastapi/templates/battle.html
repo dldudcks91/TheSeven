@@ -76,7 +76,10 @@
             <span style="color:#b71c1c">● 전투중</span>
             <span style="color:#555">📍 빈칸 클릭→이동</span>
         </div>
-        <div id="myPosInfo" style="margin-top:4px; font-size:11px; color:#666;"></div>
+        <div style="margin-top:4px; display:flex; align-items:center; gap:8px;">
+            <span id="myPosInfo" style="font-size:11px; color:#666;"></span>
+            <button onclick="loadMyPosition()" style="font-size:11px; padding:2px 8px; border:1px solid #ccc; background:white; cursor:pointer; border-radius:3px;">내 좌표 조회</button>
+        </div>
 
         <!-- NPC 클릭 팝업 -->
         <div id="npcPopup" class="npc-popup">
@@ -815,6 +818,19 @@ document.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') closeAllPopups();
 });
+
+// ─────────────────────────────── 내 좌표 조회 (9001) ───────────────────────────────
+async function loadMyPosition() {
+    const res = await apiCall(9001);
+    const el = document.getElementById('myPosInfo');
+    if (res && res.success && res.data) {
+        el.textContent = `내 위치: (${res.data.x}, ${res.data.y})`;
+        log(`내 좌표 조회: (${res.data.x}, ${res.data.y})`, 'info');
+    } else {
+        el.textContent = '좌표 조회 실패';
+        log('내 좌표 조회 실패: ' + (res?.message || ''), 'error');
+    }
+}
 
 // ─────────────────────────────── 초기화 ───────────────────────────────
 async function loadData() {

@@ -65,6 +65,25 @@
 
 ---
 
+### 1009 - 국가(프로필) 정보 조회
+
+유저 기본 프로필 조회. Redis 캐시 우선, 없으면 DB에서 로드.
+
+- **data**: `{}` (자기 자신) 또는 `{"user_no": 1001}` (다른 유저 조회)
+- **응답 data**:
+```json
+{
+    "user_no": 1,
+    "nickname": "Player_1",
+    "level": 1,
+    "power": 0,
+    "alliance_id": null,
+    "alliance_position": null
+}
+```
+
+---
+
 ### 1010 - 로그인 (전체 데이터 로드)
 
 로그인 시 해당 유저의 모든 게임 데이터를 Redis에 캐싱하고 반환. 진행 중인 유닛 훈련/연구 작업을 Task Queue에 재등록.
@@ -704,6 +723,84 @@ Leader만 가능. 추방된 멤버는 본인 성으로 귀환.
 Leader만 가능. 전체 멤버 귀환 처리 후 집결 삭제.
 
 - **data**: `{"rally_id": 1}`
+
+---
+
+## 전장 API (905x)
+
+### 9050 - 전장 목록 조회
+
+전장 1~3의 참여자 수, 구독자 수 반환.
+
+- **data**: `{}`
+- **응답 data**:
+```json
+{
+    "battlefields": [
+        {"bf_id": 1, "member_count": 12, "subscriber_count": 17},
+        {"bf_id": 2, "member_count": 8,  "subscriber_count": 10},
+        {"bf_id": 3, "member_count": 0,  "subscriber_count": 0}
+    ]
+}
+```
+
+---
+
+### 9051 - 전장 참여
+
+내 성을 해당 전장에 투입. 1인 1전장 제한.
+
+- **data**: `{"bf_id": 1}`
+- **응답 data**: 전장 스냅샷 (members + battles)
+
+---
+
+### 9052 - 전장 후퇴
+
+참여 중인 전장에서 성 철수.
+
+- **data**: `{}`
+- **응답 data**: `{}`
+
+---
+
+### 9053 - 전장 정보 조회
+
+전장 스냅샷 (참여자 위치 + 진행 중 전투).
+
+- **data**: `{"bf_id": 1}`
+- **응답 data**:
+```json
+{
+    "bf_id": 1,
+    "members": {
+        "101": {"castle_x": 45, "castle_y": 23, "joined_at": "2026-03-03T..."},
+        "202": {"castle_x": 12, "castle_y": 8, "joined_at": "2026-03-03T..."}
+    },
+    "battles": [
+        {"battle_id": 5, "x": 45, "y": 23, "atk_hp_pct": 75, "def_hp_pct": 60,
+         "round": 5, "attacker_no": 101, "defender_no": 202}
+    ]
+}
+```
+
+---
+
+### 9054 - 전장 관전 시작
+
+전장 구독 등록 + 현재 스냅샷 응답. 이후 BattleWorker가 매 1초 `battlefield_tick` 전송.
+
+- **data**: `{"bf_id": 1}`
+- **응답 data**: 9053과 동일한 전장 스냅샷
+
+---
+
+### 9055 - 전장 관전 종료
+
+전장 구독 해제.
+
+- **data**: `{"bf_id": 1}`
+- **응답 data**: `{}`
 
 ---
 

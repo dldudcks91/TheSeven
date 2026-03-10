@@ -21,7 +21,11 @@ class BattleManager:
     """
 
     LOOT_RATIO = 0.20    # 20%
-    HERO_ATK_PER_LV = 0.05  # 레벨당 5% 공격력 보너스
+    DAMAGE_SCALE = 5000  # 데미지 스케일 상수 (C)
+    DEFAULT_HERO_COEFFS = {"atk": 1.0, "def": 1.0, "hp": 1.0}
+    RAGE_PER_ATTACK = 20   # 공격 시 기력 획득
+    RAGE_PER_HIT = 5       # 피격 시 기력 획득 (공격자당)
+    RAGE_MAX = 100          # 기력 상한 → 스킬 발동
 
     def __init__(self, db_manager: DBManager, redis_manager: RedisManager):
         self.db_manager = db_manager
@@ -34,41 +38,102 @@ class BattleManager:
         return {"success": success, "message": message, "data": data or {}}
 
     # ─────────────────────────────────────────────
-    # 영웅 보너스
+    # 영웅 계수 (CSV base_stat / 100 = 배율)
     # ─────────────────────────────────────────────
 
-    def _hero_atk_multiplier(self, hero_idx: Optional[int], hero_lv: int) -> float:
+    @staticmethod
+    def _hero_coefficients(hero_idx: Optional[int]) -> Dict[str, float]:
+        """영웅 CSV 스탯을 백분율 계수로 변환. 105 → 1.05배"""
         if not hero_idx:
-            return 1.0
-        return 1.0 + self.HERO_ATK_PER_LV * hero_lv
+            return BattleManager.DEFAULT_HERO_COEFFS.copy()
+        hero_configs = GameDataManager.REQUIRE_CONFIGS.get("hero", {})
+        hero_cfg = hero_configs.get(int(hero_idx))
+        if not hero_cfg:
+            return BattleManager.DEFAULT_HERO_COEFFS.copy()
+        return {
+            "atk": float(hero_cfg.get("base_attack", 100)) / 100.0,
+            "def": float(hero_cfg.get("base_defense", 100)) / 100.0,
+            "hp": float(hero_cfg.get("base_health", 100)) / 100.0,
+        }
 
     # ─────────────────────────────────────────────
-    # 전투력 계산
+    # 영웅 스킬 조회
     # ─────────────────────────────────────────────
 
-    def _calc_army_stats(self, units: Dict[int, int], hero_multiplier: float = 1.0) -> Dict:
+    @staticmethod
+    def _get_hero_skill(hero_idx: Optional[int]) -> Optional[Dict]:
+        """hero_idx로 스킬 CSV 조회"""
+        if not hero_idx:
+            return None
+        skill_configs = GameDataManager.REQUIRE_CONFIGS.get("hero_skill", {})
+        for skill in skill_configs.values():
+            if skill["hero_idx"] == int(hero_idx):
+                return skill
+        return None
+
+    async def _get_defender_hero_idx(self, defender_no: int) -> Optional[int]:
+        """수비자의 보유 영웅 idx 조회 (첫 번째 소유 영웅 — garrison hero 미구현)"""
+        try:
+            combat_rm = self.redis_manager.get_combat_manager()
+            hero_key = f"user_data:{defender_no}:hero"
+            heroes = await combat_rm.redis.hgetall(hero_key)
+            if heroes:
+                first_key = next(iter(heroes.keys()))
+                return int(first_key)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _check_rage_skill(rage: int, hero_idx: Optional[int]) -> tuple:
+        """기력 체크 → (new_rage, skill_mult, skill_fired)"""
+        skill_mult = 1.0
+        skill_fired = False
+        if rage >= BattleManager.RAGE_MAX and hero_idx:
+            skill = BattleManager._get_hero_skill(hero_idx)
+            if skill and skill["effect_type"] == "damage":
+                skill_mult = 1.0 + skill["value"] / 100.0
+                skill_fired = True
+            rage -= BattleManager.RAGE_MAX
+        return rage, skill_mult, skill_fired
+
+    # ─────────────────────────────────────────────
+    # 전투력 계산 (√count 스케일링)
+    # ─────────────────────────────────────────────
+
+    def _calc_army_stats(self, units: Dict[int, int],
+                         hero_coeffs: Optional[Dict[str, float]] = None) -> Dict:
         """
-        units: {unit_idx: count}
-        return: {attack, defense, health, total_hp, alive_units}
+        RoK 스타일 전투력 계산.
+        - power  = Σ(unit_atk × √count) × hero_atk_coeff
+        - defense = Σ(unit_def × √count) × hero_def_coeff
+        - health  = Σ(unit_hp  × √count) × hero_hp_coeff
         """
+        if hero_coeffs is None:
+            hero_coeffs = self.DEFAULT_HERO_COEFFS
         unit_configs = GameDataManager.REQUIRE_CONFIGS.get("unit", {})
-        total_attack = 0
-        total_defense = 0
-        total_hp = 0
+
+        total_power = 0.0
+        total_defense = 0.0
+        total_health = 0.0
 
         for unit_idx, count in units.items():
             if count <= 0:
                 continue
             cfg = unit_configs.get(unit_idx, {}).get("ability", {})
-            total_attack += int(cfg.get("attack", 10)) * count
-            total_defense += int(cfg.get("defense", 5)) * count
-            total_hp += int(cfg.get("health", 100)) * count
+            sqrt_count = math.sqrt(count)
+            total_power += float(cfg.get("attack", 100)) * sqrt_count
+            total_defense += float(cfg.get("defense", 100)) * sqrt_count
+            total_health += float(cfg.get("health", 100)) * sqrt_count
 
-        total_attack = int(total_attack * hero_multiplier)
+        total_power *= hero_coeffs["atk"]
+        total_defense *= hero_coeffs["def"]
+        total_health *= hero_coeffs["hp"]
+
         return {
-            "attack": total_attack,
+            "power": total_power,
             "defense": total_defense,
-            "total_hp": total_hp,
+            "health": total_health,
             "alive_units": {k: v for k, v in units.items() if v > 0},
         }
 
@@ -77,51 +142,51 @@ class BattleManager:
     # ─────────────────────────────────────────────
 
     @staticmethod
-    def calculate_round(atk_stats: Dict, def_stats: Dict) -> Dict:
+    def calculate_round(atk_stats: Dict, def_stats: Dict,
+                        atk_skill_mult: float = 1.0,
+                        def_skill_mult: float = 1.0) -> Dict:
         """
-        1라운드 전투 시뮬레이션.
-        공격측/방어측이 동시에 공격, 즉시 사망 처리.
+        1라운드 전투 시뮬레이션 (RoK 스타일).
 
-        Returns: {
-          atk_dmg_dealt, atk_units_lost,
-          def_dmg_dealt, def_units_lost,
-          atk_alive, def_alive
-        }
+        공식: Kills = C × atk_power / (def_defense × def_health) × skill_mult
+        양측 동시 공격 후 사망 처리. 저티어부터 순차 제거.
+        skill_mult: 스킬 발동 시 킬 배율 (default 1.0 = 스킬 없음)
 
         TODO: C++ pybind11 포팅 후 벤치마크 비교
         """
-        unit_configs = GameDataManager.REQUIRE_CONFIGS.get("unit", {})
+        C = BattleManager.DAMAGE_SCALE
 
-        def apply_damage(attacker_atk: int, defender_def: int,
-                         defender_units: Dict[int, int]) -> Dict[int, int]:
-            """공격력으로 방어측 병력 피해 계산 (방어력 경감 후 체력 차감)"""
-            net_atk = max(1, attacker_atk - defender_def)
-            remaining_dmg = net_atk
+        def calc_kills(attacker_power: float, defender_def: float,
+                       defender_hp: float) -> float:
+            """공격측이 방어측에 입히는 킬 수 계산"""
+            if defender_def <= 0 or defender_hp <= 0:
+                return 0.0
+            return C * attacker_power / (defender_def * defender_hp)
+
+        def distribute_kills(kills: float,
+                             defender_units: Dict[int, int]) -> Dict[int, int]:
+            """킬 수를 저티어(unit_idx 오름차순)부터 배분"""
             loss = {}
-
-            # unit_idx 순서대로 처리
-            for unit_idx, count in list(defender_units.items()):
-                if remaining_dmg <= 0:
+            remaining_kills = kills
+            for unit_idx in sorted(defender_units.keys()):
+                if remaining_kills < 1.0:
                     break
-                cfg = unit_configs.get(unit_idx, {}).get("ability", {})
-                hp_per_unit = int(cfg.get("health", 100))
-                total_hp = hp_per_unit * count
-                if remaining_dmg >= total_hp:
-                    # 전멸
-                    loss[unit_idx] = count
-                    remaining_dmg -= total_hp
-                else:
-                    killed = remaining_dmg // hp_per_unit
+                count = defender_units[unit_idx]
+                killed = min(int(remaining_kills), count)
+                if killed > 0:
                     loss[unit_idx] = killed
-                    remaining_dmg = 0
+                    remaining_kills -= killed
             return loss
 
         atk_units = dict(atk_stats.get("alive_units", {}))
         def_units = dict(def_stats.get("alive_units", {}))
 
-        # 동시 공격
-        def_loss = apply_damage(atk_stats["attack"], def_stats["defense"], def_units)
-        atk_loss = apply_damage(def_stats["attack"], atk_stats["defense"], atk_units)
+        # 동시 공격 (같은 스냅샷 기준, 스킬 배율 적용)
+        kills_to_def = calc_kills(atk_stats["power"], def_stats["defense"], def_stats["health"]) * atk_skill_mult
+        kills_to_atk = calc_kills(def_stats["power"], atk_stats["defense"], atk_stats["health"]) * def_skill_mult
+
+        def_loss = distribute_kills(kills_to_def, def_units)
+        atk_loss = distribute_kills(kills_to_atk, atk_units)
 
         # 생존 병력 계산
         for uid, lost in def_loss.items():
@@ -171,17 +236,8 @@ class BattleManager:
             await combat_rm.update_march_metadata(march_id, {"status": "returning"})
             return self._format(False, "NPC가 이미 처치된 상태")
 
-        # 영웅 레벨 조회
-        hero_lv = 0
-        if march.get("hero_idx"):
-            try:
-                hero_key = f"user_data:{attacker_no}:hero"
-                raw = await combat_rm.redis.hget(hero_key, str(march["hero_idx"]))
-                if raw:
-                    hero_data = json.loads(raw)
-                    hero_lv = int(hero_data.get("hero_lv", 0))
-            except Exception:
-                pass
+        # 영웅 계수 조회 (CSV 기반, 레벨 무관)
+        hero_coeffs = self._hero_coefficients(march.get("hero_idx"))
 
         # Battle DB 생성 (defender_user_no=0: NPC)
         result = battle_dm.create_battle({
@@ -196,9 +252,8 @@ class BattleManager:
         await combat_rm.update_march_metadata(march_id, {"status": "battling", "battle_id": battle_id})
         self.db_manager.commit()
 
-        hero_mult = self._hero_atk_multiplier(march.get("hero_idx"), hero_lv)
-        atk_stats = self._calc_army_stats(atk_units, hero_mult)
-        def_stats = self._calc_army_stats(def_units, 1.0)
+        atk_stats = self._calc_army_stats(atk_units, hero_coeffs)
+        def_stats = self._calc_army_stats(def_units)
 
         # 전장 참여 여부 확인 (전장 내 전투 추적용)
         bf_id = await combat_rm.get_user_battlefield(attacker_no) or 0
@@ -209,19 +264,21 @@ class BattleManager:
             "battle_type": "npc",
             "npc_id": npc_id,
             "hero_idx": march.get("hero_idx"),
+            "def_hero_idx": None,  # NPC는 영웅 없음
             "attacker_no": attacker_no,
             "defender_no": 0,
             "atk_units": atk_units,
             "def_units": def_units,
-            "hero_multiplier": hero_mult,
-            "atk_max_hp": atk_stats["total_hp"],
-            "def_max_hp": def_stats["total_hp"],
-            "atk_hp": atk_stats["total_hp"],
-            "def_hp": def_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
+            "def_max_hp": def_stats["health"],
+            "atk_hp": atk_stats["health"],
+            "def_hp": def_stats["health"],
             "to_x": march.get("to_x", 0),
             "to_y": march.get("to_y", 0),
             "bf_id": bf_id,
             "round": 0,
+            "atk_rage": 0,
+            "def_rage": 0,
             "atk_total_loss": {},
             "def_total_loss": {},
             "status": "active",
@@ -237,12 +294,11 @@ class BattleManager:
             "y": march.get("to_y"),
             "atk_user_no": attacker_no,
             "atk_hero_idx": march.get("hero_idx"),
-            "atk_hero_lv": hero_lv,
-            "atk_max_hp": atk_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
             "atk_units": atk_units,
             "def_user_no": 0,
             "def_npc_id": npc_id,
-            "def_max_hp": def_stats["total_hp"],
+            "def_max_hp": def_stats["health"],
             "def_units": def_units,
         })
 
@@ -275,17 +331,12 @@ class BattleManager:
                 if ready > 0:
                     def_units[int(uid_str)] = ready
 
-        # 영웅 레벨 조회 (hero Redis 캐시에서)
-        hero_lv = 0
-        if march.get("hero_idx"):
-            try:
-                hero_key = f"user_data:{attacker_no}:hero"
-                raw = await combat_rm.redis.hget(hero_key, str(march["hero_idx"]))
-                if raw:
-                    hero_data = json.loads(raw)
-                    hero_lv = int(hero_data.get("hero_lv", 0))
-            except Exception:
-                pass
+        # 영웅 계수 조회 (CSV 기반, 레벨 무관)
+        hero_coeffs = self._hero_coefficients(march.get("hero_idx"))
+
+        # 수비자 영웅 조회
+        def_hero_idx = await self._get_defender_hero_idx(defender_no)
+        def_hero_coeffs = self._hero_coefficients(def_hero_idx)
 
         # ── 기존 진행 중 전투가 있으면 현재 수비 상태 동기화 ──
         def_units_original = dict(def_units)  # ready 캐시 기준 원본 (deduct용)
@@ -301,7 +352,7 @@ class BattleManager:
         # ── 무혈입성: 수비 병력 0이면 전투 없이 즉시 약탈 ──
         if not def_units:
             return await self._bloodless_entry(
-                march_id, march, attacker_no, defender_no, atk_units, hero_lv)
+                march_id, march, attacker_no, defender_no, atk_units, 0)
 
         # 전투 DB 생성
         result = battle_dm.create_battle({
@@ -319,9 +370,8 @@ class BattleManager:
         self.db_manager.commit()
 
         # Redis 전투 상태 초기화
-        hero_mult = self._hero_atk_multiplier(march.get("hero_idx"), hero_lv)
-        atk_stats = self._calc_army_stats(atk_units, hero_mult)
-        def_stats = self._calc_army_stats(def_units, 1.0)
+        atk_stats = self._calc_army_stats(atk_units, hero_coeffs)
+        def_stats = self._calc_army_stats(def_units, def_hero_coeffs)
 
         # 전장 참여 여부 확인
         bf_id = await combat_rm.get_user_battlefield(attacker_no) or 0
@@ -332,17 +382,20 @@ class BattleManager:
             "battle_type": "user",
             "attacker_no": attacker_no,
             "defender_no": defender_no,
+            "hero_idx": march.get("hero_idx"),
+            "def_hero_idx": def_hero_idx,
             "atk_units": atk_units,
             "def_units": def_units,
-            "hero_multiplier": hero_mult,
-            "atk_max_hp": atk_stats["total_hp"],
-            "def_max_hp": def_stats["total_hp"],
-            "atk_hp": atk_stats["total_hp"],
-            "def_hp": def_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
+            "def_max_hp": def_stats["health"],
+            "atk_hp": atk_stats["health"],
+            "def_hp": def_stats["health"],
             "to_x": march.get("to_x", 0),
             "to_y": march.get("to_y", 0),
             "bf_id": bf_id,
             "round": 0,
+            "atk_rage": 0,
+            "def_rage": 0,
             "atk_total_loss": {},
             "def_total_loss": {},
             "damage_dealt": 0,
@@ -361,17 +414,16 @@ class BattleManager:
             "y": march.get("to_y"),
             "atk_user_no": attacker_no,
             "atk_hero_idx": march.get("hero_idx"),
-            "atk_hero_lv": hero_lv,
-            "atk_max_hp": atk_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
             "atk_units": atk_units,
             "def_user_no": defender_no,
-            "def_max_hp": def_stats["total_hp"],
+            "def_max_hp": def_stats["health"],
             "def_units": def_units,
         })
 
     async def _bloodless_entry(self, march_id: int, march: Dict,
                                 attacker_no: int, defender_no: int,
-                                atk_units: Dict, hero_lv: int) -> Dict:
+                                atk_units: Dict, hero_lv: int = 0) -> Dict:
         """수비 병력 0 → 전투 없이 즉시 약탈 + 귀환"""
         battle_dm = self.db_manager.get_battle_manager()
         combat_rm = self.redis_manager.get_combat_manager()
@@ -436,7 +488,7 @@ class BattleManager:
     # ─────────────────────────────────────────────
 
     async def process_battle_tick(self, battle_id: int) -> Dict:
-        """1라운드 처리"""
+        """1라운드 처리 (기력/스킬 포함)"""
         combat_rm = self.redis_manager.get_combat_manager()
         state = await combat_rm.get_battle_state(battle_id)
         if not state or state.get("status") != "active":
@@ -445,18 +497,36 @@ class BattleManager:
         current_round = int(state.get("round", 0))
         atk_units = state.get("atk_units", {})
         def_units = state.get("def_units", {})
-        hero_mult = float(state.get("hero_multiplier", 1.0))
 
         # 정수 키 보장
         atk_units = {int(k): int(v) for k, v in atk_units.items()}
         def_units = {int(k): int(v) for k, v in def_units.items()}
 
-        # 전투력 산출
-        atk_stats = self._calc_army_stats(atk_units, hero_mult)
-        def_stats = self._calc_army_stats(def_units, 1.0)
+        # 영웅 계수 (state에 저장된 hero_idx로 런타임 조회)
+        atk_hero_idx = state.get("hero_idx")
+        def_hero_idx = state.get("def_hero_idx")
+        hero_coeffs = self._hero_coefficients(atk_hero_idx)
+        def_hero_coeffs = self._hero_coefficients(def_hero_idx)
 
-        # 라운드 계산
-        round_result = self.calculate_round(atk_stats, def_stats)
+        # 기력 누적: 공격 시 +20, 피격 시 +5 (공격자당 1명씩)
+        atk_rage = int(state.get("atk_rage", 0))
+        def_rage = int(state.get("def_rage", 0))
+        atk_rage += self.RAGE_PER_ATTACK   # 공격 시 +20
+        def_rage += self.RAGE_PER_HIT       # 피격 시 +5 (1:1 전투이므로 공격자 1명)
+        # 수비도 공격하므로 수비도 공격 기력 획득, 공격자도 피격 기력 획득
+        def_rage += self.RAGE_PER_ATTACK
+        atk_rage += self.RAGE_PER_HIT
+
+        # 기력 스킬 체크
+        atk_rage, atk_skill_mult, _ = self._check_rage_skill(atk_rage, atk_hero_idx)
+        def_rage, def_skill_mult, _ = self._check_rage_skill(def_rage, def_hero_idx)
+
+        # 전투력 산출 (RoK 스타일: √count × stat × hero_coeff)
+        atk_stats = self._calc_army_stats(atk_units, hero_coeffs)
+        def_stats = self._calc_army_stats(def_units, def_hero_coeffs)
+
+        # 라운드 계산 (스킬 배율 적용)
+        round_result = self.calculate_round(atk_stats, def_stats, atk_skill_mult, def_skill_mult)
         new_round = current_round + 1
 
         # 누적 손실 갱신
@@ -469,9 +539,9 @@ class BattleManager:
             key = str(uid)
             def_total_loss[key] = int(def_total_loss.get(key, 0)) + lost
 
-        # 라운드 후 남은 병력으로 현재 HP 계산
-        new_atk_stats = self._calc_army_stats(round_result["atk_alive"], hero_mult)
-        new_def_stats = self._calc_army_stats(round_result["def_alive"], 1.0)
+        # 라운드 후 남은 병력으로 현재 health 계산
+        new_atk_stats = self._calc_army_stats(round_result["atk_alive"], hero_coeffs)
+        new_def_stats = self._calc_army_stats(round_result["def_alive"], def_hero_coeffs)
 
         # 상태 업데이트 (atk_hp/def_hp도 함께 저장 → battlefield_tick에서 사용)
         await combat_rm.set_battle_state(battle_id, {
@@ -481,8 +551,10 @@ class BattleManager:
             "def_units": round_result["def_alive"],
             "atk_total_loss": atk_total_loss,
             "def_total_loss": def_total_loss,
-            "atk_hp": new_atk_stats["total_hp"],
-            "def_hp": new_def_stats["total_hp"],
+            "atk_hp": new_atk_stats["health"],
+            "def_hp": new_def_stats["health"],
+            "atk_rage": atk_rage,
+            "def_rage": def_rage,
         })
 
         # 종료 조건 체크 (한 쪽 전멸 시에만 종료, 라운드 제한 없음)
@@ -624,18 +696,9 @@ class BattleManager:
             await combat_rm.update_march_metadata(march_id, {"status": "returning"})
             return self._format(False, "NPC가 이미 처치된 상태")
 
-        # Leader 영웅 레벨 조회 (Leader만 적용)
-        hero_lv = 0
+        # Leader 영웅 계수 조회 (CSV 기반, 레벨 무관)
         hero_idx = rally.get("hero_idx")
-        if hero_idx:
-            try:
-                hero_key = f"user_data:{leader_no}:hero"
-                raw = await combat_rm.redis.hget(hero_key, str(hero_idx))
-                if raw:
-                    hero_data = json.loads(raw)
-                    hero_lv = int(hero_data.get("hero_lv", 0))
-            except Exception:
-                pass
+        hero_coeffs = self._hero_coefficients(hero_idx)
 
         # Battle DB 생성
         result = battle_dm.create_battle({
@@ -650,9 +713,8 @@ class BattleManager:
         await combat_rm.update_march_metadata(march_id, {"status": "battling", "battle_id": battle_id})
         self.db_manager.commit()
 
-        hero_mult = self._hero_atk_multiplier(hero_idx, hero_lv)
-        atk_stats = self._calc_army_stats(atk_units, hero_mult)
-        def_stats = self._calc_army_stats(def_units, 1.0)
+        atk_stats = self._calc_army_stats(atk_units, hero_coeffs)
+        def_stats = self._calc_army_stats(def_units)
 
         bf_id = await combat_rm.get_user_battlefield(leader_no) or 0
 
@@ -663,19 +725,21 @@ class BattleManager:
             "battle_type": "rally_npc",
             "npc_id": npc_id,
             "hero_idx": hero_idx,
+            "def_hero_idx": None,  # NPC는 영웅 없음
             "attacker_no": leader_no,
             "defender_no": 0,
             "atk_units": atk_units,
             "def_units": def_units,
-            "hero_multiplier": hero_mult,
-            "atk_max_hp": atk_stats["total_hp"],
-            "def_max_hp": def_stats["total_hp"],
-            "atk_hp": atk_stats["total_hp"],
-            "def_hp": def_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
+            "def_max_hp": def_stats["health"],
+            "atk_hp": atk_stats["health"],
+            "def_hp": def_stats["health"],
             "to_x": march.get("to_x", 0),
             "to_y": march.get("to_y", 0),
             "bf_id": bf_id,
             "round": 0,
+            "atk_rage": 0,
+            "def_rage": 0,
             "atk_total_loss": {},
             "def_total_loss": {},
             "status": "active",
@@ -692,12 +756,11 @@ class BattleManager:
             "y": march.get("to_y"),
             "atk_user_no": leader_no,
             "atk_hero_idx": hero_idx,
-            "atk_hero_lv": hero_lv,
-            "atk_max_hp": atk_stats["total_hp"],
+            "atk_max_hp": atk_stats["health"],
             "atk_units": atk_units,
             "def_user_no": 0,
             "def_npc_id": npc_id,
-            "def_max_hp": def_stats["total_hp"],
+            "def_max_hp": def_stats["health"],
             "def_units": def_units,
         })
 
@@ -906,21 +969,40 @@ class BattleManager:
         if not states:
             return {"battle_results": {}, "def_eliminated": False}
 
+        num_attackers = len(states)
+
         # 2. 수비 스냅샷 (모든 전투가 동일한 def_units 공유)
         first_state = next(iter(states.values()))
         def_units = {int(k): int(v) for k, v in first_state.get("def_units", {}).items()}
-        def_stats = self._calc_army_stats(def_units, 1.0)
+        def_hero_idx = first_state.get("def_hero_idx")
+        def_hero_coeffs = self._hero_coefficients(def_hero_idx)
+        def_stats = self._calc_army_stats(def_units, def_hero_coeffs)
+
+        # 수비 기력: 공유 (첫 번째 state에서 읽고 +20 공격 + 5×공격자수 피격)
+        def_rage = int(first_state.get("def_rage", 0))
+        def_rage += self.RAGE_PER_ATTACK  # 수비도 공격한다
+        def_rage += self.RAGE_PER_HIT * num_attackers  # 공격자 수만큼 피격
+        def_rage, def_skill_mult, _ = self._check_rage_skill(def_rage, def_hero_idx)
 
         # 3. 각 전투별 라운드 계산 (동일 스냅샷 기준)
         accumulated_def_loss = {}  # {uid: total_lost}
         per_battle = {}
+        per_battle_atk_rage = {}  # {bid: new_atk_rage}
 
         for bid, state in states.items():
             atk_units = {int(k): int(v) for k, v in state.get("atk_units", {}).items()}
-            hero_mult = float(state.get("hero_multiplier", 1.0))
-            atk_stats = self._calc_army_stats(atk_units, hero_mult)
+            hero_coeffs = self._hero_coefficients(state.get("hero_idx"))
+            atk_stats = self._calc_army_stats(atk_units, hero_coeffs)
 
-            round_result = self.calculate_round(atk_stats, def_stats)
+            # 공격 기력: 각 전투별 개별 관리
+            atk_hero_idx = state.get("hero_idx")
+            atk_rage = int(state.get("atk_rage", 0))
+            atk_rage += self.RAGE_PER_ATTACK  # 공격 시 +20
+            atk_rage += self.RAGE_PER_HIT     # 피격 시 +5 (수비 1명에게 맞음)
+            atk_rage, atk_skill_mult, _ = self._check_rage_skill(atk_rage, atk_hero_idx)
+            per_battle_atk_rage[bid] = atk_rage
+
+            round_result = self.calculate_round(atk_stats, def_stats, atk_skill_mult, def_skill_mult)
             per_battle[bid] = round_result
 
             # 수비 손실 누적
@@ -936,7 +1018,7 @@ class BattleManager:
                 new_def_units[uid] = remaining
 
         def_eliminated = not new_def_units
-        new_def_stats = self._calc_army_stats(new_def_units, 1.0) if new_def_units else {"total_hp": 0}
+        new_def_stats = self._calc_army_stats(new_def_units, def_hero_coeffs) if new_def_units else {"health": 0}
 
         # 5. 각 전투 상태 업데이트 + 종료 판정
         battle_results = {}
@@ -946,7 +1028,7 @@ class BattleManager:
         for bid, state in states.items():
             round_result = per_battle[bid]
             current_round = int(state.get("round", 0)) + 1
-            hero_mult = float(state.get("hero_multiplier", 1.0))
+            hero_coeffs = self._hero_coefficients(state.get("hero_idx"))
 
             # 누적 손실 갱신
             atk_total_loss = state.get("atk_total_loss", {})
@@ -967,9 +1049,9 @@ class BattleManager:
 
             atk_alive = round_result["atk_alive"]
             atk_dead = not atk_alive
-            new_atk_stats = self._calc_army_stats(atk_alive, hero_mult) if atk_alive else {"total_hp": 0}
+            new_atk_stats = self._calc_army_stats(atk_alive, hero_coeffs) if atk_alive else {"health": 0}
 
-            # 상태 업데이트
+            # 상태 업데이트 (기력 포함)
             updated_state = {
                 **state,
                 "round": current_round,
@@ -978,8 +1060,10 @@ class BattleManager:
                 "atk_total_loss": atk_total_loss,
                 "def_total_loss": def_total_loss,
                 "damage_dealt": damage_dealt,
-                "atk_hp": new_atk_stats["total_hp"],
-                "def_hp": new_def_stats["total_hp"],
+                "atk_hp": new_atk_stats["health"],
+                "def_hp": new_def_stats["health"],
+                "atk_rage": per_battle_atk_rage.get(bid, 0),
+                "def_rage": def_rage,
             }
             await combat_rm.set_battle_state(bid, updated_state)
 

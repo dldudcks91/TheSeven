@@ -51,7 +51,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/building_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/building_info.csv', encoding='utf-8').fillna("")
         building_configs = cls.REQUIRE_CONFIGS['building']
         
         for _, row in df.iterrows():
@@ -76,7 +76,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/research_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/research_info.csv', encoding='utf-8').fillna("")
         research_configs = cls.REQUIRE_CONFIGS['research']
         
         for _, row in df.iterrows():
@@ -108,7 +108,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/unit_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/unit_info.csv', encoding='utf-8').fillna("")
         
         unit_configs = cls.REQUIRE_CONFIGS['unit']
         
@@ -136,7 +136,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/buff_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/buff_info.csv', encoding='utf-8').fillna("")
         
         buff_configs = cls.REQUIRE_CONFIGS['buff']
         
@@ -163,7 +163,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/item_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/item_info.csv', encoding='utf-8').fillna("")
         
         
         item_configs = cls.REQUIRE_CONFIGS['item']
@@ -188,7 +188,7 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df = pd.read_csv('./meta_data/shop_info.csv', encoding= 'cp949').fillna("")
+        df = pd.read_csv('./meta_data/shop_info.csv', encoding='utf-8').fillna("")
         
         
         shop_configs = cls.REQUIRE_CONFIGS['shop']
@@ -209,8 +209,8 @@ class GameDataManager:
         
         
         # CSV 파일 읽기 (한번만!)
-        df_mission = pd.read_csv('./meta_data/mission_info.csv', encoding= 'cp949').fillna("")
-        df_mission_reward = pd.read_csv('./meta_data/mission_reward.csv', encoding= 'cp949').fillna("")
+        df_mission = pd.read_csv('./meta_data/mission_info.csv', encoding='utf-8').fillna("")
+        df_mission_reward = pd.read_csv('./meta_data/mission_reward.csv', encoding='utf-8').fillna("")
         
         mission_configs = cls.REQUIRE_CONFIGS['mission']
         
@@ -411,8 +411,6 @@ class GameDataManager:
                 'hero_idx': int(row['hero_idx']),
                 'korean_name': row['korean_name'],
                 'english_name': row['english_name'],
-                'trigger_type': row['trigger_type'],
-                'trigger_value': int(row['trigger_value']),
                 'effect_type': row['effect_type'],
                 'value': float(row['value']),
             }
