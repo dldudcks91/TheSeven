@@ -108,7 +108,6 @@ def setup_test_users():
             session.add(StatNation(
                 account_no=user_no, user_no=user_no, alliance_no=0,
                 name=name, hq_lv=5, power=0,
-                map_x=x, map_y=y,
                 cr_dt=datetime.now(), last_dt=datetime.now(),
             ))
             session.add(Resources(
@@ -658,11 +657,11 @@ class TestCalculateRound:
         """기본 라운드 계산 — 양측 피해 발생"""
         from services.game.BattleManager import BattleManager
         atk_stats = {
-            "attack": 500, "defense": 200, "total_hp": 5000,
+            "power": 500, "defense": 200, "health": 5000,
             "alive_units": {401: 50},
         }
         def_stats = {
-            "attack": 300, "defense": 100, "total_hp": 3000,
+            "power": 300, "defense": 100, "health": 3000,
             "alive_units": {401: 30},
         }
 
@@ -676,11 +675,11 @@ class TestCalculateRound:
         """압도적 공격력 → 수비 전멸"""
         from services.game.BattleManager import BattleManager
         atk_stats = {
-            "attack": 100000, "defense": 10000, "total_hp": 100000,
+            "power": 100000, "defense": 10000, "health": 100000,
             "alive_units": {401: 1000},
         }
         def_stats = {
-            "attack": 10, "defense": 1, "total_hp": 100,
+            "power": 10, "defense": 1, "health": 100,
             "alive_units": {401: 1},
         }
 

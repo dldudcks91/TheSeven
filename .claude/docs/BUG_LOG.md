@@ -4,6 +4,22 @@
 
 ---
 
+## [2026-03-12] 전투 시스템 테스트 Phase 2~5 구현
+
+### 즉시 수정한 버그
+
+(없음 — BattleManager의 버그 3건은 이전 세션(Phase 1)에서 발견/수정 완료)
+
+### 미해결 이슈
+
+(없음)
+
+### 알려진 한계/주의사항
+- Rally 테스트(R-12): member의 march_id 참조 시 실제 march metadata가 Redis에 존재해야 함. `setup_rally_member()`만으로는 불충분하고 `setup_rally_march()`로 metadata도 생성 필요.
+- 순환 import: `services/game/BattleManager`를 모듈 레벨에서 import하면 circular import 발생. 테스트에서는 반드시 함수 내부 lazy import 패턴 사용.
+
+---
+
 ## [2026-03-11] 유닛 훈련/업그레이드 완료 처리 버그 수정
 
 ### 즉시 수정한 버그

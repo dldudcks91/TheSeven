@@ -44,7 +44,7 @@ class BattleManager:
     @staticmethod
     def _hero_coefficients(hero_idx: Optional[int]) -> Dict[str, float]:
         """영웅 CSV 스탯을 백분율 계수로 변환. 105 → 1.05배"""
-        if not hero_idx:
+        if not hero_idx or str(hero_idx) == "None":
             return BattleManager.DEFAULT_HERO_COEFFS.copy()
         hero_configs = GameDataManager.REQUIRE_CONFIGS.get("hero", {})
         hero_cfg = hero_configs.get(int(hero_idx))
@@ -63,7 +63,7 @@ class BattleManager:
     @staticmethod
     def _get_hero_skill(hero_idx: Optional[int]) -> Optional[Dict]:
         """hero_idx로 스킬 CSV 조회"""
-        if not hero_idx:
+        if not hero_idx or str(hero_idx) == "None":
             return None
         skill_configs = GameDataManager.REQUIRE_CONFIGS.get("hero_skill", {})
         for skill in skill_configs.values():
@@ -89,7 +89,7 @@ class BattleManager:
         """기력 체크 → (new_rage, skill_mult, skill_fired)"""
         skill_mult = 1.0
         skill_fired = False
-        if rage >= BattleManager.RAGE_MAX and hero_idx:
+        if rage >= BattleManager.RAGE_MAX and hero_idx and str(hero_idx) != "None":
             skill = BattleManager._get_hero_skill(hero_idx)
             if skill and skill["effect_type"] == "damage":
                 skill_mult = 1.0 + skill["value"] / 100.0
