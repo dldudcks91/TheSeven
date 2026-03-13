@@ -1,7 +1,7 @@
 # BACKEND.md - 백엔드 기술 문서
 
 > **프로젝트**: TheSeven FastAPI 서버
-> **최종 수정**: 2026-03-10
+> **최종 수정**: 2026-03-13
 
 > **관련 문서**: 전투/맵/행군 시스템 → [`COMBAT.md`](COMBAT.md) 참조
 
@@ -70,6 +70,7 @@ fastapi/
 │   ├── hero_info.csv
 │   ├── hero_skill.csv
 │   └── npc_info.csv
+├── load_tests/                    # Locust 부하 테스트 (Phase 1~5)
 ├── routers/
 │   └── pages.py                   # HTML 페이지 라우터 (GET)
 ├── templates/                     # 클라이언트 HTML/JS
@@ -553,6 +554,33 @@ uvicorn main:app --host 0.0.0.0 --port {PORT}
 ```
 
 > **주의**: Python 코드 변경 후에는 서버를 반드시 재시작해야 반영됨 (`--reload` 없이 실행 시)
+
+### 14.2 부하 테스트 (Locust)
+
+```bash
+# 사전 준비
+pip install locust websocket-client
+
+# 실행
+cd fastapi/load_tests
+python run.py                        # Phase 목록 보기
+python run.py 1                      # Phase 1 smoke (5명, 30초)
+python run.py 2 --profile medium     # Phase 2 (50명, 5분)
+python run.py all --profile light    # 전체 순차 실행
+python run.py 5 --profile heavy --web  # 웹 UI로 실시간 모니터링
+```
+
+| Phase | 시나리오 | 핵심 측정 |
+|-------|---------|----------|
+| 1 | 읽기 전용 API 처리량 | RPS, p95 응답시간 |
+| 2 | NPC 행군/전투 생성 | TaskWorker 처리 지연, Redis 풀 |
+| 3 | 동시 성 공격 (PvP) | castle_tick 그룹 처리 정합성 |
+| 4 | 전장 + WebSocket | WS 브로드캐스트 부하, 메시지 지연 |
+| 5 | 복합 (50% 조회 + 25% PvE + 15% PvP + 10% 전장) | Redis 풀 고갈 시점, 서버 한계 |
+
+프로파일: `smoke`(5명/30s) → `light`(20명/2m) → `medium`(50명/5m) → `heavy`(100명/10m) → `stress`(200명/15m)
+
+> Claude 에이전트 `.claude/agents/load-test.md` 참조 시 자동 실행/분석 가능
 
 ---
 

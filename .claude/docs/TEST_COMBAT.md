@@ -1,8 +1,9 @@
 # TEST_COMBAT.md - 전투 시스템 테스트 문서
 
 > **프로젝트**: TheSeven
-> **최종 수정**: 2026-03-12
+> **최종 수정**: 2026-03-13
 > **테스트 파일**: `fastapi/tests/test_castle_battle.py` (기존), 추가 예정
+> **부하 테스트**: `fastapi/load_tests/` (Locust Phase 1~5, `.claude/agents/load-test.md` 에이전트)
 
 ---
 
